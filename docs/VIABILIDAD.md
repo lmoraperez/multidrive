@@ -42,8 +42,8 @@ miles de operaciones por minuto. Obliga a: trozos grandes (8–32 MiB), *token b
 proveedor, reintentos con *backoff* exponencial y coalescencia de operaciones.
 
 > Medido: seis escrituras simultáneas contra Drive no provocaron ni un 429, pero cada
-> operación cuesta ~3 s por sí sola. El cuello no fue la cuota, fue la latencia. Ver
-> [§5](#5-medidas-reales-contra-google-drive).
+> operación cuesta ~2,3 s por sí sola, y ~6,5 s si la ruta no existe. El cuello no fue la
+> cuota, fue la latencia. Ver [§5](#5-medidas-reales-contra-google-drive).
 
 ### 2.3 Coste de egreso — hay que modelarlo, no ignorarlo
 Una lectura normal solo baja *k* fragmentos, bien. Pero **una reconstrucción baja el array
@@ -102,53 +102,69 @@ Windows, GUI y Google/Dropbox/OneDrive vienen después. Ver [ROADMAP.md](ROADMAP
 
 ## 5. Medidas reales contra Google Drive
 
-Primera pasada de la suite de conformidad (`libredisk check`) contra una cuenta real, el
-2026-09-18. **Las nueve comprobaciones pasan**: Drive cumple el contrato de `Backend`.
+Dos pasadas de la suite de conformidad (`libredisk check`) contra una cuenta real, el
+2026-09-18: la primera en frío, la segunda con las carpetas ya creadas. **Las nueve
+comprobaciones pasan en ambas**: Drive cumple el contrato de `Backend`.
 
-| Comprobación | Medido | Operaciones | Por operación |
-|---|---:|---:|---:|
-| `ida_y_vuelta` (64 KiB) | 10 718 ms | 2 | ~5 359 ms † |
-| `sobrescritura` | 8 990 ms | 3 | ~3 000 ms |
-| `not_found_distinguible` | 7 152 ms | 1 | 7 152 ms |
-| `borrar_inexistente` | 2 864 ms | 1 | **2 864 ms** |
-| `exists_refleja_el_borrado` | 16 343 ms | 5 | ~3 269 ms |
-| `integridad_binaria` (4 KiB) | 5 533 ms | 2 | ~2 767 ms |
-| `clave_con_forma_de_fragmento` | 9 979 ms | 2 | ~4 990 ms ‡ |
-| `fragmento_de_4_mib` | 8 349 ms | 2 | ~4 175 ms |
-| `seis_escrituras_en_paralelo` | 7 293 ms | 6 en paralelo | ~1 215 ms amortizado |
+| Comprobación | 1.ª (frío) | 2.ª (caliente) | Ops | Por op (2.ª) |
+|---|---:|---:|---:|---:|
+| `ida_y_vuelta` (64 KiB) | 10 718 ms | 8 906 ms | 2 | ~4 453 ms |
+| `sobrescritura` | 8 990 ms | 7 760 ms | 3 | ~2 587 ms |
+| `not_found_distinguible` | 7 152 ms | 6 530 ms | 1 | **6 530 ms** |
+| `borrar_inexistente` | 2 864 ms | 2 319 ms | 1 | **2 319 ms** |
+| `exists_refleja_el_borrado` | 16 343 ms | 9 264 ms | 5 | ~1 853 ms |
+| `integridad_binaria` (4 KiB) | 5 533 ms | 5 097 ms | 2 | ~2 549 ms |
+| `clave_con_forma_de_fragmento` | 9 979 ms | 8 299 ms | 2 | ~4 150 ms |
+| `fragmento_de_4_mib` | 8 349 ms | 7 981 ms | 2 | ~3 991 ms |
+| `seis_escrituras_en_paralelo` | 7 293 ms | 5 624 ms | 6 en paralelo | ~937 ms amortizado |
+| **Total** | **77 221 ms** | **61 780 ms** | | |
 
-† Incluye el arranque en frío: canje del token OAuth y creación de la carpeta raíz.
-‡ Crea además dos niveles de carpeta (`chunks/aa/`).
+### El arranque en frío no era la explicación
+
+La segunda pasada solo baja un 20 % en total, repartido por todas las comprobaciones en vez
+de concentrado en la primera. Crear las carpetas la primera vez costaba algo, pero poco: el
+coste por operación es **estado estacionario**, no calentamiento. Eso refuerza la conclusión
+en lugar de matizarla.
 
 ### El coste es por operación, no por byte
 
 `borrar_inexistente` es el instrumento más limpio: una sola operación, cero bytes,
-**2,9 segundos**. Ese es el suelo. Y la comparación que lo remata:
+**2,3 segundos**. Ese es el suelo. La comparación que lo remata, en la pasada caliente:
 
-- 4 KiB de ida y vuelta: **5 533 ms**
-- 4 MiB de ida y vuelta: **8 349 ms**
+- 4 KiB de ida y vuelta: **5 097 ms**
+- 4 MiB de ida y vuelta: **7 981 ms**
 
-Mil veces más datos por vez y media de tiempo. Drive no cobra en ancho de banda, cobra en
-*round trips*: OpenDAL localiza cada ruta buscándola en Drive antes de tocarla, y esa
-búsqueda domina todo lo demás.
+Mil veces más datos por 1,6 veces el tiempo, y la proporción se repite en las dos pasadas.
+Drive no cobra en ancho de banda, cobra en *round trips*: OpenDAL localiza cada ruta
+buscándola en Drive antes de tocarla, y esa búsqueda domina todo lo demás.
 
-Tres consecuencias directas para el diseño:
+### La consulta que falla es la cara
 
-1. **Los trozos de 16 MiB se quedan cortos para Drive.** [ARQUITECTURA.md](ARQUITECTURA.md)
-   justifica 16 MiB como compromiso. Con un coste fijo de ~3 s por operación, leer 1 MiB
-   cuesta prácticamente lo mismo que leer 16. El tamaño de trozo debería ser **por
-   proveedor**, no una constante global.
+El dato más incómodo, consistente en las dos pasadas: **un `get` de algo que no existe cuesta
+6,5 s, casi tres veces un `exists` que sí resuelve (1,9 s).** Buscar y no encontrar es el peor
+caso de Drive.
 
-2. **El paralelismo funciona y hay que usarlo a fondo.** Seis escrituras simultáneas costaron
-   7,3 s frente a ~3 s una sola: seis veces el trabajo por 2,4 veces el tiempo. No hubo ni un
-   429. El reparto RAID entre proveedores sale casi gratis; lo que falta es encadenar también
-   *trozos* en vuelo, no solo fragmentos.
+Y resulta que ese es exactamente el perfil de trabajo de `scrub` y `repair`: preguntar por
+fragmentos que quizá falten. La operación que más va a usar el mantenimiento del volumen es
+la más lenta del proveedor.
 
-3. **`scrub` no puede ser un `exists` por fragmento.** A ~3 s por operación, un volumen de
-   1 TB en trozos de 16 MiB con `rs(4,2)` son ~393 000 objetos: **13 días** en serie, y unas
-   16 horas incluso con 20 operaciones en paralelo. `scrub` necesita **enumerar** el
-   proveedor y comparar contra el manifiesto, no preguntar objeto por objeto. El `trait
-   Backend` no tiene `list` a propósito; esta medida es el argumento para añadirlo.
+### Consecuencias para el diseño
+
+1. **`scrub` no puede ser un `exists` por fragmento.** Un volumen de 1 TB en trozos de 16 MiB
+   con `rs(4,2)` son ~393 000 objetos. A 1,9 s el caso bueno son 8 días en serie; a 6,5 s el
+   caso malo —que es el que importa, porque scrub existe para encontrar lo que falta— son 30.
+   Ni con 20 operaciones en paralelo baja de un día. Hay que **enumerar** el proveedor y
+   comparar contra el manifiesto. El `trait Backend` no tiene `list` a propósito; esta medida
+   es el argumento para añadirlo.
+
+2. **Los trozos de 16 MiB se quedan cortos para Drive.** [ARQUITECTURA.md](ARQUITECTURA.md)
+   los justifica como compromiso. Con un suelo de ~2,3 s por operación, leer 1 MiB cuesta
+   prácticamente lo mismo que leer 16. El tamaño de trozo debería ser **por proveedor**.
+
+3. **El paralelismo funciona y hay que usarlo a fondo.** Seis escrituras simultáneas: 5,6 s
+   frente a ~2,5 s una sola. Seis veces el trabajo por 2,2 veces el tiempo, sin un solo 429.
+   El reparto RAID entre proveedores sale casi gratis; falta encadenar también *trozos* en
+   vuelo, no solo fragmentos.
 
 ### Qué significa para el volumen montado
 
@@ -158,11 +174,15 @@ aproximadamente **5–7 s por trozo**, o unos 2,5 MB/s por flujo secuencial. Lee
 
 Esto convierte la caché local con lectura anticipada en **un requisito previo al montaje
 FUSE**, no en una mejora posterior: sin varios trozos en vuelo, el montaje sería inusable
-para el caso de uso que el propio README promete (medios y archivo).
+para el caso de uso que el propio README promete.
 
-> Una sola pasada, una cuenta, una red. Sirve para ordenar el trabajo, no para publicar
-> cifras. Falta repetirla en caliente para separar el arranque, y medir `rs(4,2)` completo
-> en vez de operaciones sueltas.
+### Cuánto fiarse de estos números
+
+Dos pasadas, una cuenta, una red. La varianza entre ellas llega al **43 %** en una
+comprobación (`exists_refleja_el_borrado`), así que ninguna cifra suelta vale como dato
+publicable: lo que aguanta es el orden de magnitud y las proporciones, que sí se repiten.
+Para publicar haría falta una mediana de varias pasadas, y medir un `rs(4,2)` completo en vez
+de operaciones sueltas.
 
 ## 6. Honestidad sobre el rendimiento
 

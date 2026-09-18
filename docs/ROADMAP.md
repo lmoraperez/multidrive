@@ -17,8 +17,9 @@ Pila elegida: **Rust + OpenDAL**.
 - [x] Google Drive probado contra una cuenta real: las nueve comprobaciones pasan.
       Medidas y consecuencias en [VIABILIDAD.md](VIABILIDAD.md#5-medidas-reales-contra-google-drive)
 - [ ] Mismo trato para OneDrive, S3 y WebDAV
-- [ ] `list` en el `trait Backend`: a ~3 s por operacion, `scrub` con un `exists` por
-      fragmento tarda dias en un volumen de 1 TB. Hay que enumerar, no preguntar
+- [ ] `list` en el `trait Backend`: en Drive, preguntar por algo que no existe cuesta 6,5 s,
+      y eso es justo lo que hace `scrub`. Un volumen de 1 TB serian 30 dias en serie.
+      Hay que enumerar, no preguntar
 - [ ] Tamano de trozo por proveedor: 16 MiB se queda corto donde el coste es por operacion
 - [ ] Trocear ficheros en trozos de 16 MiB (el almacén opera sobre un trozo suelto)
 - [ ] Metadatos en SQLite + manifiestos COW
