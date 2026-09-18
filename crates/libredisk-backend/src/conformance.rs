@@ -197,6 +197,123 @@ pub async fn ejecutar(backend: &dyn Backend) -> Informe {
     }
 }
 
+/// Resumen de una comprobacion a lo largo de varias pasadas.
+#[derive(Debug)]
+pub struct CheckAgregado {
+    pub nombre: &'static str,
+    pub porque: &'static str,
+    pub mediana: Duration,
+    pub min: Duration,
+    pub max: Duration,
+    /// Cuantas pasadas la superaron. Menos que el total significa intermitencia, que es
+    /// peor noticia que un fallo limpio: el proveedor cumple a veces.
+    pub pasadas_ok: usize,
+    /// Motivos distintos de fallo, sin repetir.
+    pub fallos: Vec<String>,
+}
+
+impl CheckAgregado {
+    pub fn ok(&self) -> bool {
+        self.fallos.is_empty()
+    }
+
+    /// Dispersion relativa: `(max - min) / mediana`. Si es alta, una sola pasada no mide
+    /// nada y cualquier cifra suelta es ruido.
+    pub fn dispersion(&self) -> f64 {
+        if self.mediana.is_zero() {
+            return 0.0;
+        }
+        (self.max.as_secs_f64() - self.min.as_secs_f64()) / self.mediana.as_secs_f64()
+    }
+}
+
+/// Lo que la suite dice de un proveedor tras varias pasadas.
+#[derive(Debug)]
+pub struct InformeAgregado {
+    pub proveedor: String,
+    pub pasadas: usize,
+    pub checks: Vec<CheckAgregado>,
+    /// Prefijos que no se pudieron limpiar, con su motivo.
+    pub limpiezas_fallidas: Vec<(String, String)>,
+}
+
+impl InformeAgregado {
+    pub fn todo_ok(&self) -> bool {
+        self.checks.iter().all(CheckAgregado::ok) && self.limpiezas_fallidas.is_empty()
+    }
+
+    pub fn fallidos(&self) -> impl Iterator<Item = &CheckAgregado> {
+        self.checks.iter().filter(|c| !c.ok())
+    }
+}
+
+/// Varias pasadas de la suite, con mediana y dispersion.
+///
+/// Una sola pasada no vale como medida: contra Google Drive se observaron diferencias del
+/// 43 % entre dos ejecuciones seguidas. Lo que aguanta es la mediana y el rango, y el numero
+/// de pasadas que cada comprobacion supera.
+pub async fn ejecutar_varias(backend: &dyn Backend, pasadas: usize) -> InformeAgregado {
+    let pasadas = pasadas.max(1);
+    let mut informes = Vec::with_capacity(pasadas);
+    for _ in 0..pasadas {
+        informes.push(ejecutar(backend).await);
+    }
+    agregar(backend.name(), &informes)
+}
+
+fn agregar(proveedor: &str, informes: &[Informe]) -> InformeAgregado {
+    let mut checks = Vec::new();
+
+    for (i, referencia) in informes[0].checks.iter().enumerate() {
+        // Todas las pasadas ejecutan las mismas comprobaciones en el mismo orden, pero se
+        // compara el nombre para no alinear mal si eso cambiara.
+        let muestras: Vec<&Check> = informes
+            .iter()
+            .filter_map(|inf| inf.checks.get(i))
+            .filter(|c| c.nombre == referencia.nombre)
+            .collect();
+
+        let duraciones: Vec<Duration> = muestras.iter().map(|c| c.duracion).collect();
+        let mut fallos: Vec<String> = muestras.iter().filter_map(|c| c.fallo.clone()).collect();
+        fallos.sort();
+        fallos.dedup();
+
+        checks.push(CheckAgregado {
+            nombre: referencia.nombre,
+            porque: referencia.porque,
+            mediana: mediana(&duraciones),
+            min: duraciones.iter().copied().min().unwrap_or_default(),
+            max: duraciones.iter().copied().max().unwrap_or_default(),
+            pasadas_ok: muestras.iter().filter(|c| c.ok()).count(),
+            fallos,
+        });
+    }
+
+    InformeAgregado {
+        proveedor: proveedor.to_string(),
+        pasadas: informes.len(),
+        checks,
+        limpiezas_fallidas: informes
+            .iter()
+            .filter_map(|inf| inf.limpieza.clone().map(|e| (inf.prefijo.clone(), e)))
+            .collect(),
+    }
+}
+
+fn mediana(duraciones: &[Duration]) -> Duration {
+    if duraciones.is_empty() {
+        return Duration::ZERO;
+    }
+    let mut ordenadas = duraciones.to_vec();
+    ordenadas.sort_unstable();
+    let n = ordenadas.len();
+    if n % 2 == 1 {
+        ordenadas[n / 2]
+    } else {
+        (ordenadas[n / 2 - 1] + ordenadas[n / 2]) / 2
+    }
+}
+
 async fn ida_y_vuelta(b: &dyn Backend, esc: &Escenario) -> CheckResult {
     let clave = esc.clave("ida-y-vuelta");
     let datos = datos(64 * 1024, 1);
@@ -401,6 +518,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn mediana_de_un_numero_par_de_muestras() {
+        let ms = |n| Duration::from_millis(n);
+        assert_eq!(mediana(&[]), Duration::ZERO);
+        assert_eq!(mediana(&[ms(7)]), ms(7));
+        assert_eq!(mediana(&[ms(30), ms(10)]), ms(20));
+        assert_eq!(mediana(&[ms(30), ms(10), ms(50)]), ms(30));
+    }
+
+    #[tokio::test]
+    async fn varias_pasadas_resumen_mediana_y_rango() {
+        let b = OpendalBackend::memory("memoria").unwrap();
+        let informe = ejecutar_varias(&b, 3).await;
+
+        assert_eq!(informe.pasadas, 3);
+        assert!(informe.todo_ok());
+        assert_eq!(informe.checks.len(), 9);
+        for c in &informe.checks {
+            assert_eq!(c.pasadas_ok, 3, "{}", c.nombre);
+            assert!(c.min <= c.mediana && c.mediana <= c.max, "{}", c.nombre);
+        }
+    }
+
+    #[tokio::test]
+    async fn cero_pasadas_se_trata_como_una() {
+        let b = OpendalBackend::memory("memoria").unwrap();
+        assert_eq!(ejecutar_varias(&b, 0).await.pasadas, 1);
+    }
+
     /// Un proveedor que silenciosamente no sobrescribe debe ser cazado por la suite.
     #[tokio::test]
     async fn la_suite_caza_un_proveedor_que_no_sobrescribe() {
@@ -434,6 +580,20 @@ mod tests {
         assert!(
             nombres.contains(&"sobrescritura"),
             "la suite no detecto la falta de sobrescritura; fallaron: {nombres:?}"
+        );
+
+        // Y el resumen de varias pasadas debe decir que fallo en todas, no solo que fallo.
+        let agregado = ejecutar_varias(&b, 2).await;
+        let sobrescritura = agregado
+            .checks
+            .iter()
+            .find(|c| c.nombre == "sobrescritura")
+            .expect("falta la comprobacion");
+        assert_eq!(sobrescritura.pasadas_ok, 0);
+        assert_eq!(
+            sobrescritura.fallos.len(),
+            1,
+            "motivos repetidos sin deduplicar"
         );
     }
 }

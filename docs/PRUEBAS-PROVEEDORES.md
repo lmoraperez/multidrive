@@ -9,6 +9,23 @@ conformidad** a una cuenta real.
 LIBREDISK_TEST_ONEDRIVE_ACCESS_TOKEN=... cargo run -- check
 ```
 
+Una sola pasada sirve de semáforo, no de medida: contra nubes de consumo, dos ejecuciones
+seguidas pueden diferir más de un 40 %. Para medir de verdad, repite:
+
+```sh
+cargo run -- check --pasadas 5
+```
+
+```
+=== gdrive === (5 pasadas)
+         comprobacion                        mediana      min      max   disp.
+  ok     ida_y_vuelta                        8906 ms     8299    10718     27%
+```
+
+La columna `disp.` es `(max − min) / mediana`. Si es alta, cualquier cifra suelta es ruido.
+Y una comprobación que falla en unas pasadas y en otras no se marca **`intermitente`**, que
+es peor noticia que un fallo limpio: el proveedor cumple a ratos.
+
 La suite escribe y borra objetos en una carpeta dedicada de cada cuenta
 (`/libredisk-pruebas` por defecto) y no toca nada más. Si la limpieza falla, lo dice y
 nombra el prefijo que quedó por borrar.
