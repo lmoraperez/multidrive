@@ -1,0 +1,33 @@
+# Suite de conformidad contra cuentas reales.
+#
+# Solo manual: hace peticiones de verdad contra las cuentas cuyos secretos esten
+# configurados en el repositorio, y cuenta para sus limites de peticiones. Nunca en push.
+#
+# Los secretos que falten se traducen en variables vacias, y un proveedor sin ninguna
+# variable se omite solo. Configurado a medias, falla ruidosamente: eso es deliberado.
+name: Proveedores reales
+
+on:
+  workflow_dispatch:
+
+jobs:
+  conformidad:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Suite de conformidad
+        env:
+          LIBREDISK_TEST_ONEDRIVE_REFRESH_TOKEN: ${{ secrets.LIBREDISK_TEST_ONEDRIVE_REFRESH_TOKEN }}
+          LIBREDISK_TEST_ONEDRIVE_CLIENT_ID: ${{ secrets.LIBREDISK_TEST_ONEDRIVE_CLIENT_ID }}
+          LIBREDISK_TEST_ONEDRIVE_CLIENT_SECRET: ${{ secrets.LIBREDISK_TEST_ONEDRIVE_CLIENT_SECRET }}
+          LIBREDISK_TEST_GDRIVE_REFRESH_TOKEN: ${{ secrets.LIBREDISK_TEST_GDRIVE_REFRESH_TOKEN }}
+          LIBREDISK_TEST_GDRIVE_CLIENT_ID: ${{ secrets.LIBREDISK_TEST_GDRIVE_CLIENT_ID }}
+          LIBREDISK_TEST_GDRIVE_CLIENT_SECRET: ${{ secrets.LIBREDISK_TEST_GDRIVE_CLIENT_SECRET }}
+          LIBREDISK_TEST_S3_BUCKET: ${{ secrets.LIBREDISK_TEST_S3_BUCKET }}
+          LIBREDISK_TEST_S3_ENDPOINT: ${{ secrets.LIBREDISK_TEST_S3_ENDPOINT }}
+          LIBREDISK_TEST_S3_REGION: ${{ secrets.LIBREDISK_TEST_S3_REGION }}
+          LIBREDISK_TEST_S3_ACCESS_KEY_ID: ${{ secrets.LIBREDISK_TEST_S3_ACCESS_KEY_ID }}
+          LIBREDISK_TEST_S3_SECRET_ACCESS_KEY: ${{ secrets.LIBREDISK_TEST_S3_SECRET_ACCESS_KEY }}
+        run: cargo test -p libredisk-backend --test proveedores_reales -- --nocapture

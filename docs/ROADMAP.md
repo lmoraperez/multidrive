@@ -12,7 +12,10 @@ Pila elegida: **Rust + OpenDAL**.
 - [x] Motor RAID: `concat`, `mirror:n`, `rs:k,m` con Reed-Solomon
 - [x] Almacén de trozos direccionado por contenido (BLAKE3) con verificación al leer
 - [x] `scrub` y `repair` como operaciones de biblioteca
-- [ ] Constructores S3 y WebDAV probados contra servicios reales (hoy solo compilan)
+- [x] Suite de conformidad de proveedores + configuracion por entorno (`libredisk check`)
+- [x] Constructores de OneDrive y Google Drive (OAuth2 con token de refresco)
+- [ ] Constructores probados contra cuentas reales: OneDrive, Google Drive, S3, WebDAV
+      (el arnes ya existe; falta pasar la suite con credenciales de verdad)
 - [ ] Trocear ficheros en trozos de 16 MiB (el almacén opera sobre un trozo suelto)
 - [ ] Metadatos en SQLite + manifiestos COW
 - [ ] Caché local en disco con escritura diferida
@@ -37,7 +40,9 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [ ] Indicador honesto de "guardado localmente" vs "a salvo en la nube"
 
 ## v0.4 — Nubes de consumo
-- [ ] OAuth para Google Drive, OneDrive, Dropbox, pCloud
+- [ ] OAuth para Dropbox y pCloud (Google Drive y OneDrive ya tienen backend en v0.1)
+- [ ] MEGA: sin servicio en OpenDAL. O `rclone serve webdav` por delante, o el crate `mega`
+      no oficial. Ver [PRUEBAS-PROVEEDORES.md](PRUEBAS-PROVEEDORES.md#mega)
 - [ ] Limitador de tasa por proveedor y *backoff* adaptativo
 - [ ] Avisos claros de Términos de Servicio en la UI
 

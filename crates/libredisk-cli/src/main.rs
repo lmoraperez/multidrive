@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use libredisk_backend::{Backend, OpendalBackend};
+use libredisk_backend::{Backend, OpendalBackend, conformance, live};
 use libredisk_core::ChunkStore;
 use libredisk_crypto::MasterKey;
 use libredisk_raid::Layout;
@@ -40,6 +40,11 @@ enum Command {
         #[arg(long, default_value = "/tmp/libredisk-demo")]
         dir: String,
     },
+    /// Comprueba que los proveedores configurados en el entorno cumplen el contrato.
+    ///
+    /// Escribe y borra objetos de prueba en una carpeta dedicada de cada cuenta. No toca
+    /// nada mas. Sin variables de entorno configuradas, solo explica cuales reconoce.
+    Check,
 }
 
 #[tokio::main]
@@ -47,6 +52,52 @@ async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Layout { spec } => describir(&spec),
         Command::Demo { layout, kib, dir } => demo(&layout, kib, &dir).await,
+        Command::Check => check().await,
+    }
+}
+
+async fn check() -> Result<()> {
+    let proveedores = live::desde_entorno()
+        .with_context(|| format!("configuracion de proveedores invalida\n\n{}", live::AYUDA))?;
+
+    if proveedores.is_empty() {
+        println!("No hay ningun proveedor configurado.\n");
+        println!("{}", live::AYUDA);
+        return Ok(());
+    }
+
+    let mut con_fallos = Vec::new();
+    for proveedor in &proveedores {
+        println!("=== {} ===", proveedor.name());
+        let informe = conformance::ejecutar(proveedor).await;
+        for c in &informe.checks {
+            let ms = c.duracion.as_millis();
+            match &c.fallo {
+                None => println!("  ok     {:<32} {ms:>6} ms", c.nombre),
+                Some(motivo) => {
+                    println!("  FALLA  {:<32} {ms:>6} ms", c.nombre);
+                    println!("         {motivo}");
+                    println!("         importa porque: {}", c.porque);
+                }
+            }
+        }
+        if let Some(e) = &informe.limpieza {
+            println!(
+                "  AVISO  quedaron objetos sin borrar en '{}': {e}",
+                informe.prefijo
+            );
+        }
+        if !informe.todo_ok() {
+            con_fallos.push(informe.proveedor.clone());
+        }
+        println!();
+    }
+
+    if con_fallos.is_empty() {
+        println!("Todos los proveedores cumplen el contrato de Backend.");
+        Ok(())
+    } else {
+        anyhow::bail!("no sirven como pata de un RAID: {}", con_fallos.join(", "))
     }
 }
 

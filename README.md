@@ -17,9 +17,10 @@ Sitio del proyecto: https://libredisk.chambaya.net
 Requiere Rust estable (edición 2024).
 
 ```sh
-cargo test --workspace          # 39 tests
+cargo test --workspace          # 53 tests
 cargo run -- layout rs:4,2      # tolerancia y sobrecoste de una topología
 cargo run -- demo --layout rs:4,2 --kib 512
+cargo run -- check              # conformidad de los proveedores configurados
 ```
 
 `demo` hace el ciclo completo sobre directorios locales, uno por "proveedor": escribe un
@@ -66,6 +67,7 @@ completos, ninguno puede leerlos, y la caída de uno no te deja sin volumen.**
 - [docs/VIABILIDAD.md](docs/VIABILIDAD.md) — análisis honesto de viabilidad, riesgos y competencia
 - [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) — diseño técnico
 - [docs/ROADMAP.md](docs/ROADMAP.md) — hoja de ruta por versiones
+- [docs/PRUEBAS-PROVEEDORES.md](docs/PRUEBAS-PROVEEDORES.md) — probar contra cuentas reales (OneDrive, Google Drive, S3, WebDAV)
 
 ## Licencia
 
