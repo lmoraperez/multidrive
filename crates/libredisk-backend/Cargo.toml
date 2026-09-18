@@ -1,0 +1,13 @@
+[package]
+name = "libredisk-backend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+async-trait = "0.1.92"
+opendal = { version = "0.57.0", features = ["services-fs", "services-memory", "services-s3", "services-webdav"] }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs"] }

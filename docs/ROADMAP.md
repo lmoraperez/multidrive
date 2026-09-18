@@ -4,17 +4,27 @@ Cada versión es una pregunta de riesgo que se responde. No se empieza la siguie
 haber contestado la anterior.
 
 ## v0.1 — "¿Funciona la idea?" (Linux, CLI)
-- [ ] `trait Backend` + adaptadores: directorio local, compatible con S3, WebDAV
-- [ ] Almacén de trozos direccionado por contenido (BLAKE3, 16 MiB)
-- [ ] Cifrado por trozo (XChaCha20-Poly1305 + Argon2id)
-- [ ] Motor RAID: `concat`, `mirror`, `rs(k,m)`
+
+Pila elegida: **Rust + OpenDAL**.
+
+- [x] `trait Backend` + adaptador OpenDAL (memoria, directorio local, S3, WebDAV)
+- [x] Cifrado por trozo (XChaCha20-Poly1305 + Argon2id), AAD ligado al id del trozo
+- [x] Motor RAID: `concat`, `mirror:n`, `rs:k,m` con Reed-Solomon
+- [x] Almacén de trozos direccionado por contenido (BLAKE3) con verificación al leer
+- [x] `scrub` y `repair` como operaciones de biblioteca
+- [ ] Constructores S3 y WebDAV probados contra servicios reales (hoy solo compilan)
+- [ ] Trocear ficheros en trozos de 16 MiB (el almacén opera sobre un trozo suelto)
 - [ ] Metadatos en SQLite + manifiestos COW
 - [ ] Caché local en disco con escritura diferida
 - [ ] Montaje FUSE de solo lectura → luego lectura/escritura
-- [ ] `libredisk scrub` y `rebuild`
+- [ ] `libredisk scrub` y `rebuild` expuestos en la CLI
 
 **Criterio de éxito:** montar un volumen `rs(2,1)` sobre 3 backends, copiar 10 GB, borrar un
 backend entero, y que el volumen siga íntegro y se reconstruya.
+
+> Estado: el criterio ya se cumple **a nivel de trozo** (`cargo run -- demo`, y los tests de
+> `libredisk-core` lo verifican en todas las combinaciones de caída). Falta que se cumpla a
+> nivel de *volumen montado*, que es lo que exige el resto de la lista.
 
 ## v0.2 — "¿Sobrevive a Windows?"
 - [ ] Capa de montaje con WinFsp

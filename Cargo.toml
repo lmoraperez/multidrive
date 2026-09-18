@@ -1,0 +1,29 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/libredisk-crypto",
+    "crates/libredisk-raid",
+    "crates/libredisk-backend",
+    "crates/libredisk-core",
+    "crates/libredisk-cli",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/lmoraperez/libredisk"
+rust-version = "1.85"
+
+[workspace.dependencies]
+libredisk-crypto  = { path = "crates/libredisk-crypto" }
+libredisk-raid    = { path = "crates/libredisk-raid" }
+libredisk-backend = { path = "crates/libredisk-backend" }
+libredisk-core    = { path = "crates/libredisk-core" }
+
+thiserror = "2"
+anyhow    = "1"
+blake3    = "1"
+tokio     = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util"] }
+serde     = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -7,10 +7,34 @@ WebDAV/Nextcloud, Google Drive, OneDrive, Dropbox…) en **un único volumen vir
 monta como una unidad más del sistema en Windows y Linux, con semántica tipo RAID
 (espejo, striping y paridad por *erasure coding*) y **cifrado de conocimiento cero**.
 
-> Estado: **diseño / pre-alfa.** Todavía no hay código funcional. Este repositorio
-> arranca con la arquitectura, el análisis de viabilidad y la hoja de ruta.
+> Estado: **pre-alfa.** El núcleo (cifrado, RAID, proveedores, almacén de trozos) funciona
+> y está cubierto por tests. Todavía **no se monta como unidad**: eso es el siguiente hito.
 
 Sitio del proyecto: https://libredisk.chambaya.net
+
+## Probarlo
+
+Requiere Rust estable (edición 2024).
+
+```sh
+cargo test --workspace          # 39 tests
+cargo run -- layout rs:4,2      # tolerancia y sobrecoste de una topología
+cargo run -- demo --layout rs:4,2 --kib 512
+```
+
+`demo` hace el ciclo completo sobre directorios locales, uno por "proveedor": escribe un
+trozo cifrado y repartido, **borra dos proveedores enteros**, lo vuelve a leer íntegro y
+regenera los fragmentos que faltaban.
+
+## Estructura
+
+| Crate | Qué hace |
+|---|---|
+| `libredisk-crypto` | Argon2id + XChaCha20-Poly1305 por trozo |
+| `libredisk-raid` | Reed-Solomon `k+m`, espejo, concat |
+| `libredisk-backend` | `trait Backend` + adaptador OpenDAL (~40 proveedores) |
+| `libredisk-core` | Almacén de trozos: id por BLAKE3, `put`/`get`/`scrub`/`repair` |
+| `libredisk-cli` | Binario `libredisk` |
 
 ---
 
