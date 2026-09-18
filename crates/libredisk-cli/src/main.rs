@@ -44,7 +44,14 @@ enum Command {
     ///
     /// Escribe y borra objetos de prueba en una carpeta dedicada de cada cuenta. No toca
     /// nada mas. Sin variables de entorno configuradas, solo explica cuales reconoce.
-    Check,
+    Check {
+        /// Numero de pasadas. Con mas de una, informa de mediana, rango y dispersion.
+        ///
+        /// Una sola pasada sirve de semaforo, no de medida: en nubes de consumo la
+        /// diferencia entre dos ejecuciones seguidas puede pasar del 40 %.
+        #[arg(long, default_value_t = 1)]
+        pasadas: usize,
+    },
 }
 
 #[tokio::main]
@@ -52,11 +59,11 @@ async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Layout { spec } => describir(&spec),
         Command::Demo { layout, kib, dir } => demo(&layout, kib, &dir).await,
-        Command::Check => check().await,
+        Command::Check { pasadas } => check(pasadas).await,
     }
 }
 
-async fn check() -> Result<()> {
+async fn check(pasadas: usize) -> Result<()> {
     let proveedores = live::desde_entorno()
         .with_context(|| format!("configuracion de proveedores invalida\n\n{}", live::AYUDA))?;
 
@@ -68,29 +75,11 @@ async fn check() -> Result<()> {
 
     let mut con_fallos = Vec::new();
     for proveedor in &proveedores {
-        println!("=== {} ===", proveedor.name());
-        let informe = conformance::ejecutar(proveedor).await;
-        for c in &informe.checks {
-            let ms = c.duracion.as_millis();
-            match &c.fallo {
-                None => println!("  ok     {:<32} {ms:>6} ms", c.nombre),
-                Some(motivo) => {
-                    println!("  FALLA  {:<32} {ms:>6} ms", c.nombre);
-                    println!("         {motivo}");
-                    println!("         importa porque: {}", c.porque);
-                }
-            }
-        }
-        if let Some(e) = &informe.limpieza {
-            println!(
-                "  AVISO  quedaron objetos sin borrar en '{}': {e}",
-                informe.prefijo
-            );
-        }
+        let informe = conformance::ejecutar_varias(proveedor, pasadas).await;
+        imprimir(&informe);
         if !informe.todo_ok() {
             con_fallos.push(informe.proveedor.clone());
         }
-        println!();
     }
 
     if con_fallos.is_empty() {
@@ -99,6 +88,57 @@ async fn check() -> Result<()> {
     } else {
         anyhow::bail!("no sirven como pata de un RAID: {}", con_fallos.join(", "))
     }
+}
+
+fn imprimir(informe: &conformance::InformeAgregado) {
+    let varias = informe.pasadas > 1;
+    if varias {
+        println!(
+            "=== {} === ({} pasadas)",
+            informe.proveedor, informe.pasadas
+        );
+        println!(
+            "  {:<6} {:<32} {:>10} {:>8} {:>8} {:>7}",
+            "", "comprobacion", "mediana", "min", "max", "disp."
+        );
+    } else {
+        println!("=== {} ===", informe.proveedor);
+    }
+
+    for c in &informe.checks {
+        let estado = if c.ok() { "ok" } else { "FALLA" };
+        let mediana = format!("{} ms", c.mediana.as_millis());
+        if varias {
+            println!(
+                "  {estado:<6} {:<32} {mediana:>10} {:>8} {:>8} {:>6.0}%",
+                c.nombre,
+                c.min.as_millis(),
+                c.max.as_millis(),
+                c.dispersion() * 100.0,
+            );
+        } else {
+            println!("  {estado:<6} {:<32} {mediana:>10}", c.nombre);
+        }
+
+        // Fallar a veces es peor noticia que fallar siempre: el proveedor cumple a ratos.
+        if !c.ok() && c.pasadas_ok > 0 {
+            println!(
+                "         intermitente: paso {} de {} pasadas",
+                c.pasadas_ok, informe.pasadas
+            );
+        }
+        for motivo in &c.fallos {
+            println!("         {motivo}");
+        }
+        if !c.ok() {
+            println!("         importa porque: {}", c.porque);
+        }
+    }
+
+    for (prefijo, motivo) in &informe.limpiezas_fallidas {
+        println!("  AVISO  quedaron objetos sin borrar en '{prefijo}': {motivo}");
+    }
+    println!();
 }
 
 fn describir(spec: &str) -> Result<()> {

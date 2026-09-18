@@ -181,8 +181,9 @@ para el caso de uso que el propio README promete.
 Dos pasadas, una cuenta, una red. La varianza entre ellas llega al **43 %** en una
 comprobación (`exists_refleja_el_borrado`), así que ninguna cifra suelta vale como dato
 publicable: lo que aguanta es el orden de magnitud y las proporciones, que sí se repiten.
-Para publicar haría falta una mediana de varias pasadas, y medir un `rs(4,2)` completo en vez
-de operaciones sueltas.
+Para publicar haría falta una mediana de varias pasadas —`libredisk check --pasadas 5`, que
+informa de mediana, rango y dispersión— y medir un `rs(4,2)` completo en vez de operaciones
+sueltas.
 
 ## 6. Honestidad sobre el rendimiento
 
