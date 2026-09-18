@@ -8,6 +8,9 @@ rust-version.workspace = true
 
 [dependencies]
 async-trait = "0.1.92"
-opendal = { version = "0.57.0", features = ["services-fs", "services-memory", "services-s3", "services-webdav"] }
+opendal = { version = "0.57.0", features = ["services-fs", "services-gdrive", "services-memory", "services-onedrive", "services-s3", "services-webdav"] }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

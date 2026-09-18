@@ -10,6 +10,9 @@
 use async_trait::async_trait;
 use opendal::{Operator, services};
 
+pub mod conformance;
+pub mod live;
+
 #[derive(Debug, thiserror::Error)]
 pub enum BackendError {
     #[error("el objeto '{0}' no existe en el proveedor")]
@@ -18,6 +21,11 @@ pub enum BackendError {
     Config {
         name: String,
         source: Box<opendal::Error>,
+    },
+    #[error("configuracion incompleta de '{proveedor}': falta {falta}")]
+    EntornoIncompleto {
+        proveedor: &'static str,
+        falta: String,
     },
     #[error("fallo de E/S en el proveedor '{name}' sobre '{key}': {source}")]
     Io {
@@ -47,6 +55,40 @@ pub trait Backend: Send + Sync {
 
     /// Indica si el objeto existe.
     async fn exists(&self, key: &str) -> Result<bool, BackendError>;
+}
+
+/// Credenciales OAuth2 de una nube de consumo (OneDrive, Google Drive).
+///
+/// Estas nubes no tienen claves estaticas como S3: hay que pasar por el consentimiento del
+/// usuario en un navegador. Ver [`docs/PRUEBAS-PROVEEDORES.md`] para obtenerlas.
+#[derive(Clone)]
+pub enum OauthCreds {
+    /// Token de acceso ya obtenido. Caduca en una hora: sirve para una prueba suelta, no
+    /// para un volumen que debe seguir vivo manana.
+    Acceso(String),
+    /// Token de refresco mas las credenciales de la aplicacion. OpenDAL renueva el acceso
+    /// solo, asi que es lo unico valido para uso real.
+    Refresco {
+        refresh_token: String,
+        client_id: String,
+        client_secret: String,
+    },
+}
+
+/// Se imprime redactado a proposito: un `{:?}` descuidado en un log o en la salida de un
+/// test fallido publicaria el token.
+impl std::fmt::Debug for OauthCreds {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Acceso(_) => f.write_str("OauthCreds::Acceso(<redactado>)"),
+            Self::Refresco { client_id, .. } => f
+                .debug_struct("OauthCreds::Refresco")
+                .field("client_id", client_id)
+                .field("refresh_token", &"<redactado>")
+                .field("client_secret", &"<redactado>")
+                .finish(),
+        }
+    }
 }
 
 /// Implementacion de [`Backend`] sobre OpenDAL, que aporta los ~40 proveedores.
@@ -81,24 +123,82 @@ impl OpendalBackend {
     }
 
     /// Cualquier servicio compatible con S3: Backblaze B2, Cloudflare R2, Wasabi, MinIO.
+    ///
+    /// Con `creds` a `None` se usan las variables de entorno habituales de AWS.
     pub fn s3(
         name: impl Into<String>,
         bucket: &str,
         endpoint: &str,
         region: &str,
+        creds: Option<(&str, &str)>,
     ) -> Result<Self, BackendError> {
-        Self::build(
-            name,
-            services::S3::default()
-                .bucket(bucket)
-                .endpoint(endpoint)
-                .region(region),
-        )
+        let mut builder = services::S3::default()
+            .bucket(bucket)
+            .endpoint(endpoint)
+            .region(region);
+        if let Some((key_id, secret)) = creds {
+            builder = builder.access_key_id(key_id).secret_access_key(secret);
+        }
+        Self::build(name, builder)
     }
 
     /// WebDAV, que es como se habla con Nextcloud.
-    pub fn webdav(name: impl Into<String>, endpoint: &str) -> Result<Self, BackendError> {
-        Self::build(name, services::Webdav::default().endpoint(endpoint))
+    pub fn webdav(
+        name: impl Into<String>,
+        endpoint: &str,
+        root: &str,
+        creds: Option<(&str, &str)>,
+    ) -> Result<Self, BackendError> {
+        let mut builder = services::Webdav::default().endpoint(endpoint).root(root);
+        if let Some((usuario, contrasena)) = creds {
+            builder = builder.username(usuario).password(contrasena);
+        }
+        Self::build(name, builder)
+    }
+
+    /// OneDrive, personal o de empresa.
+    ///
+    /// `root` debe ser una carpeta dedicada: LibreDisk escribe blobs opacos y no tiene
+    /// sentido mezclarlos con los archivos que el usuario ve en la web del proveedor.
+    pub fn onedrive(
+        name: impl Into<String>,
+        root: &str,
+        creds: &OauthCreds,
+    ) -> Result<Self, BackendError> {
+        let builder = services::Onedrive::default().root(root);
+        let builder = match creds {
+            OauthCreds::Acceso(token) => builder.access_token(token),
+            OauthCreds::Refresco {
+                refresh_token,
+                client_id,
+                client_secret,
+            } => builder
+                .refresh_token(refresh_token)
+                .client_id(client_id)
+                .client_secret(client_secret),
+        };
+        Self::build(name, builder)
+    }
+
+    /// Google Drive. Mismo aviso sobre `root` que en [`OpendalBackend::onedrive`].
+    pub fn gdrive(
+        name: impl Into<String>,
+        root: &str,
+        creds: &OauthCreds,
+    ) -> Result<Self, BackendError> {
+        let builder = services::Gdrive::default().root(root);
+        let builder = match creds {
+            OauthCreds::Acceso(token) => builder.access_token(token),
+            OauthCreds::Refresco {
+                refresh_token,
+                client_id,
+                client_secret,
+            } => builder
+                .refresh_token(refresh_token)
+                .client_id(client_id)
+                .client_secret(client_secret),
+        };
+        Self::build(name, builder)
     }
 
     fn io_err<'a>(&'a self, key: &'a str) -> impl Fn(opendal::Error) -> BackendError + 'a {
@@ -109,6 +209,16 @@ impl OpendalBackend {
             // del arbol de llamadas, incluidos los caminos de exito.
             source: Box::new(source),
         }
+    }
+}
+
+/// Solo el nombre, por el mismo motivo que [`OauthCreds`]: el `Operator` lleva dentro las
+/// credenciales con las que se construyo.
+impl std::fmt::Debug for OpendalBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpendalBackend")
+            .field("name", &self.name)
+            .finish_non_exhaustive()
     }
 }
 
