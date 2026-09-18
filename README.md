@@ -8,8 +8,8 @@ monta como una unidad más del sistema en Windows y Linux, con semántica tipo R
 (espejo, striping y paridad por *erasure coding*) y **cifrado de conocimiento cero**.
 
 > Estado: **pre-alfa.** El núcleo (cifrado, RAID, proveedores, almacén de trozos) funciona
-> y está cubierto por tests. Google Drive ya pasa la suite de conformidad contra una cuenta
-> real. Todavía **no se monta como unidad**: eso es el siguiente hito.
+> y está cubierto por tests. Google Drive y OneDrive pasan la suite de conformidad contra
+> cuentas reales. Todavía **no se monta como unidad**: eso es el siguiente hito.
 
 Sitio del proyecto: https://libredisk.chambaya.net
 

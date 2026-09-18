@@ -64,8 +64,14 @@ OpenDAL habla con Microsoft Graph. Hacen falta credenciales de una aplicación p
 1. [portal.azure.com](https://portal.azure.com) → **Microsoft Entra ID** → *App registrations*
    → *New registration*. Elige el tipo de cuenta que corresponda (personal, organización o
    ambas).
-2. *Authentication* → *Add a platform* → **Mobile and desktop applications**, con
-   `http://localhost:8080` como URI de redirección.
+2. *Authentication* → *Add a platform* → **Web**, con `http://localhost:8080` como URI de
+   redirección. Azure admite `http://` sin TLS solo para `localhost`, así que vale.
+
+   > **No elijas *Mobile and desktop applications*.** Esa plataforma registra la aplicación
+   > como **cliente público**, y un cliente público no puede presentar un secreto: el canje
+   > del paso 5 falla con `AADSTS700025: Client is public so neither 'client_assertion' nor
+   > 'client_secret' should be presented`. OpenDAL manda `client_secret` en cada refresco,
+   > así que hace falta un **cliente confidencial**, que es lo que da la plataforma *Web*.
 3. *API permissions* → *Microsoft Graph* → **Delegated** → `Files.ReadWrite` y
    **`offline_access`**. Sin `offline_access` no hay token de refresco y la prueba dejará de
    funcionar en una hora.
@@ -101,6 +107,33 @@ export LIBREDISK_TEST_ONEDRIVE_ROOT=/libredisk-pruebas   # opcional
 > [Graph Explorer](https://developer.microsoft.com/graph/graph-explorer) entrega un token de
 > acceso válido una hora. Sirve para `LIBREDISK_TEST_ONEDRIVE_ACCESS_TOKEN` y evita registrar
 > nada, pero no sirve para nada que deba seguir vivo mañana.
+>
+> Graph Explorer **solo ofrece los permisos que necesita la consulta escrita en la barra**.
+> Con la de por defecto (`GET /v1.0/me`), `Files.ReadWrite` ni aparece en *Modify
+> permissions* y parece que no se puede consentir. Pon
+> `GET https://graph.microsoft.com/v1.0/me/drive/root/children`, ejecútala —dará 403—, y
+> entonces sí aparece con su botón *Consent*. Si la ventana emergente no se abre, es el
+> bloqueador del navegador: el botón se queda sin hacer nada y no da error.
+>
+> Comprueba el ámbito antes de gastar la hora, que el consentimiento puede quedarse a medias
+> sin decirlo:
+>
+> ```sh
+> cut -d. -f2 <<<"$TOK" | tr '_-' '/+' | base64 -d 2>/dev/null | jq -r .scp
+> ```
+
+### Dos detalles de OneDrive
+
+- **La raíz se crea sola**, igual que en Drive: no hace falta crear `/libredisk-pruebas` a
+  mano, el primer `put` la crea.
+- **El borrado probablemente va a la papelera**, igual que en Drive: Graph implementa
+  `DELETE /driveItem` como envío a la papelera de OneDrive, no como borrado permanente. No
+  está verificado contra la cuenta —`exists_refleja_el_borrado` pasa, que es lo que le
+  importa al contrato de `Backend`, y eso no distingue un caso del otro—, así que asume que
+  tras cada tanda quedan unos 6 MB en la papelera hasta que la vacíes.
+
+Las nueve comprobaciones pasan en cinco pasadas. Las latencias, y en qué se diferencian de
+las de Drive, en [VIABILIDAD.md §6](VIABILIDAD.md#6-medidas-reales-contra-onedrive).
 
 ## Google Drive
 
