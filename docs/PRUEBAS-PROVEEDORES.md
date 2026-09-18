@@ -91,6 +91,10 @@ export LIBREDISK_TEST_ONEDRIVE_ROOT=/libredisk-pruebas   # opcional
    la **Google Drive API**.
 2. *OAuth consent screen* → tipo **External**, en modo *Testing*, y añade tu propia cuenta
    como usuario de prueba.
+
+   > **En modo *Testing*, Google caduca los tokens de refresco a los 7 días.** Funcionará
+   > toda la semana y un día empezará a fallar con `invalid_grant`. No es un fallo de
+   > LibreDisk: hay que repetir el paso 4, o publicar la aplicación.
 3. *Credentials* → *Create credentials* → **OAuth client ID** → tipo *Web application*, con
    `https://developers.google.com/oauthplayground` como URI de redirección.
 4. En el [OAuth Playground](https://developers.google.com/oauthplayground): engranaje →
@@ -104,9 +108,30 @@ export LIBREDISK_TEST_GDRIVE_CLIENT_SECRET=...
 export LIBREDISK_TEST_GDRIVE_ROOT=/libredisk-pruebas     # opcional
 ```
 
-> El ámbito `drive.file` (solo los archivos que crea la propia aplicación) encaja mejor con
-> LibreDisk y es el que debería usar la versión final: limita el daño de un token robado a
-> los datos de LibreDisk. Para la primera prueba, `drive` da menos problemas.
+> **Atajo para una prueba suelta:** el OAuth Playground entrega un token de acceso válido
+> una hora usando sus propias credenciales, sin crear ningún proyecto. Autoriza el ámbito
+> `Drive API v3` en el paso 1, canjéalo en el paso 2 y ponlo en
+> `LIBREDISK_TEST_GDRIVE_ACCESS_TOKEN`.
+
+### Tres detalles de Drive que cuestan una tarde
+
+Verificados en el código de `opendal-service-gdrive` 0.57, no supuestos:
+
+- **No crees la carpeta raíz a mano.** El servicio llama a `ensure_dir` en el camino de
+  escritura, así que crea `/libredisk-pruebas` y los niveles que hagan falta en el primer
+  `put`.
+- **El borrado va a la papelera, no es permanente.** Drive no tiene borrado directo por
+  ruta: OpenDAL usa `files.trash`. La limpieza de la suite deja tu Drive sin esos archivos a
+  la vista y `exists` responde correctamente, pero unos 6 MB se quedan ocupando cuota en la
+  papelera hasta que la vacíes. Que `exists_refleja_el_borrado` pase confirma algo que
+  importa para LibreDisk: el borrado a papelera es indistinguible de uno real desde el
+  contrato de `Backend`.
+- **Ámbito `drive` vs `drive.file`.** El ámbito `drive.file` (solo los archivos que crea la
+  propia aplicación) encaja mejor con LibreDisk y debería ser el de la versión final: limita
+  el daño de un token robado a los datos de LibreDisk en vez de a todo el Drive. Al
+  cambiarlo hay que comprobar la resolución de rutas: OpenDAL localiza cada carpeta
+  buscándola en Drive, y con `drive.file` esas búsquedas solo ven lo que creó la aplicación.
+  Para la primera prueba, `drive` da menos problemas.
 
 ## S3 y WebDAV
 
