@@ -103,6 +103,39 @@ fn datos(len: usize, semilla: u64) -> Vec<u8> {
         .collect()
 }
 
+/// Datos de prueba, generados **antes** de arrancar el cronometro.
+///
+/// Generar 4 MiB con el congruencial de arriba cuesta ~48 ms en una build de debug. Contra
+/// una nube eso es ruido, pero contra un directorio local es la mayor parte de la medida: el
+/// arnes acabaria midiendose a si mismo.
+struct Cargas {
+    ida_y_vuelta: Vec<u8>,
+    sobrescritura_vieja: Vec<u8>,
+    sobrescritura_nueva: Vec<u8>,
+    exists: Vec<u8>,
+    binaria: Vec<u8>,
+    forma_de_fragmento: Vec<u8>,
+    fragmento: Vec<u8>,
+    paralelo: Vec<u8>,
+}
+
+impl Cargas {
+    fn nuevas() -> Self {
+        Self {
+            ida_y_vuelta: datos(64 * 1024, 1),
+            sobrescritura_vieja: datos(4096, 2),
+            sobrescritura_nueva: datos(8192, 3),
+            exists: datos(512, 4),
+            // Los 256 valores de byte, incluidos nulos, saltos de linea y secuencias UTF-8
+            // invalidas.
+            binaria: (0..=255u8).cycle().take(4096).collect(),
+            forma_de_fragmento: datos(1024, 5),
+            fragmento: datos(4 * 1024 * 1024, 6),
+            paralelo: datos(256 * 1024, 7),
+        }
+    }
+}
+
 /// Lleva la cuenta de lo escrito para poder borrarlo todo al final.
 struct Escenario {
     prefijo: String,
@@ -126,6 +159,7 @@ pub async fn ejecutar(backend: &dyn Backend) -> Informe {
         prefijo: prefijo_unico(),
         escritas: Mutex::new(Vec::new()),
     };
+    let cargas = Cargas::nuevas();
     let mut checks = Vec::new();
 
     macro_rules! check {
@@ -144,12 +178,12 @@ pub async fn ejecutar(backend: &dyn Backend) -> Informe {
     check!(
         "ida_y_vuelta",
         "si un fragmento no vuelve byte a byte, el trozo entero es irrecuperable",
-        ida_y_vuelta(backend, &esc)
+        ida_y_vuelta(backend, &esc, &cargas)
     );
     check!(
         "sobrescritura",
         "repair reescribe fragmentos que ya existen; sin sobrescritura, repair miente",
-        sobrescritura(backend, &esc)
+        sobrescritura(backend, &esc, &cargas)
     );
     check!(
         "not_found_distinguible",
@@ -164,27 +198,27 @@ pub async fn ejecutar(backend: &dyn Backend) -> Informe {
     check!(
         "exists_refleja_el_borrado",
         "scrub pregunta exists antes de descargar nada: si miente, cuenta redundancia que no hay",
-        exists_refleja_el_borrado(backend, &esc)
+        exists_refleja_el_borrado(backend, &esc, &cargas)
     );
     check!(
         "integridad_binaria",
         "los fragmentos van cifrados; cualquier reinterpretacion como texto los destruye",
-        integridad_binaria(backend, &esc)
+        integridad_binaria(backend, &esc, &cargas)
     );
     check!(
         "clave_con_forma_de_fragmento",
         "shard_key anida dos niveles y mete un punto en el nombre: no todo proveedor lo acepta",
-        clave_con_forma_de_fragmento(backend, &esc)
+        clave_con_forma_de_fragmento(backend, &esc, &cargas)
     );
     check!(
         "fragmento_de_4_mib",
         "un trozo de 16 MiB en rs(4,2) da fragmentos de 4 MiB: ese es el tamano real de trabajo",
-        fragmento_de_4_mib(backend, &esc)
+        fragmento_de_4_mib(backend, &esc, &cargas)
     );
     check!(
         "seis_escrituras_en_paralelo",
         "el motor RAID escribe a los n proveedores a la vez; aqui asoman los limites de peticiones",
-        seis_escrituras_en_paralelo(backend, &esc)
+        seis_escrituras_en_paralelo(backend, &esc, &cargas)
     );
 
     let limpieza = limpiar(backend, &esc).await.err().map(|e| e.to_string());
@@ -314,27 +348,25 @@ fn mediana(duraciones: &[Duration]) -> Duration {
     }
 }
 
-async fn ida_y_vuelta(b: &dyn Backend, esc: &Escenario) -> CheckResult {
+async fn ida_y_vuelta(b: &dyn Backend, esc: &Escenario, c: &Cargas) -> CheckResult {
     let clave = esc.clave("ida-y-vuelta");
-    let datos = datos(64 * 1024, 1);
-    b.put(&clave, datos.clone()).await?;
+    b.put(&clave, c.ida_y_vuelta.clone()).await?;
     let leido = b.get(&clave).await?;
-    if leido != datos {
+    if leido != c.ida_y_vuelta {
         return Err(incumplido(format!(
             "lo leido difiere de lo escrito ({} bytes escritos, {} leidos)",
-            datos.len(),
+            c.ida_y_vuelta.len(),
             leido.len()
         )));
     }
     Ok(())
 }
 
-async fn sobrescritura(b: &dyn Backend, esc: &Escenario) -> CheckResult {
+async fn sobrescritura(b: &dyn Backend, esc: &Escenario, c: &Cargas) -> CheckResult {
     let clave = esc.clave("sobrescritura");
-    b.put(&clave, datos(4096, 2)).await?;
-    let nuevo = datos(8192, 3);
-    b.put(&clave, nuevo.clone()).await?;
-    if b.get(&clave).await? != nuevo {
+    b.put(&clave, c.sobrescritura_vieja.clone()).await?;
+    b.put(&clave, c.sobrescritura_nueva.clone()).await?;
+    if b.get(&clave).await? != c.sobrescritura_nueva {
         return Err(incumplido(
             "tras sobrescribir se sigue leyendo el contenido viejo",
         ));
@@ -359,14 +391,14 @@ async fn borrar_inexistente(b: &dyn Backend, esc: &Escenario) -> CheckResult {
     Ok(())
 }
 
-async fn exists_refleja_el_borrado(b: &dyn Backend, esc: &Escenario) -> CheckResult {
+async fn exists_refleja_el_borrado(b: &dyn Backend, esc: &Escenario, c: &Cargas) -> CheckResult {
     let clave = esc.clave("exists");
     if b.exists(&clave).await? {
         return Err(incumplido(
             "exists dice que si sobre una clave recien inventada",
         ));
     }
-    b.put(&clave, datos(512, 4)).await?;
+    b.put(&clave, c.exists.clone()).await?;
     if !b.exists(&clave).await? {
         return Err(incumplido(
             "exists dice que no sobre una clave recien escrita",
@@ -381,19 +413,19 @@ async fn exists_refleja_el_borrado(b: &dyn Backend, esc: &Escenario) -> CheckRes
     Ok(())
 }
 
-async fn integridad_binaria(b: &dyn Backend, esc: &Escenario) -> CheckResult {
+async fn integridad_binaria(b: &dyn Backend, esc: &Escenario, c: &Cargas) -> CheckResult {
     let clave = esc.clave("binario");
-    // Los 256 valores de byte, incluidos nulos, saltos de linea y secuencias UTF-8 invalidas.
-    let datos: Vec<u8> = (0..=255u8).cycle().take(4096).collect();
-    b.put(&clave, datos.clone()).await?;
+    b.put(&clave, c.binaria.clone()).await?;
     let leido = b.get(&clave).await?;
-    if leido != datos {
+    if leido != c.binaria {
         let primero = leido
             .iter()
-            .zip(&datos)
+            .zip(&c.binaria)
             .position(|(a, b)| a != b)
             .map(|i| format!("primera diferencia en el byte {i}"))
-            .unwrap_or_else(|| format!("longitud distinta: {} vs {}", leido.len(), datos.len()));
+            .unwrap_or_else(|| {
+                format!("longitud distinta: {} vs {}", leido.len(), c.binaria.len())
+            });
         return Err(incumplido(format!(
             "el contenido volvio alterado; {primero}"
         )));
@@ -401,12 +433,12 @@ async fn integridad_binaria(b: &dyn Backend, esc: &Escenario) -> CheckResult {
     Ok(())
 }
 
-async fn clave_con_forma_de_fragmento(b: &dyn Backend, esc: &Escenario) -> CheckResult {
+async fn clave_con_forma_de_fragmento(b: &dyn Backend, esc: &Escenario, c: &Cargas) -> CheckResult {
     // Misma forma que produce `ChunkId::shard_key`: chunks/<2 hex>/<64 hex>.<indice>
     let hash = "a".repeat(64);
     let clave = esc.clave(&format!("chunks/aa/{hash}.000"));
-    b.put(&clave, datos(1024, 5)).await?;
-    if b.get(&clave).await?.len() != 1024 {
+    b.put(&clave, c.forma_de_fragmento.clone()).await?;
+    if b.get(&clave).await?.len() != c.forma_de_fragmento.len() {
         return Err(incumplido(
             "la clave con forma de fragmento no volvio intacta",
         ));
@@ -414,29 +446,28 @@ async fn clave_con_forma_de_fragmento(b: &dyn Backend, esc: &Escenario) -> Check
     Ok(())
 }
 
-async fn fragmento_de_4_mib(b: &dyn Backend, esc: &Escenario) -> CheckResult {
+async fn fragmento_de_4_mib(b: &dyn Backend, esc: &Escenario, c: &Cargas) -> CheckResult {
     let clave = esc.clave("fragmento-4mib");
-    let datos = datos(4 * 1024 * 1024, 6);
-    b.put(&clave, datos.clone()).await?;
+    b.put(&clave, c.fragmento.clone()).await?;
     let leido = b.get(&clave).await?;
-    if leido.len() != datos.len() {
+    if leido.len() != c.fragmento.len() {
         return Err(incumplido(format!(
             "se escribieron {} bytes y volvieron {}",
-            datos.len(),
+            c.fragmento.len(),
             leido.len()
         )));
     }
-    if leido != datos {
+    if leido != c.fragmento {
         return Err(incumplido("el fragmento de 4 MiB volvio corrupto"));
     }
     Ok(())
 }
 
-async fn seis_escrituras_en_paralelo(b: &dyn Backend, esc: &Escenario) -> CheckResult {
+async fn seis_escrituras_en_paralelo(b: &dyn Backend, esc: &Escenario, c: &Cargas) -> CheckResult {
     let claves: Vec<String> = (0..6)
         .map(|i| esc.clave(&format!("paralelo-{i}")))
         .collect();
-    let carga = datos(256 * 1024, 7);
+    let carga = &c.paralelo;
 
     let (r0, r1, r2, r3, r4, r5) = tokio::join!(
         b.put(&claves[0], carga.clone()),
