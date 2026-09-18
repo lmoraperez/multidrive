@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LibreDisk — una sola unidad, muchas nubes</title>
+<meta name="description" content="LibreDisk agrega varios servicios de almacenamiento en la nube en un unico volumen virtual con semantica RAID y cifrado de conocimiento cero.">
+<style>
+:root{
+  --bg:#0e1116; --panel:#161b22; --line:#262d38;
+  --fg:#e6edf3; --muted:#8b949e; --accent:#4cc4a0; --warn:#d8a657;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:820px;margin:0 auto;padding:0 20px}
+header{padding:80px 0 56px;border-bottom:1px solid var(--line)}
+.badge{display:inline-block;font-size:12px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--warn);border:1px solid var(--warn);border-radius:99px;padding:3px 11px;margin-bottom:22px}
+h1{margin:0 0 6px;font-size:clamp(38px,8vw,62px);letter-spacing:-.03em;line-height:1.02}
+h1 span{color:var(--accent)}
+.tag{margin:0;font-size:clamp(17px,3.4vw,21px);color:var(--muted)}
+section{padding:52px 0;border-bottom:1px solid var(--line)}
+h2{font-size:13px;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0 0 20px;font-weight:600}
+p{margin:0 0 16px}
+.lead{font-size:18px}
+.tbl{width:100%;border-collapse:collapse;font-size:15px}
+.tbl td{padding:13px 0;border-top:1px solid var(--line);vertical-align:top}
+.tbl tr:first-child td{border-top:0}
+.tbl td:first-child{color:var(--muted);padding-right:26px;width:49%}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:15px}
+.card p{margin:0;font-size:14px;color:var(--muted)}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:18px;overflow-x:auto;font-size:13.5px;line-height:1.6;margin:0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.no li{color:var(--muted);margin-bottom:9px}
+.no b{color:var(--fg);font-weight:600}
+footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="badge">Pre-alfa · en diseño</div>
+  <h1>Libre<span>Disk</span></h1>
+  <p class="tag">Una sola unidad. Muchas nubes.</p>
+</header>
+
+<section>
+  <p class="lead">LibreDisk agrega varios servicios de almacenamiento en la nube
+  —S3, Backblaze B2, Cloudflare R2, Storj, Nextcloud/WebDAV, Google Drive, OneDrive—
+  en <strong>un único volumen virtual</strong> que se monta como una unidad más del
+  sistema en Windows y Linux, con semántica tipo RAID y cifrado de conocimiento cero.</p>
+  <p>Si RAID convirtió varios discos poco fiables en un volumen fiable, LibreDisk hace lo
+  mismo con varias cuentas de nube: <strong>ningún proveedor tiene tus datos completos,
+  ninguno puede leerlos, y la caída de uno no te deja sin volumen.</strong></p>
+</section>
+
+<section>
+  <h2>Qué resuelve</h2>
+  <table class="tbl">
+    <tr><td>Tengo 15 GB aquí, 5 GB allá, 1 TB en otro lado</td><td>Un solo volumen agregado</td></tr>
+    <tr><td>Si el proveedor me suspende la cuenta, lo pierdo todo</td><td>Paridad <em>k de n</em>: sobrevive a la pérdida de <em>m</em> proveedores</td></tr>
+    <tr><td>El proveedor puede leer mis archivos</td><td>Cifrado en cliente, nombres incluidos</td></tr>
+    <tr><td>Vendor lock-in</td><td>Añade o retira proveedores y el volumen se rebalancea</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>Cómo funciona</h2>
+  <div class="grid">
+    <div class="card"><h3>Trozos inmutables</h3><p>Cada archivo se corta en trozos de 16 MiB, direccionados por su hash BLAKE3. Copy-on-write: nada se sobrescribe.</p></div>
+    <div class="card"><h3>Erasure coding</h3><p>Reed-Solomon <code>k+m</code>. Con <code>rs(4,2)</code> sobre 6 proveedores sobrevives a 2 caídas con 1,5× de sobrecoste.</p></div>
+    <div class="card"><h3>Cifrado en cliente</h3><p>XChaCha20-Poly1305 por trozo, clave derivada con Argon2id. El proveedor ve blobs opacos.</p></div>
+    <div class="card"><h3>Montaje nativo</h3><p>FUSE en Linux, WinFsp en Windows. Una unidad normal para tus aplicaciones.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Topologías</h2>
+  <pre><code>modo          fórmula      sobrevive a     sobrecoste
+concat        1 de 1       nada            1,0×
+mirror        1 de n       n−1 caídas      n×
+rs(k,m)       k de k+m     m caídas        (k+m)/k ×</code></pre>
+</section>
+
+<section>
+  <h2>Qué NO es</h2>
+  <ul class="no">
+    <li><b>No es un sistema de respaldo.</b> Para eso están restic, kopia o borg.</li>
+    <li><b>No es un disco de sistema ni un volumen para bases de datos.</b> La escritura
+    aleatoria de 4 KB sobre Internet no tiene arreglo físico. Es para medios, archivo y
+    datos tibios.</li>
+    <li><b>No es magia contra los Términos de Servicio.</b> Las nubes de consumo
+    desaconsejan este patrón de uso; los proveedores de primera clase son los compatibles
+    con S3 y los autoalojados.</li>
+  </ul>
+</section>
+
+<footer>
+  <div class="wrap" style="padding:0">
+    LibreDisk · AGPL-3.0 · proyecto en fase de diseño, sin versión utilizable todavía.
+  </div>
+</footer>
+
+</div>
+</body>
+</html>
