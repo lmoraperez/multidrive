@@ -205,7 +205,104 @@ Un detalle de método, por si alguien repite las medidas: hasta el commit que in
 4 MiB en una build de debug: un 0,6 % frente a Drive —irrelevante, las cifras de arriba
 siguen siendo comparables— pero el 88 % de la medida contra un directorio local.
 
-## 6. Honestidad sobre el rendimiento
+## 6. Medidas reales contra OneDrive
+
+Cinco pasadas, misma suite, misma tarde del 2026-09-18, mismo servidor y misma red que las
+de Drive. **Las nueve comprobaciones pasan en las cinco**: OneDrive cumple el contrato de
+`Backend` y es el segundo proveedor de nube que sirve como pata de un RAID.
+
+| Comprobación | Mediana | min | max | Disp. | Ops | Por op |
+|---|---:|---:|---:|---:|---:|---:|
+| `ida_y_vuelta` (64 KiB) | 2 868 ms | 2 526 | 6 942 | 154 % | 2 | ~1 434 ms |
+| `sobrescritura` | 2 569 ms | 2 526 | 2 852 | 13 % | 3 | ~856 ms |
+| `not_found_distinguible` | 518 ms | 478 | 584 | 20 % | 1 | **518 ms** |
+| `borrar_inexistente` | 515 ms | 509 | 538 | 6 % | 1 | **515 ms** |
+| `exists_refleja_el_borrado` | 2 851 ms | 2 798 | 3 052 | 9 % | 5 | ~570 ms |
+| `integridad_binaria` (4 KiB) | 1 772 ms | 1 730 | 1 839 | 6 % | 2 | ~886 ms |
+| `clave_con_forma_de_fragmento` | 1 891 ms | 1 865 | 2 478 | 32 % | 2 | ~946 ms |
+| `fragmento_de_4_mib` | 6 065 ms | 5 660 | 8 121 | 41 % | 2 | ~3 033 ms |
+| `seis_escrituras_en_paralelo` | 2 843 ms | 2 553 | 4 547 | 70 % | 6 en paralelo | ~474 ms |
+
+### El suelo es 4,7 veces más barato que el de Drive
+
+Las dos comprobaciones de una sola operación coinciden dentro del ruido —**515 ms** el
+`delete` de lo inexistente, **518 ms** el `get` que falla— y las dos son estables (6 % y
+20 % de dispersión). Ese suelo es sólido, y está muy por debajo de los 2 443 ms de Drive.
+
+`exists_refleja_el_borrado`, que son cinco operaciones, sale a ~570 ms cada una. Tres
+instrumentos independientes dan el mismo número: **una operación contra OneDrive cuesta
+~0,5 s**, casi cinco veces menos que contra Drive.
+
+### El peor caso de Drive aquí no existe
+
+Es la diferencia que más cambia el diseño. En Drive, un `get` de algo que no existe cuesta
+6 671 ms: 2,7 veces su propio suelo, porque OpenDAL resuelve cada ruta buscándola y buscar
+sin encontrar es el caso malo. **En OneDrive cuesta 518 ms, exactamente lo mismo que
+cualquier otra operación**: Graph direcciona por ruta, no busca.
+
+Eso rebaja la estimación de `scrub` de 30 días a **~2,4 días** para un volumen de 1 TB
+(~393 000 objetos a ~0,52 s). Sigue siendo inviable en serie, así que **la conclusión de
+§5 no cambia: el `trait Backend` necesita `list`**. Pero el argumento ya no depende de una
+patología de Drive; se sostiene sobre el mejor de los dos proveedores medidos.
+
+### La inversión: barato por operación, caro por byte
+
+Drive no cobra en ancho de banda, cobra en *round trips*. Con OneDrive es al revés.
+
+- 4 KiB de ida y vuelta: **1 772 ms**
+- 4 MiB de ida y vuelta: **6 065 ms**
+
+El salto son 4 293 ms por 8 MiB movidos (4 de subida y 4 de bajada): **~1,9 MB/s**, frente
+a los ~3,2 MB/s de Drive. OneDrive es **4,7 veces más barato por operación y ~1,7 veces más
+lento por byte**.
+
+Consecuencia directa sobre [ARQUITECTURA.md](ARQUITECTURA.md): la §5 concluyó que los trozos
+de 16 MiB se quedan cortos porque en Drive leer 1 MiB cuesta lo mismo que leer 16. Contra
+OneDrive ese razonamiento no se sostiene —ahí los bytes sí se pagan— y subir el tamaño de
+trozo empeoraría la latencia de la primera lectura. **Refuerza que el tamaño de trozo tiene
+que ser por proveedor, y en direcciones opuestas.**
+
+### El paralelismo rinde mucho menos que en Drive
+
+Seis escrituras simultáneas de 256 KiB: 2 843 ms, o ~474 ms amortizados por escritura. Sin
+un solo 429 en cinco pasadas (30 escrituras concurrentes).
+
+Parece bueno hasta que se compara con el suelo. En Drive, seis en paralelo cuestan 863 ms
+amortizados frente a un suelo de 2 443: un factor de **2,8**. En OneDrive, 474 ms frente a
+un suelo de 515: un factor de **1,1**. Es coherente con lo anterior —si el límite es el
+ancho de banda y no el *round trip*, abrir seis conexiones no lo mueve— pero conviene no
+sobrevenderlo: **el "sequencial" de la comparación está inferido del suelo por operación, no
+medido**. La suite no tiene un control de seis escrituras en serie, y ese control es lo que
+convertiría esto en una medida. La dispersión del 70 % en esta comprobación pide lo mismo.
+
+Queda además una pregunta abierta que decide el rendimiento del montaje: los 1,9 MB/s, ¿son
+por conexión o por cuenta? La comprobación en paralelo mueve 1,5 MiB en total, poco para
+distinguirlo. Una variante con seis cargas de 4 MiB lo respondería directamente. Si el
+límite es por cuenta, bajar un trozo de 16 MiB en `rs(4,2)` son ~8,4 s —peor que los ~5 s de
+Drive, pese a tener un suelo cinco veces mejor— y la caché con lectura anticipada se vuelve
+todavía más obligatoria de lo que decía §5.
+
+### Un artefacto del arnés, no del proveedor
+
+`ida_y_vuelta` desentona: 154 % de dispersión, y una mediana de 2 868 ms cuando
+`integridad_binaria` hace las mismas dos operaciones (`put` + `get`) en 1 772 ms. La
+diferencia no es el tamaño —1 KiB y 4 KiB dan prácticamente lo mismo, 1 891 y 1 772 ms— sino
+la posición: **`ida_y_vuelta` es la primera comprobación de cada pasada, y cada pasada
+estrena prefijo**, así que su primer `put` paga la creación de la carpeta.
+
+Es coste de montaje contabilizado como latencia de E/S, y afecta por igual a la tabla de
+Drive (donde `ida_y_vuelta` también tiene la segunda dispersión más alta, 42 %). El arnés
+debería crear el prefijo antes de arrancar el cronómetro. Hasta entonces, **la primera fila
+de ambas tablas no es comparable con el resto**.
+
+### Cuánto fiarse de estos números
+
+Lo mismo que en §5, y con dos salvedades propias: la comparación con Drive es entre dos
+tandas del mismo día y la misma red, lo que la hace más sólida de lo habitual, pero el token
+de OneDrive venía de Graph Explorer y las medidas de ancho de banda están tomadas sobre una
+única cuenta personal, que es justo donde Microsoft aplica la limitación más agresiva.
+
+## 7. Honestidad sobre el rendimiento
 
 Posicionarlo correctamente desde el README evita el 90% de las malas reseñas:
 
