@@ -1,0 +1,9 @@
+/target
+**/*.rs.bk
+Cargo.lock
+.env
+*.db
+*.db-wal
+*.db-shm
+/cache
+.DS_Store
