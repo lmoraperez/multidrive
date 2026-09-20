@@ -43,6 +43,8 @@ nombra el prefijo que quedó por borrar.
 | `clave_con_forma_de_fragmento` | `shard_key` anida dos niveles y usa un punto en el nombre |
 | `fragmento_de_4_mib` | Un trozo de 16 MiB en `rs(4,2)` da fragmentos de 4 MiB: el tamaño real de trabajo |
 | `seis_escrituras_en_paralelo` | El motor RAID escribe a los *n* proveedores a la vez: aquí asoman los límites de peticiones |
+| `listado_enumera_lo_escrito` | `scrub` enumera en vez de preguntar: sin `list`, revisar 1 TB en Drive serían semanas |
+| `listado_de_prefijo_vacio` | Un volumen recién creado no tiene nada que enumerar, y eso no es un fallo suyo |
 
 Un fallo aquí no es un detalle de la prueba: es un proveedor que **no sirve como pata de un
 RAID**.
