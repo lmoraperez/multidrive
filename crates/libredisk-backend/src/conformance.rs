@@ -115,6 +115,7 @@ struct Cargas {
     exists: Vec<u8>,
     binaria: Vec<u8>,
     forma_de_fragmento: Vec<u8>,
+    listado: Vec<u8>,
     fragmento: Vec<u8>,
     paralelo: Vec<u8>,
 }
@@ -130,6 +131,7 @@ impl Cargas {
             // invalidas.
             binaria: (0..=255u8).cycle().take(4096).collect(),
             forma_de_fragmento: datos(1024, 5),
+            listado: datos(1024, 8),
             fragmento: datos(4 * 1024 * 1024, 6),
             paralelo: datos(256 * 1024, 7),
         }
@@ -219,6 +221,16 @@ pub async fn ejecutar(backend: &dyn Backend) -> Informe {
         "seis_escrituras_en_paralelo",
         "el motor RAID escribe a los n proveedores a la vez; aqui asoman los limites de peticiones",
         seis_escrituras_en_paralelo(backend, &esc, &cargas)
+    );
+    check!(
+        "listado_enumera_lo_escrito",
+        "scrub enumera en vez de preguntar: sin list, revisar 1 TB en Drive serian semanas",
+        listado_enumera_lo_escrito(backend, &esc, &cargas)
+    );
+    check!(
+        "listado_de_prefijo_vacio",
+        "un volumen recien creado no tiene nada que enumerar, y eso no es un fallo suyo",
+        listado_de_prefijo_vacio(backend, &esc)
     );
 
     let limpieza = limpiar(backend, &esc).await.err().map(|e| e.to_string());
@@ -492,6 +504,69 @@ async fn seis_escrituras_en_paralelo(b: &dyn Backend, esc: &Escenario, c: &Carga
     Ok(())
 }
 
+async fn listado_enumera_lo_escrito(b: &dyn Backend, esc: &Escenario, c: &Cargas) -> CheckResult {
+    // Subprefijo propio: lo que enumere esta comprobacion no debe depender de lo que las
+    // demas hayan dejado escrito, ni al reves.
+    let hash = "b".repeat(64);
+    let claves: Vec<String> = (0..3)
+        .map(|i| esc.clave(&format!("listado/chunks/{}/{hash}.{i:03}", &hash[..2])))
+        .collect();
+    for clave in &claves {
+        b.put(clave, c.listado.clone()).await?;
+    }
+
+    let vistas = b.list(&format!("{}/listado/", esc.prefijo)).await?;
+
+    let faltan: Vec<&str> = claves
+        .iter()
+        .filter(|k| !vistas.contains(*k))
+        .map(String::as_str)
+        .collect();
+    if !faltan.is_empty() {
+        return Err(incumplido(format!(
+            "list no devolvio {} de {} claves recien escritas: {}",
+            faltan.len(),
+            claves.len(),
+            faltan.join(", ")
+        )));
+    }
+
+    // Enumerar tiene que devolver claves usables tal cual. Si el proveedor cuela directorios
+    // o rutas relativas al prefijo, scrub las compara contra shard_key y no casan: contaria
+    // como ausentes fragmentos que estan ahi.
+    let intrusas: Vec<&str> = vistas
+        .iter()
+        .filter(|k| !claves.contains(*k))
+        .map(String::as_str)
+        .collect();
+    if !intrusas.is_empty() {
+        return Err(incumplido(format!(
+            "list devolvio {} entradas que no son objetos escritos (directorios o rutas \
+             relativas): {}",
+            intrusas.len(),
+            intrusas
+                .iter()
+                .take(3)
+                .copied()
+                .collect::<Vec<_>>()
+                .join(", ")
+        )));
+    }
+    Ok(())
+}
+
+async fn listado_de_prefijo_vacio(b: &dyn Backend, esc: &Escenario) -> CheckResult {
+    // No se registra como escrita: nunca llega a existir.
+    let vistas = b.list(&format!("{}/nunca-escrito/", esc.prefijo)).await?;
+    if !vistas.is_empty() {
+        return Err(incumplido(format!(
+            "enumerar un prefijo sin nada debajo devolvio {} entradas en vez de ninguna",
+            vistas.len()
+        )));
+    }
+    Ok(())
+}
+
 /// Borra todo lo escrito. Devuelve el primer error, pero intenta borrarlo todo igualmente.
 async fn limpiar(b: &dyn Backend, esc: &Escenario) -> Result<(), BackendError> {
     let claves = esc
@@ -565,7 +640,7 @@ mod tests {
 
         assert_eq!(informe.pasadas, 3);
         assert!(informe.todo_ok());
-        assert_eq!(informe.checks.len(), 9);
+        assert_eq!(informe.checks.len(), 11);
         for c in &informe.checks {
             assert_eq!(c.pasadas_ok, 3, "{}", c.nombre);
             assert!(c.min <= c.mediana && c.mediana <= c.max, "{}", c.nombre);
@@ -602,6 +677,9 @@ mod tests {
             }
             async fn exists(&self, key: &str) -> Result<bool, BackendError> {
                 self.0.exists(key).await
+            }
+            async fn list(&self, prefix: &str) -> Result<Vec<String>, BackendError> {
+                self.0.list(prefix).await
             }
         }
 
