@@ -33,6 +33,11 @@
        B2   R2  Nextcloud  Drive …
 ```
 
+La capa de montaje es el único punto realmente atado al sistema operativo: el resto de la
+pila no tiene `cfg` de plataforma. Android queda fuera de este esquema porque FUSE exige root
+allí, y la alternativa (Storage Access Framework) no es un montaje POSIX sino una fachada con
+otra semántica. El análisis está en [ROADMAP.md](ROADMAP.md#móvil-android).
+
 ## Decisiones de diseño
 
 ### Trozos (chunks), no archivos
