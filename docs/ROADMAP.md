@@ -16,10 +16,18 @@ Pila elegida: **Rust + OpenDAL**.
 - [x] Constructores de OneDrive y Google Drive (OAuth2 con token de refresco)
 - [x] Google Drive probado contra una cuenta real: las nueve comprobaciones pasan.
       Medidas y consecuencias en [VIABILIDAD.md](VIABILIDAD.md#5-medidas-reales-contra-google-drive)
-- [ ] Mismo trato para OneDrive, S3 y WebDAV
-- [ ] `list` en el `trait Backend`: en Drive, preguntar por algo que no existe cuesta 6,5 s,
-      y eso es justo lo que hace `scrub`. Un volumen de 1 TB serian 30 dias en serie.
-      Hay que enumerar, no preguntar
+- [x] OneDrive probado contra una cuenta real. Medidas y comparación con Drive en
+      [VIABILIDAD.md](VIABILIDAD.md#6-medidas-reales-contra-onedrive)
+- [ ] Mismo trato para S3 y WebDAV
+- [x] `list` en el `trait Backend`: en Drive, preguntar por algo que no existe cuesta 6,5 s,
+      y eso es justo lo que hacía `scrub`. Un volumen de 1 TB serían 30 días en serie.
+      Ya se enumera: `ChunkStore::scrub_many` gasta **una llamada por proveedor** en vez de
+      una por fragmento, y un test que cuenta llamadas lo verifica en vez de suponerlo.
+      Un proveedor que no se deja enumerar se declara en `ScrubReport::unlistable` en vez de
+      darse por vacío: una caída pasajera no puede leerse como pérdida total
+- [ ] Volver a pasar la suite contra Drive y OneDrive. Al añadir `list` la suite pasó de
+      nueve comprobaciones a once, y las dos nuevas **no se han probado contra ninguna nube
+      real**: enumerar es justo donde Drive y OneDrive se comportan distinto
 - [ ] Tamano de trozo por proveedor: 16 MiB se queda corto donde el coste es por operacion
 - [ ] Trocear ficheros en trozos de 16 MiB (el almacén opera sobre un trozo suelto)
 - [ ] Metadatos en SQLite + manifiestos COW

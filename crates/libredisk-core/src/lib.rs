@@ -13,6 +13,7 @@
 //! Los trozos son **inmutables** y su nombre es su contenido. Nada se sobrescribe jamas,
 //! que es lo unico que funciona sobre almacenes de objetos sin renombrado atomico.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use futures::future::join_all;
@@ -51,6 +52,10 @@ pub enum CoreError {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ChunkId(String);
 
+/// Prefijo comun de todos los fragmentos, y por tanto lo que se le pasa a
+/// [`Backend::list`] para enumerar un proveedor entero de una vez.
+pub const SHARD_PREFIX: &str = "chunks/";
+
 impl ChunkId {
     /// Calcula el identificador de un contenido.
     pub fn of(data: &[u8]) -> Self {
@@ -66,7 +71,7 @@ impl ChunkId {
     /// Se antepone un prefijo de dos caracteres del hash porque muchos almacenes degradan
     /// al acumular millones de objetos en un mismo "directorio".
     pub fn shard_key(&self, index: usize) -> String {
-        format!("chunks/{}/{}.{index:03}", &self.0[..2], self.0)
+        format!("{SHARD_PREFIX}{}/{}.{index:03}", &self.0[..2], self.0)
     }
 }
 
@@ -117,6 +122,27 @@ impl ChunkHealth {
     /// Si es `false`, el trozo ya no se puede leer.
     pub fn is_readable(&self) -> bool {
         self.remaining_tolerance != usize::MAX
+    }
+}
+
+/// Lo que ve [`ChunkStore::scrub_many`] tras enumerar los proveedores.
+#[derive(Debug, Clone)]
+pub struct ScrubReport {
+    /// Salud de cada trozo, en el mismo orden en que se pidieron.
+    pub health: Vec<ChunkHealth>,
+    /// Proveedores que no se dejaron enumerar, por indice y con el motivo.
+    ///
+    /// Sus fragmentos figuran como ausentes en `health`, pero eso es lo que no se sabe, no
+    /// lo que se ha perdido. Antes de dar un trozo por degradado por culpa de uno de estos,
+    /// hay que volver a preguntar.
+    pub unlistable: Vec<(usize, String)>,
+}
+
+impl ScrubReport {
+    /// `true` si todos los proveedores respondieron. Si es `false`, las cifras de `health`
+    /// son un suelo pesimista, no una medida.
+    pub fn is_complete(&self) -> bool {
+        self.unlistable.is_empty()
     }
 }
 
@@ -260,6 +286,63 @@ impl ChunkStore {
             if ok { present.push(i) } else { missing.push(i) }
         }
 
+        self.health(chunk, present, missing)
+    }
+
+    /// Revisa muchos trozos con **una** enumeracion por proveedor, en vez de una pregunta
+    /// por fragmento.
+    ///
+    /// Es la diferencia entre `n * m` llamadas y `m`. Con lo medido contra Google Drive
+    /// (~6,5 s por consultar algo que no existe, que es justo el caso normal de `scrub`) y un
+    /// volumen de 1 TB, revisarlo trozo a trozo son semanas. Para eso existe
+    /// [`Backend::list`].
+    ///
+    /// Un proveedor que no se deja enumerar **no** se cuenta como un proveedor vacio: eso
+    /// convertiria una caida pasajera en una perdida total sobre el papel. Sus fragmentos
+    /// figuran como ausentes, pero el proveedor queda declarado en
+    /// [`ScrubReport::unlistable`] para que quien lea el informe sepa que eso es lo que no se
+    /// sabe, no lo que se ha perdido.
+    pub async fn scrub_many(&self, chunks: &[ChunkRef]) -> ScrubReport {
+        let listados = join_all(
+            self.backends
+                .iter()
+                .enumerate()
+                .map(|(i, backend)| async move { (i, backend.list(SHARD_PREFIX).await) }),
+        )
+        .await;
+
+        let mut presentes: Vec<HashSet<String>> = vec![HashSet::new(); self.backends.len()];
+        let mut unlistable = Vec::new();
+        for (i, resultado) in listados {
+            match resultado {
+                Ok(claves) => presentes[i] = claves.into_iter().collect(),
+                Err(e) => unlistable.push((i, e.to_string())),
+            }
+        }
+
+        let health = chunks
+            .iter()
+            .map(|chunk| {
+                let (mut present, mut missing) = (Vec::new(), Vec::new());
+                for (i, vistas) in presentes.iter().enumerate() {
+                    if vistas.contains(&chunk.id.shard_key(i)) {
+                        present.push(i);
+                    } else {
+                        missing.push(i);
+                    }
+                }
+                self.health(chunk, present, missing)
+            })
+            .collect();
+
+        ScrubReport { health, unlistable }
+    }
+
+    /// Traduce fragmentos presentes y ausentes a salud.
+    ///
+    /// Comun a `scrub` y `scrub_many`: la cuenta de tolerancia tiene que salir igual se haya
+    /// averiguado preguntando o enumerando.
+    fn health(&self, chunk: &ChunkRef, present: Vec<usize>, missing: Vec<usize>) -> ChunkHealth {
         let needed = self.layout.shards_needed();
         let remaining_tolerance = if present.len() >= needed {
             present.len() - needed
@@ -325,6 +408,9 @@ impl ChunkStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use async_trait::async_trait;
     use libredisk_backend::OpendalBackend;
 
     fn clave() -> MasterKey {
@@ -566,5 +652,176 @@ mod tests {
         let json = serde_json::to_string(&chunk).unwrap();
         let vuelta: ChunkRef = serde_json::from_str(&json).unwrap();
         assert_eq!(vuelta, chunk);
+    }
+
+    #[tokio::test]
+    async fn scrub_many_da_la_misma_salud_que_preguntar_trozo_a_trozo() {
+        let s = store(Layout::ReedSolomon { k: 4, m: 2 });
+        let mut chunks = Vec::new();
+        for n in [1_000, 50_000, 120_000] {
+            chunks.push(s.put(&datos(n)).await.unwrap().chunk);
+        }
+        tirar_proveedor(&s, &chunks[1], 2).await;
+        tirar_proveedor(&s, &chunks[2], 0).await;
+        tirar_proveedor(&s, &chunks[2], 5).await;
+
+        let informe = s.scrub_many(&chunks).await;
+        assert!(informe.is_complete());
+        for (i, chunk) in chunks.iter().enumerate() {
+            assert_eq!(
+                informe.health[i],
+                s.scrub(chunk).await,
+                "enumerar y preguntar deben dar la misma respuesta (trozo {i})"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn scrub_many_sobre_una_lista_vacia_no_llama_a_nadie() {
+        let s = store(Layout::ReedSolomon { k: 4, m: 2 });
+        let informe = s.scrub_many(&[]).await;
+        assert!(informe.health.is_empty());
+        assert!(informe.is_complete());
+    }
+
+    /// Cuenta las llamadas al proveedor. La razon de ser de [`Backend::list`] es que revisar
+    /// n trozos deje de costar n llamadas por proveedor, y eso hay que poder afirmarlo con
+    /// numeros, no suponerlo.
+    struct Contador {
+        inner: OpendalBackend,
+        exists: AtomicUsize,
+        list: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl Backend for Contador {
+        fn name(&self) -> &str {
+            self.inner.name()
+        }
+        async fn put(&self, key: &str, data: Vec<u8>) -> Result<(), BackendError> {
+            self.inner.put(key, data).await
+        }
+        async fn get(&self, key: &str) -> Result<Vec<u8>, BackendError> {
+            self.inner.get(key).await
+        }
+        async fn delete(&self, key: &str) -> Result<(), BackendError> {
+            self.inner.delete(key).await
+        }
+        async fn exists(&self, key: &str) -> Result<bool, BackendError> {
+            self.exists.fetch_add(1, Ordering::Relaxed);
+            self.inner.exists(key).await
+        }
+        async fn list(&self, prefix: &str) -> Result<Vec<String>, BackendError> {
+            self.list.fetch_add(1, Ordering::Relaxed);
+            self.inner.list(prefix).await
+        }
+    }
+
+    #[tokio::test]
+    async fn scrub_many_enumera_una_vez_por_proveedor_en_vez_de_preguntar_por_fragmento() {
+        let layout = Layout::ReedSolomon { k: 4, m: 2 };
+        let contadores: Vec<Arc<Contador>> = (0..layout.shard_count())
+            .map(|i| {
+                Arc::new(Contador {
+                    inner: OpendalBackend::memory(format!("proveedor-{i}")).unwrap(),
+                    exists: AtomicUsize::new(0),
+                    list: AtomicUsize::new(0),
+                })
+            })
+            .collect();
+        let backends: Vec<Arc<dyn Backend>> = contadores
+            .iter()
+            .map(|c| c.clone() as Arc<dyn Backend>)
+            .collect();
+        let s = ChunkStore::new(layout, backends, clave()).unwrap();
+
+        let mut chunks = Vec::new();
+        for n in 0..25 {
+            chunks.push(s.put(&datos(500 + n)).await.unwrap().chunk);
+        }
+        for c in &contadores {
+            c.exists.store(0, Ordering::Relaxed);
+            c.list.store(0, Ordering::Relaxed);
+        }
+
+        s.scrub_many(&chunks).await;
+        for c in &contadores {
+            assert_eq!(
+                c.list.load(Ordering::Relaxed),
+                1,
+                "una enumeracion por proveedor, no una por trozo"
+            );
+            assert_eq!(
+                c.exists.load(Ordering::Relaxed),
+                0,
+                "enumerando no hace falta preguntar por ningun fragmento"
+            );
+        }
+
+        // Lo que cuesta trozo a trozo, para que la comparacion quede escrita y no de palabra.
+        for chunk in &chunks {
+            s.scrub(chunk).await;
+        }
+        for c in &contadores {
+            assert_eq!(
+                c.exists.load(Ordering::Relaxed),
+                chunks.len(),
+                "scrub uno a uno cuesta una pregunta por trozo y proveedor"
+            );
+        }
+    }
+
+    /// Un proveedor que no se deja enumerar no es un proveedor vacio. Confundirlos
+    /// convertiria una caida pasajera en una perdida total sobre el papel.
+    #[tokio::test]
+    async fn un_proveedor_que_falla_al_enumerar_se_declara_en_vez_de_darse_por_vacio() {
+        struct NoEnumera(OpendalBackend);
+
+        #[async_trait]
+        impl Backend for NoEnumera {
+            fn name(&self) -> &str {
+                self.0.name()
+            }
+            async fn put(&self, key: &str, data: Vec<u8>) -> Result<(), BackendError> {
+                self.0.put(key, data).await
+            }
+            async fn get(&self, key: &str) -> Result<Vec<u8>, BackendError> {
+                self.0.get(key).await
+            }
+            async fn delete(&self, key: &str) -> Result<(), BackendError> {
+                self.0.delete(key).await
+            }
+            async fn exists(&self, key: &str) -> Result<bool, BackendError> {
+                self.0.exists(key).await
+            }
+            /// Cualquier fallo sirve: lo que se prueba es que no se traduce a "vacio".
+            async fn list(&self, _prefix: &str) -> Result<Vec<String>, BackendError> {
+                Err(BackendError::NotFound("el proveedor no responde".into()))
+            }
+        }
+
+        let layout = Layout::ReedSolomon { k: 4, m: 2 };
+        let backends: Vec<Arc<dyn Backend>> = (0..layout.shard_count())
+            .map(|i| {
+                let mem = OpendalBackend::memory(format!("proveedor-{i}")).unwrap();
+                if i == 3 {
+                    Arc::new(NoEnumera(mem)) as Arc<dyn Backend>
+                } else {
+                    Arc::new(mem) as Arc<dyn Backend>
+                }
+            })
+            .collect();
+        let s = ChunkStore::new(layout, backends, clave()).unwrap();
+        let chunk = s.put(&datos(20_000)).await.unwrap().chunk;
+
+        let informe = s.scrub_many(std::slice::from_ref(&chunk)).await;
+        assert!(!informe.is_complete(), "el fallo debia quedar declarado");
+        assert_eq!(informe.unlistable.len(), 1);
+        assert_eq!(informe.unlistable[0].0, 3);
+        assert_eq!(informe.health[0].missing, vec![3]);
+
+        // Y preguntando de uno en uno se ve que el fragmento si estaba: el informe era un
+        // suelo pesimista, que es exactamente lo que declara ser.
+        assert!(s.scrub(&chunk).await.missing.is_empty());
     }
 }

@@ -55,6 +55,30 @@ pub trait Backend: Send + Sync {
 
     /// Indica si el objeto existe.
     async fn exists(&self, key: &str) -> Result<bool, BackendError>;
+
+    /// Enumera las claves que cuelgan de un prefijo.
+    ///
+    /// Existe por una razon medida, no por simetria con el resto del trait: `scrub` necesita
+    /// saber que fragmentos siguen vivos, y preguntarlo de uno en uno con
+    /// [`Backend::exists`] no escala. Contra Google Drive una consulta por algo que no existe
+    /// cuesta ~6,5 s; un volumen de 1 TB son ~400 000 fragmentos, que en serie serian
+    /// semanas. Enumerar resuelve de una pasada lo que preguntar cobra por fragmento.
+    ///
+    /// Contrato del que depende el resto de LibreDisk:
+    ///
+    /// - Devuelve **claves completas**, no relativas al prefijo, y baja por los subniveles.
+    ///   Quien enumera las compara contra lo que produce `ChunkId::shard_key`, asi que
+    ///   tienen que servir tal cual, sin recomponerlas.
+    /// - Solo objetos. Los "directorios" intermedios que algunos proveedores materializan no
+    ///   aparecen: aguas arriba nadie sabe que existen.
+    /// - Un prefijo sin nada debajo devuelve la lista vacia. **No** es `NotFound`: un volumen
+    ///   recien creado esta vacio, no roto.
+    /// - **Sin orden garantizado.** Quien necesite determinismo, que ordene.
+    ///
+    /// La lista viene entera en memoria. A ~75 bytes por clave, ese mismo volumen de 1 TB son
+    /// ~30 MB: asumible hoy. El dia que deje de serlo habra que paginar, y esta firma
+    /// cambiara.
+    async fn list(&self, prefix: &str) -> Result<Vec<String>, BackendError>;
 }
 
 /// Credenciales OAuth2 de una nube de consumo (OneDrive, Google Drive).
@@ -254,6 +278,21 @@ impl Backend for OpendalBackend {
     async fn exists(&self, key: &str) -> Result<bool, BackendError> {
         self.op.exists(key).await.map_err(self.io_err(key))
     }
+
+    async fn list(&self, prefix: &str) -> Result<Vec<String>, BackendError> {
+        match self.op.list_with(prefix).recursive(true).await {
+            Ok(entradas) => Ok(entradas
+                .into_iter()
+                // Algunos proveedores materializan los directorios y los devuelven como una
+                // entrada mas. Aguas arriba solo existen objetos.
+                .filter(|e| e.metadata().is_file())
+                .map(|e| e.path().to_string())
+                .collect()),
+            // Un prefijo que todavia no existe no es un fallo: es un volumen vacio.
+            Err(e) if e.kind() == opendal::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(e) => Err(self.io_err(prefix)(e)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -317,5 +356,70 @@ mod tests {
             vec![std::sync::Arc::new(OpendalBackend::memory("uno").unwrap())];
         backends[0].put("k", b"v".to_vec()).await.unwrap();
         assert_eq!(backends[0].get("k").await.unwrap(), b"v");
+    }
+
+    #[tokio::test]
+    async fn listar_enumera_claves_completas_y_recursivas() {
+        let b = OpendalBackend::memory("prueba").unwrap();
+        for k in [
+            "chunks/aa/uno.000",
+            "chunks/aa/dos.001",
+            "chunks/bb/tres.000",
+        ] {
+            b.put(k, b"x".to_vec()).await.unwrap();
+        }
+        b.put("otra-cosa/z", b"x".to_vec()).await.unwrap();
+
+        let mut vistas = b.list("chunks/").await.unwrap();
+        vistas.sort();
+        assert_eq!(
+            vistas,
+            vec![
+                "chunks/aa/dos.001",
+                "chunks/aa/uno.000",
+                "chunks/bb/tres.000"
+            ],
+            "list debe bajar por los subniveles, devolver la clave completa y nada de fuera \
+             del prefijo"
+        );
+    }
+
+    /// Si se colara un directorio, `scrub` lo compararia contra las claves de `shard_key` y
+    /// contaria un fragmento que no existe.
+    #[tokio::test]
+    async fn listar_no_devuelve_directorios() {
+        let b = OpendalBackend::memory("prueba").unwrap();
+        b.put("chunks/aa/uno.000", b"x".to_vec()).await.unwrap();
+        let vistas = b.list("chunks/").await.unwrap();
+        assert!(
+            vistas.iter().all(|k| !k.ends_with('/')),
+            "se colo una entrada de directorio: {vistas:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn listar_un_prefijo_sin_nada_da_lista_vacia_no_error() {
+        let b = OpendalBackend::memory("prueba").unwrap();
+        // Un volumen recien creado: el prefijo todavia no existe.
+        assert!(b.list("chunks/").await.unwrap().is_empty());
+    }
+
+    /// El caso del prefijo inexistente contra un backend que de verdad tiene directorios:
+    /// en memoria no hay nada que pueda dar `NotFound`, en disco si.
+    #[tokio::test]
+    async fn listar_en_directorio_local() {
+        let dir = std::env::temp_dir().join(format!("libredisk-list-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let b = OpendalBackend::fs("disco", dir.to_str().unwrap()).unwrap();
+        assert!(
+            b.list("chunks/").await.unwrap().is_empty(),
+            "un prefijo que no existe en disco no es un error"
+        );
+
+        b.put("chunks/aa/uno.000", vec![1, 2, 3]).await.unwrap();
+        assert_eq!(b.list("chunks/").await.unwrap(), vec!["chunks/aa/uno.000"]);
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
