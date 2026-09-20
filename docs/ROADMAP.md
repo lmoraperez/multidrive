@@ -57,7 +57,75 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [ ] Instantáneas y retención
 - [ ] macOS (FSKit o NFS loopback; macFUSE tiene problemas de licencia)
 
+## Móvil (Android)
+
+Analizado en septiembre de 2026 y verificado contra el código. **No es un tercer objetivo de
+montaje**, sino un modelo de integración distinto: por eso tiene sección propia en vez de una
+casilla en v0.2.
+
+### Qué se reaprovecha
+
+El núcleo no tiene ataduras al sistema operativo: **cero `cfg(windows)`/`cfg(unix)`** en todo
+el workspace, y `std::fs` solo aparece en tests y en el comando `demo`. El `trait Backend` es
+`async put/get/delete/exists` sobre bytes.
+
+Comprobado cruzando a `aarch64-linux-android`:
+
+| Crate | Resultado |
+|---|---|
+| `libredisk-crypto`, `libredisk-raid` | compilan sin NDK |
+| `libredisk-core` → `backend` → `opendal` | requiere el NDK: `cc-rs` no encuentra `clang`, lo arrastra `aws-lc-sys` vía `rustls` |
+
+Lo segundo no es un problema de diseño. Se resuelve instalando el NDK y apuntando
+`CC_aarch64-linux-android`, o cambiando `rustls` al proveedor `ring`.
+
+### Por qué no se puede montar
+
+Android es Linux, pero **FUSE exige root**: `/dev/fuse` no es accesible para una app normal.
+Desde Android 11 el propio sistema usa FUSE para el almacenamiento con ámbito, y justamente
+por eso no deja montar a nadie más.
+
+La vía sin root es el **Storage Access Framework**: implementar un `DocumentsProvider`. El
+volumen aparece en la app de Archivos y en el selector del sistema, y otras apps leen y
+escriben por `ContentResolver`. Es lo que hacen Cryptomator y Round Sync.
+
+Pero SAF **no es un montaje POSIX**: no hay `open()` por ruta ni `mmap`, y una app que use
+rutas crudas no ve nada. Para lectura aleatoria haría falta
+`StorageManager.openProxyFileDescriptor` (API 26+), que entrega un descriptor con callbacks
+— eso sí encaja con un almacén de trozos más caché local.
+
+El coste sobre la arquitectura es real: la capa VFS necesitaría un **tercer consumidor con
+semántica distinta**. FUSE y WinFsp se parecen entre sí; SAF no. Más un puente JNI.
+
+### Restricciones propias del móvil
+
+| Problema | Consecuencia |
+|---|---|
+| Doze y límites de segundo plano | la cola de subida no puede correr sin más: exige `WorkManager` y servicio en primer plano |
+| Datos móviles | `rs(4,2)` sube 1,5×, y leer exige *k* fragmentos de *k* proveedores distintos. Política de solo-WiFi obligatoria |
+| Batería | Argon2id + Reed-Solomon + XChaCha20 por trozo es intensivo en CPU |
+
+Sumado a las medidas contra Drive (~6,5 s por operación, ver
+[VIABILIDAD.md](VIABILIDAD.md#5-medidas-reales-contra-google-drive)), sobre red móvil la
+latencia pasa a ser el factor dominante.
+
+### Conflicto con el alcance de v1
+
+v1 es **un solo escritor**. Un móvil añadido a un volumen que el escritorio también escribe
+*es* el problema de escritura concurrente que está fuera de alcance. Android empieza por
+tanto **en solo lectura**, o espera al *lease* renovable de v0.5.
+
+### Dónde encaja
+
+No antes de la v0.3, y la razón es de dependencia, no de prioridad: **la capa VFS sobre la
+que se apoyaría SAF todavía no existe.** Hoy `ChunkStore` opera sobre un trozo suelto
+(`put(&[u8]) -> ChunkRef`); no hay fichero, ni ruta, ni inodo.
+
+Lo barato mientras tanto, para no perder la opción: un job de CI con
+`cargo check --target aarch64-linux-android` sobre `libredisk-crypto` y `libredisk-raid`.
+Pasan sin NDK, así que cuesta segundos y evita que la portabilidad se pudra sin avisar.
+
 ## Fuera de alcance por ahora
 - Escritura concurrente desde varias máquinas (v1 es un solo escritor)
 - Uso como disco de sistema o volumen de base de datos
-- Móvil
+- Móvil como volumen de escritura — ver [Móvil (Android)](#móvil-android): analizado, pospuesto, no descartado
