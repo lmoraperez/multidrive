@@ -79,8 +79,20 @@ Pila elegida: **Rust + OpenDAL**.
       todavía no estén en los proveedores**. Si una subida falla, la raíz se queda esperando y
       el volumen se sigue viendo como antes de la escritura — un estado viejo, pero íntegro.
       Sobrevive a un corte: la cola se recupera del diario al arrancar
-- [ ] Montaje en lectura-escritura. La pieza de abajo ya está; falta el camino de escritura de
-      WinFsp y decidir cuándo se sincroniza solo
+- [x] Montaje en lectura-escritura. `libredisk mount Z: --escritura`: el Explorador crea
+      carpetas, `Copy-Item` copia, borrar funciona y borrar un directorio con contenido se
+      rechaza. Lo escrito queda en la cola de escritura diferida hasta `libredisk sync`, y
+      cada descriptor acumula los tramos en un buffer que se fusiona cuando son contiguos —
+      sin eso, copiar en bloques de 1 MiB reescribiría el mismo trozo de 16 MiB una vez por
+      bloque
+- [ ] **Amplificación de escritura**. Medido: copiar un fichero de 3 MB por el montaje sube
+      **22 objetos y 6,1 MB**, de los que solo ~4 son alcanzables desde la raíz final. El
+      resto son versiones intermedias superadas, porque WinFsp vacía el buffer varias veces
+      durante una copia y cada vaciado escribe un trozo nuevo más sus nodos y una raíz. La
+      salida limpia es que `sync` calcule lo alcanzable desde la raíz pendiente y no suba lo
+      que ya nadie referencia
+- [ ] `rename` en el montaje: hoy mover o renombrar desde el Explorador no funciona. Necesita
+      que el árbol sepa aplicar dos cambios en una sola publicación, o no sería atómico
 - [ ] Montaje FUSE de solo lectura → luego lectura/escritura
 - [x] `libredisk scrub` y `rebuild` expuestos en la CLI. `scrub` recorre el árbol, enumera
       los proveedores y dice qué le falta a cada trozo y dónde; si un nodo no se deja leer,

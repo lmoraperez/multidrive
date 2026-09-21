@@ -258,6 +258,124 @@ where
     Ok(leido)
 }
 
+impl ChunkStore {
+    /// Escribe `datos` en `offset` sobre un manifiesto y devuelve el manifiesto resultante.
+    ///
+    /// Si el rango se pasa del final, el fichero crece; el hueco que quede entre el final
+    /// viejo y `offset` se rellena con ceros, que es lo que hace cualquier sistema de
+    /// ficheros.
+    ///
+    /// # El coste, dicho sin adornos
+    ///
+    /// Los trozos son inmutables, asi que "escribir dentro" es en realidad **leer el trozo,
+    /// parchearlo y subir uno nuevo**. Escribir 4 KiB en medio de un fichero reescribe los
+    /// 16 MiB del trozo que los contiene. Es inherente al diseno —es lo que compra el
+    /// cifrado por trozo, el RAID y la deduplicacion— y por eso `docs/VIABILIDAD.md` dice
+    /// que esto no es un volumen para bases de datos.
+    ///
+    /// La consecuencia practica para quien llame: **agrupa**. Hacer mil escrituras de 4 KiB
+    /// sobre el mismo trozo cuesta mil veces el trozo. Una capa de montaje tiene que
+    /// acumular en un buffer y materializar al cerrar, no llamar aqui por cada `write`.
+    pub async fn write_at(
+        &self,
+        manifest: &Manifest,
+        offset: u64,
+        datos: &[u8],
+    ) -> Result<(Manifest, Vec<String>), CoreError> {
+        manifest.validate()?;
+        let fin = offset.saturating_add(datos.len() as u64);
+        let nueva_len = manifest.len.max(fin);
+        self.reconstruir(manifest, nueva_len, Some((offset, datos)))
+            .await
+    }
+
+    /// Cambia la longitud de un fichero: recorta o extiende con ceros.
+    pub async fn truncate(
+        &self,
+        manifest: &Manifest,
+        nueva_len: u64,
+    ) -> Result<(Manifest, Vec<String>), CoreError> {
+        manifest.validate()?;
+        self.reconstruir(manifest, nueva_len, None).await
+    }
+
+    /// Reconstruye el manifiesto para que mida `nueva_len`, aplicando un parche opcional.
+    ///
+    /// Un trozo que no toca el parche y que ya tiene el tamano que le corresponde se
+    /// reaprovecha tal cual: ni se baja ni se vuelve a subir. Es lo que hace que extender un
+    /// fichero por el final no reescriba todo lo anterior.
+    async fn reconstruir(
+        &self,
+        manifest: &Manifest,
+        nueva_len: u64,
+        parche: Option<(u64, &[u8])>,
+    ) -> Result<(Manifest, Vec<String>), CoreError> {
+        let tam_trozo = manifest.chunk_size as u64;
+        let n_trozos = nueva_len.div_ceil(tam_trozo) as usize;
+
+        let (p_ini, p_datos) = match parche {
+            Some((o, d)) => (o, d),
+            None => (u64::MAX, &[][..]),
+        };
+        let p_fin = p_ini.saturating_add(p_datos.len() as u64);
+
+        let mut nuevos = Vec::with_capacity(n_trozos);
+        let mut degraded: Vec<String> = Vec::new();
+
+        for i in 0..n_trozos {
+            let ini = i as u64 * tam_trozo;
+            let fin = (ini + tam_trozo).min(nueva_len);
+            let tam = (fin - ini) as usize;
+
+            let viejo = manifest.chunks.get(i);
+            let lo_toca = p_fin > ini && p_ini < fin;
+            let mismo_tamano = viejo.map(|c| c.plain_len == tam).unwrap_or(false);
+
+            // Ni lo toca el parche ni cambia de tamano: se queda como esta.
+            if !lo_toca && mismo_tamano {
+                nuevos.push(viejo.expect("mismo_tamano implica que existe").clone());
+                continue;
+            }
+
+            // Materializar el contenido: lo que hubiera, mas lo que traiga el parche. Lo que
+            // no cubra ninguno de los dos son ceros, que es un hueco del fichero.
+            let mut buf = vec![0u8; tam];
+            if let Some(c) = viejo {
+                let previo = self.get_shared(c).await?;
+                let n = previo.len().min(tam);
+                buf[..n].copy_from_slice(&previo[..n]);
+            }
+
+            if lo_toca {
+                let desde = p_ini.max(ini);
+                let hasta = p_fin.min(fin);
+                if hasta > desde {
+                    let destino = (desde - ini) as usize;
+                    let origen = (desde - p_ini) as usize;
+                    let n = (hasta - desde) as usize;
+                    buf[destino..destino + n].copy_from_slice(&p_datos[origen..origen + n]);
+                }
+            }
+
+            let report = self.put(&buf).await?;
+            for nombre in report.degraded {
+                if !degraded.contains(&nombre) {
+                    degraded.push(nombre);
+                }
+            }
+            nuevos.push(report.chunk);
+        }
+
+        let nuevo = Manifest {
+            chunks: nuevos,
+            len: nueva_len,
+            chunk_size: manifest.chunk_size,
+        };
+        // Si el calculo de arriba se equivocara, mas vale enterarse aqui que al leer.
+        nuevo.validate()?;
+        Ok((nuevo, degraded))
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

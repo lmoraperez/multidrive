@@ -112,6 +112,11 @@ enum Command {
         /// arranque en frio cada vez que se monta.
         #[arg(long, default_value_t = 4096)]
         disco_mb: usize,
+        /// Monta en lectura y escritura.
+        ///
+        /// Lo que se escriba queda **solo en esta maquina** hasta `libredisk sync`.
+        #[arg(long)]
+        escritura: bool,
     },
     /// Reconstruye el volumen a partir de lo que quede en los proveedores.
     ///
@@ -183,7 +188,8 @@ async fn main() -> Result<()> {
             punto,
             cache_mb,
             disco_mb,
-        } => volumen::mount(&punto, cache_mb, disco_mb).await,
+            escritura,
+        } => volumen::mount(&punto, cache_mb, disco_mb, escritura).await,
         Command::Rescue { adoptar } => volumen::rescue(adoptar.as_deref()).await,
         Command::Header(HeaderCmd::Export { fichero }) => volumen::header_export(&fichero).await,
         Command::Header(HeaderCmd::Import { fichero }) => volumen::header_import(&fichero).await,
