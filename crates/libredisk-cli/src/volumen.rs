@@ -14,6 +14,7 @@ use libredisk_core::diskcache::DiskCache;
 use libredisk_core::header::{self, HEADER_KEY, HEADER_VERSION, Header};
 use libredisk_core::rescue;
 use libredisk_core::tree::{self, Kind, Volume};
+use libredisk_core::writeback::{self, WriteQueue};
 use libredisk_core::{ChunkStore, CoreError};
 use libredisk_crypto::MasterKey;
 use libredisk_raid::Layout;
@@ -56,12 +57,17 @@ const CACHE_POR_DEFECTO: usize = 64 * 1024 * 1024;
 /// identificador —mismo contenido en claro— pero sellado con claves distintas. Si
 /// compartieran directorio, cada uno veria el fichero del otro como corrupto y lo borraria,
 /// turnandose para invalidarse mutuamente.
-fn dir_cache(salt: &[u8]) -> PathBuf {
-    let base = std::env::var("LOCALAPPDATA")
+fn dir_base() -> PathBuf {
+    std::env::var("LOCALAPPDATA")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir());
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join("libredisk")
+}
+
+fn dir_cache(salt: &[u8]) -> PathBuf {
+    let base = dir_base();
     let etiqueta = &blake3_hex(salt)[..16];
-    base.join("libredisk").join("cache").join(etiqueta)
+    base.join("cache").join(etiqueta)
 }
 
 /// La sal no es secreta, pero su hash es un nombre de carpeta mas corto y sin sorpresas.
@@ -76,6 +82,15 @@ async fn almacen(cache_bytes: usize) -> Result<ChunkStore> {
 
 /// Igual, anadiendo la cache en disco si se pide.
 async fn almacen_completo(cache_bytes: usize, disco_bytes: usize) -> Result<ChunkStore> {
+    almacen_todo(cache_bytes, disco_bytes, false).await
+}
+
+/// Igual, pudiendo activar la escritura diferida.
+async fn almacen_todo(
+    cache_bytes: usize,
+    disco_bytes: usize,
+    diferido: bool,
+) -> Result<ChunkStore> {
     let backends = proveedores()?;
 
     let header = header::read(&backends)
@@ -99,6 +114,15 @@ async fn almacen_completo(cache_bytes: usize, disco_bytes: usize) -> Result<Chun
             .await
             .with_context(|| format!("no se pudo abrir la cache en '{}'", dir.display()))?;
         store = store.with_disk_cache(disco);
+    }
+
+    if diferido {
+        let base = dir_base();
+        let dir = writeback::dir_de_volumen(&base, &header.salt);
+        let cola = WriteQueue::open(&dir)
+            .await
+            .with_context(|| format!("no se pudo abrir la cola en '{}'", dir.display()))?;
+        store = store.with_writeback(cola);
     }
     Ok(store)
 }
@@ -272,6 +296,22 @@ pub async fn status() -> Result<()> {
     println!("topologia     {}", header.layout);
     println!("proveedores   {}", header.backends.join(", "));
     println!("formato       version {}", header.version);
+
+    // Lo pendiente no depende de poder abrir el arbol: se lee del diario local.
+    let base = dir_base();
+    let dir = writeback::dir_de_volumen(&base, &header.salt);
+    if let Ok(cola) = WriteQueue::open(&dir).await {
+        let p = cola.pendiente();
+        if p.a_salvo() {
+            println!("pendiente     nada: todo esta en los proveedores");
+        } else {
+            println!(
+                "pendiente     {} trozo(s), {} SOLO EN ESTA MAQUINA",
+                p.trozos,
+                tamano(p.bytes)
+            );
+        }
+    }
 
     // Abrir el arbol necesita la frase de paso; lo de arriba no. Si no esta, se dice lo que
     // se sabe en vez de fallar entero.
@@ -626,6 +666,83 @@ pub async fn mount(punto: &str, cache_mb: usize, disco_mb: usize) -> Result<()> 
             tamano(s.bytes as u64),
             s.desalojos
         );
+    }
+    Ok(())
+}
+
+/// Sube un fichero local difiriendo la subida: queda en esta maquina hasta `sync`.
+pub async fn put_diferido(local: &str, remoto: &str) -> Result<()> {
+    let store = almacen_todo(CACHE_POR_DEFECTO, 0, true).await?;
+    let mut volumen = Volume::open(store).await?;
+
+    let fichero = tokio::fs::File::open(local)
+        .await
+        .with_context(|| format!("no se pudo abrir '{local}'"))?;
+    let bytes = fichero.metadata().await.map(|m| m.len()).unwrap_or(0);
+
+    volumen.write_file(remoto, fichero).await?;
+    let p = volumen.store().pendiente();
+
+    println!("preparado {remoto} ({})", tamano(bytes));
+    println!();
+    println!("GUARDADO SOLO EN ESTA MAQUINA. Todavia no esta en ningun proveedor:");
+    println!(
+        "  {} trozo(s), {} pendientes de subir",
+        p.trozos,
+        tamano(p.bytes)
+    );
+    println!("  Si esta maquina se rompe ahora, se pierde.");
+    println!();
+    println!("  libredisk sync");
+    Ok(())
+}
+
+/// Sube lo que haya quedado pendiente.
+pub async fn sync() -> Result<()> {
+    let store = almacen_todo(CACHE_POR_DEFECTO, 0, true).await?;
+
+    let antes = store.pendiente();
+    if antes.a_salvo() {
+        println!("no hay nada pendiente: todo esta en los proveedores");
+        return Ok(());
+    }
+    println!(
+        "subiendo {} trozo(s), {}...",
+        antes.trozos,
+        tamano(antes.bytes)
+    );
+
+    let informe = store.sync().await?;
+
+    println!();
+    println!(
+        "subidos       {} ({})",
+        informe.subidos,
+        tamano(informe.bytes)
+    );
+    if informe.raiz_publicada {
+        println!("raiz          publicada");
+    }
+    avisar(&informe.degraded);
+
+    if !informe.fallidos.is_empty() {
+        println!();
+        for (id, motivo) in &informe.fallidos {
+            println!("  FALLO  {id}: {motivo}");
+        }
+        println!();
+        println!(
+            "La raiz NO se ha publicado: el volumen sigue viendose como antes de estas\n\
+             escrituras, que es un estado viejo pero integro. Arregla el acceso y repite\n\
+             `libredisk sync`; lo pendiente sigue guardado aqui."
+        );
+        anyhow::bail!("{} trozo(s) sin subir", informe.fallidos.len());
+    }
+
+    let despues = store.pendiente();
+    if despues.a_salvo() {
+        println!();
+        println!("Todo a salvo en los proveedores.");
     }
     Ok(())
 }

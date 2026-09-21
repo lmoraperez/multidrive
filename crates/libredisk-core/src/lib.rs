@@ -28,6 +28,7 @@ pub mod file;
 pub mod header;
 pub mod rescue;
 pub mod tree;
+pub mod writeback;
 
 #[cfg(test)]
 mod testutil;
@@ -156,6 +157,10 @@ pub struct ChunkRef {
 #[derive(Debug, Clone)]
 pub struct PutReport {
     pub chunk: ChunkRef,
+    /// El trozo esta preparado en local pero **todavia no en los proveedores**.
+    ///
+    /// Mientras sea `true`, ese contenido solo existe en esta maquina.
+    pub pending: bool,
     /// Proveedores que no aceptaron su fragmento. Si no esta vacio, el trozo quedo escrito
     /// pero con menos redundancia de la pedida: hay que pasarle [`ChunkStore::repair`].
     pub degraded: Vec<String>,
@@ -218,6 +223,9 @@ pub struct ChunkStore {
     /// Segundo escalon, en disco y sobreviviendo al reinicio. Guarda el blob **sellado**:
     /// los datos del usuario no se quedan en claro en la maquina.
     disco: Option<diskcache::DiskCache>,
+    /// Cola de escritura diferida. Con ella, escribir no sube nada: prepara en local y
+    /// espera a `sync`.
+    pending: Option<writeback::WriteQueue>,
 }
 
 impl std::fmt::Debug for ChunkStore {
@@ -252,6 +260,7 @@ impl ChunkStore {
             key,
             cache: None,
             disco: None,
+            pending: None,
         })
     }
 
@@ -272,6 +281,76 @@ impl ChunkStore {
     pub fn with_disk_cache(mut self, disco: diskcache::DiskCache) -> Self {
         self.disco = Some(disco);
         self
+    }
+
+    /// Difiere las escrituras: `put` prepara en local en vez de subir, y la raiz espera.
+    pub fn with_writeback(mut self, cola: writeback::WriteQueue) -> Self {
+        self.pending = Some(cola);
+        self
+    }
+
+    /// La cola de escritura diferida, si la hay.
+    pub fn writeback(&self) -> Option<&writeback::WriteQueue> {
+        self.pending.as_ref()
+    }
+
+    /// Que queda por subir.
+    pub fn pendiente(&self) -> writeback::Pendiente {
+        self.pending
+            .as_ref()
+            .map(writeback::WriteQueue::pendiente)
+            .unwrap_or_default()
+    }
+
+    /// Sube todo lo que haya preparado y, **solo si todo llego**, publica la raiz.
+    ///
+    /// Ese "solo si" es el invariante entero: una raiz publicada antes que sus trozos dejaria
+    /// el volumen apuntando a nodos que no existen, y cualquier lector lo veria corrupto sin
+    /// estarlo. Si algo falla, la raiz se queda en la cola y el volumen sigue viendose como
+    /// antes de la escritura: un estado viejo, pero integro.
+    pub async fn sync(&self) -> Result<writeback::SyncReport, CoreError> {
+        let Some(cola) = &self.pending else {
+            return Ok(writeback::SyncReport::default());
+        };
+
+        let mut informe = writeback::SyncReport::default();
+
+        for id in cola.chunks() {
+            let Some(sellado) = cola.sealed(&id).await else {
+                // El diario lo anota pero el blob no esta. No hay nada que subir y no se
+                // puede inventar: se declara y se sigue, pero la raiz no se publicara.
+                informe
+                    .fallidos
+                    .push((id, "no queda el blob preparado en disco".into()));
+                continue;
+            };
+
+            match self.subir_fragmentos(&id, &sellado).await {
+                Ok(degraded) => {
+                    for nombre in degraded {
+                        if !informe.degraded.contains(&nombre) {
+                            informe.degraded.push(nombre);
+                        }
+                    }
+                    informe.bytes += sellado.len() as u64;
+                    informe.subidos += 1;
+                    cola.done(&id).await?;
+                }
+                Err(e) => informe.fallidos.push((id, e.to_string())),
+            }
+        }
+
+        // La raiz solo si TODO subio. Si algo fallo se queda esperando, y un `sync` posterior
+        // la publicara cuando sus trozos esten arriba.
+        if let Some(root) = cola.root()
+            && informe.todo_arriba()
+        {
+            tree::publicar_ahora(self, &root).await?;
+            cola.root_done().await?;
+            informe.raiz_publicada = true;
+        }
+
+        Ok(informe)
     }
 
     /// Estadisticas de la cache en disco, si la hay.
@@ -296,7 +375,44 @@ impl ChunkStore {
     pub async fn put(&self, data: &[u8]) -> Result<PutReport, CoreError> {
         let id = ChunkId::of(data);
         let sealed = self.key.seal(data, id.as_str().as_bytes())?;
-        let shards = libredisk_raid::split(self.layout, &sealed)?;
+
+        // Con escritura diferida no se sube nada: se prepara en local y se espera a `sync`.
+        // El trozo es legible desde ya, porque `get_shared` mira tambien en la cola.
+        if let Some(cola) = &self.pending {
+            cola.stage(&id, &sealed).await?;
+            return Ok(PutReport {
+                chunk: ChunkRef {
+                    id,
+                    plain_len: data.len(),
+                    sealed_len: sealed.len(),
+                },
+                degraded: Vec::new(),
+                pending: true,
+            });
+        }
+
+        let degraded = self.subir_fragmentos(&id, &sealed).await?;
+        Ok(PutReport {
+            chunk: ChunkRef {
+                id,
+                plain_len: data.len(),
+                sealed_len: sealed.len(),
+            },
+            degraded,
+            pending: false,
+        })
+    }
+
+    /// Reparte un blob sellado entre los proveedores y devuelve los que fallaron.
+    ///
+    /// Sale de `put` para que `sync` pueda reutilizarlo: subir un trozo preparado es
+    /// exactamente lo mismo que subirlo en el momento, solo que mas tarde.
+    pub(crate) async fn subir_fragmentos(
+        &self,
+        id: &ChunkId,
+        sealed: &[u8],
+    ) -> Result<Vec<String>, CoreError> {
+        let shards = libredisk_raid::split(self.layout, sealed)?;
 
         let writes = shards.into_iter().enumerate().map(|(i, shard)| {
             let backend = &self.backends[i];
@@ -314,20 +430,12 @@ impl ChunkStore {
         let written = self.layout.shard_count() - degraded.len();
         if written < self.layout.shards_needed() {
             return Err(CoreError::Unrecoverable {
-                id,
+                id: id.clone(),
                 available: written,
                 needed: self.layout.shards_needed(),
             });
         }
-
-        Ok(PutReport {
-            chunk: ChunkRef {
-                id,
-                plain_len: data.len(),
-                sealed_len: sealed.len(),
-            },
-            degraded,
-        })
+        Ok(degraded)
     }
 
     /// Descarga, reconstruye, descifra y **verifica** un trozo.
@@ -346,6 +454,22 @@ impl ChunkStore {
             && let Some(datos) = cache.get(&chunk.id)
         {
             return Ok(datos);
+        }
+
+        // Escalon 1,5: la cola de escritura. Lo que se acaba de escribir y todavia no ha
+        // subido **solo existe aqui**, asi que hay que mirar antes que en ningun otro sitio
+        // remoto. Sin esto, releer lo recien escrito fallaria.
+        if let Some(cola) = &self.pending
+            && let Some(sellado) = cola.sealed(&chunk.id).await
+        {
+            let aad = chunk.id.as_str().as_bytes();
+            let claro = Arc::new(self.key.open(&sellado, aad)?);
+            if ChunkId::of(&claro) == chunk.id {
+                if let Some(cache) = &self.cache {
+                    cache.put(chunk.id.clone(), Arc::clone(&claro));
+                }
+                return Ok(claro);
+            }
         }
 
         // Escalon 2: disco. Guarda el blob sellado, asi que hay que abrirlo; a cambio, los
