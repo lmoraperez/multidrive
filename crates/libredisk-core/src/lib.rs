@@ -13,7 +13,7 @@
 //! Los trozos son **inmutables** y su nombre es su contenido. Nada se sobrescribe jamas,
 //! que es lo unico que funciona sobre almacenes de objetos sin renombrado atomico.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 
 use futures::future::join_all;
@@ -302,6 +302,33 @@ impl ChunkStore {
             .unwrap_or_default()
     }
 
+    /// Identificadores alcanzables desde una raiz, mirando primero en la cola.
+    ///
+    /// Los nodos por los que pasa pueden estar todavia sin subir: `get_shared` los encuentra
+    /// en la cola, que es el unico sitio donde existen hasta que se sincronice.
+    async fn alcanzables(&self, raiz: &ChunkRef) -> Result<BTreeSet<ChunkId>, CoreError> {
+        let mut vivos = BTreeSet::new();
+        let mut pendientes = vec![raiz.clone()];
+
+        while let Some(nodo) = pendientes.pop() {
+            if !vivos.insert(nodo.id.clone()) {
+                continue;
+            }
+            let bytes = self.get_shared(&nodo).await?;
+            match serde_json::from_slice::<tree::Node>(&bytes)? {
+                tree::Node::Dir(entradas) => {
+                    pendientes.extend(entradas.into_values().map(|e| e.node));
+                }
+                tree::Node::File(manifest) => {
+                    for c in manifest.chunks {
+                        vivos.insert(c.id);
+                    }
+                }
+            }
+        }
+        Ok(vivos)
+    }
+
     /// Sube todo lo que haya preparado y, **solo si todo llego**, publica la raiz.
     ///
     /// Ese "solo si" es el invariante entero: una raiz publicada antes que sus trozos dejaria
@@ -315,7 +342,29 @@ impl ChunkStore {
 
         let mut informe = writeback::SyncReport::default();
 
+        // Lo que no cuelgue de la raiz pendiente es basura: versiones intermedias que quedaron
+        // superadas antes de llegar a subir. Subirlas seria pagar ancho de banda y cuota por
+        // algo que nadie va a leer jamas.
+        //
+        // Es seguro descartarlas porque un trozo preparado se escribio **en esta sesion**, y
+        // la raiz que ya estuviera publicada es anterior: no puede referenciarlo. Si el
+        // recorrido falla no se descarta nada, que es el lado prudente del error.
+        let vivos = match cola.root() {
+            Some(root) => self.alcanzables(&root.node).await.ok(),
+            None => None,
+        };
+
         for id in cola.chunks() {
+            if let Some(vivos) = &vivos
+                && !vivos.contains(&id)
+            {
+                let tam = cola.sealed(&id).await.map(|b| b.len() as u64).unwrap_or(0);
+                cola.done(&id).await?;
+                informe.descartados += 1;
+                informe.bytes_descartados += tam;
+                continue;
+            }
+
             let Some(sellado) = cola.sealed(&id).await else {
                 // El diario lo anota pero el blob no esta. No hay nada que subir y no se
                 // puede inventar: se declara y se sigue, pero la raiz no se publicara.

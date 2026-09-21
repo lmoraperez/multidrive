@@ -85,12 +85,14 @@ Pila elegida: **Rust + OpenDAL**.
       cada descriptor acumula los tramos en un buffer que se fusiona cuando son contiguos —
       sin eso, copiar en bloques de 1 MiB reescribiría el mismo trozo de 16 MiB una vez por
       bloque
-- [ ] **Amplificación de escritura**. Medido: copiar un fichero de 3 MB por el montaje sube
-      **22 objetos y 6,1 MB**, de los que solo ~4 son alcanzables desde la raíz final. El
-      resto son versiones intermedias superadas, porque WinFsp vacía el buffer varias veces
-      durante una copia y cada vaciado escribe un trozo nuevo más sus nodos y una raíz. La
-      salida limpia es que `sync` calcule lo alcanzable desde la raíz pendiente y no suba lo
-      que ya nadie referencia
+- [x] **Amplificación de escritura**, atacada donde importa. `sync` calcula lo alcanzable
+      desde la raíz pendiente y **no sube lo que ya nadie referencia**. Medido con la misma
+      copia de 3 MB por el montaje: de 13 trozos preparados se suben **4 (3,0 MiB)** y se
+      descartan **9 (3,0 MiB)**. Los objetos en el proveedor pasan de **22 a 5** y el espacio
+      de **6,1 MB a 3,1 MB**.
+      Es seguro descartar porque un trozo preparado se escribió en esta sesión y la raíz que
+      ya estuviera publicada es anterior: no puede referenciarlo. Si el recorrido falla no se
+      descarta nada, que es el lado prudente del error
 - [ ] `rename` en el montaje: hoy mover o renombrar desde el Explorador no funciona. Necesita
       que el árbol sepa aplicar dos cambios en una sola publicación, o no sería atómico
 - [ ] Montaje FUSE de solo lectura → luego lectura/escritura

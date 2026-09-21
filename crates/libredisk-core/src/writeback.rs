@@ -237,6 +237,11 @@ pub struct SyncReport {
     /// Trozos que no se pudieron subir, con el motivo. Si no esta vacio, la raiz **no** se
     /// publica.
     pub fallidos: Vec<(ChunkId, String)>,
+    /// Trozos preparados que se tiraron sin subir por no colgar de la raiz pendiente.
+    ///
+    /// Son versiones intermedias que quedaron superadas antes de llegar a los proveedores.
+    pub descartados: usize,
+    pub bytes_descartados: u64,
 }
 
 impl SyncReport {
@@ -608,5 +613,150 @@ mod tests_con_almacen {
         let store = crate::testutil::store(rs());
         assert_eq!(store.sync().await.unwrap(), SyncReport::default());
         assert!(store.pendiente().a_salvo());
+    }
+}
+
+#[cfg(test)]
+mod tests_basura {
+    use libredisk_raid::Layout;
+
+    use super::*;
+    use crate::ChunkStore;
+    use crate::testutil::{backends, clave};
+    use crate::tree::Volume;
+
+    fn rs() -> Layout {
+        Layout::ReedSolomon { k: 4, m: 2 }
+    }
+
+    fn dir(nombre: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "libredisk-gc-{}-{nombre}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+        d
+    }
+
+    /// Reescribir un fichero varias veces antes de sincronizar deja versiones intermedias
+    /// que ya no cuelgan de la raiz final. Subirlas seria tirar ancho de banda y cuota.
+    #[tokio::test]
+    async fn las_versiones_superadas_no_se_suben() {
+        let d = dir("superadas");
+        let layout = rs();
+        let bs = backends(layout.shard_count());
+
+        let store = ChunkStore::new(layout, bs.clone(), clave())
+            .unwrap()
+            .with_writeback(WriteQueue::open(&d).await.unwrap());
+        let (mut v, _) = Volume::create(store).await.unwrap();
+
+        // Cinco versiones del mismo fichero, sin sincronizar en medio.
+        for i in 0..5u8 {
+            v.write_file("/a.txt", &vec![b'a' + i; 1000][..])
+                .await
+                .unwrap();
+        }
+
+        let antes = v.store().pendiente();
+        assert!(
+            antes.trozos > 5,
+            "hay versiones intermedias esperando: {}",
+            antes.trozos
+        );
+
+        let informe = v.store().sync().await.unwrap();
+
+        assert!(informe.todo_arriba() && informe.raiz_publicada);
+        assert!(
+            informe.descartados > 0,
+            "lo superado tenia que descartarse, no subirse"
+        );
+        assert!(
+            informe.subidos < antes.trozos,
+            "se suben menos trozos de los que habia preparados: {} de {}",
+            informe.subidos,
+            antes.trozos
+        );
+
+        // Y lo que queda es la ultima version, intacta.
+        let otro = Volume::open(ChunkStore::new(layout, bs, clave()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            otro.read_at("/a.txt", 0, 10).await.unwrap(),
+            vec![b'a' + 4; 10]
+        );
+
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Descartar no puede llevarse por delante nada que la raiz final necesite.
+    #[tokio::test]
+    async fn lo_alcanzable_se_sube_entero() {
+        let d = dir("alcanzable");
+        let layout = rs();
+        let bs = backends(layout.shard_count());
+
+        let store = ChunkStore::new(layout, bs.clone(), clave())
+            .unwrap()
+            .with_writeback(WriteQueue::open(&d).await.unwrap());
+        let (mut v, _) = Volume::create(store).await.unwrap();
+
+        v.write_file("/uno.txt", &b"primero"[..]).await.unwrap();
+        v.write_file("/dir/dos.txt", &b"segundo"[..]).await.unwrap();
+        v.write_file("/dir/hondo/tres.txt", &b"tercero"[..])
+            .await
+            .unwrap();
+
+        let informe = v.store().sync().await.unwrap();
+        assert!(informe.todo_arriba() && informe.raiz_publicada);
+
+        // Un lector limpio tiene que poder leerlo todo: si se hubiera descartado algo
+        // alcanzable, esto fallaria.
+        let otro = Volume::open(ChunkStore::new(layout, bs, clave()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(otro.read_at("/uno.txt", 0, 50).await.unwrap(), b"primero");
+        assert_eq!(
+            otro.read_at("/dir/dos.txt", 0, 50).await.unwrap(),
+            b"segundo"
+        );
+        assert_eq!(
+            otro.read_at("/dir/hondo/tres.txt", 0, 50).await.unwrap(),
+            b"tercero"
+        );
+
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Sin raiz pendiente no hay forma de saber que es basura, asi que no se descarta nada.
+    #[tokio::test]
+    async fn sin_raiz_pendiente_no_se_descarta_nada() {
+        let d = dir("sin-raiz");
+        let layout = rs();
+        let bs = backends(layout.shard_count());
+
+        let cola = WriteQueue::open(&d).await.unwrap();
+        cola.stage(&ChunkId::of(b"suelto"), b"un blob cualquiera")
+            .await
+            .unwrap();
+
+        let store = ChunkStore::new(layout, bs, clave())
+            .unwrap()
+            .with_writeback(cola);
+        let informe = store.sync().await.unwrap();
+
+        assert_eq!(
+            informe.descartados, 0,
+            "sin raiz, se sube todo por prudencia"
+        );
+        assert_eq!(informe.subidos, 1);
+
+        let _ = std::fs::remove_dir_all(&d);
     }
 }
