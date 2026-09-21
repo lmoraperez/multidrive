@@ -48,7 +48,12 @@ Pila elegida: **Rust + OpenDAL**.
       —que el coste de Drive depende de cuánto haya en la cuenta, porque OpenDAL resuelve
       rutas buscando— está sin verificar
 - [ ] Tamano de trozo por proveedor: 16 MiB se queda corto donde el coste es por operacion
-- [ ] Trocear ficheros en trozos de 16 MiB (el almacén opera sobre un trozo suelto)
+- [x] Trocear ficheros en trozos de 16 MiB. `ChunkStore::put_file` toma un `AsyncRead` y no un
+      `&[u8]`, porque un fichero no tiene por qué caber en memoria; devuelve un `Manifest`
+      (trozos en orden, longitud y tamaño de trozo). `read_at` baja **solo los trozos que el
+      rango toca**, que es lo que hace viable el montaje, y lo verifica un test que cuenta
+      descargas. El troceado es de tamaño fijo, no por contenido: insertar un byte al
+      principio reescribe el fichero entero, y a cambio localizar un offset es una división
 - [ ] Metadatos en SQLite + manifiestos COW
 - [ ] Caché local en disco con escritura diferida
 - [ ] Montaje FUSE de solo lectura → luego lectura/escritura
