@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>LibreDisk — una sola unidad, muchas nubes</title>
-<meta name="description" content="LibreDisk agrega varios servicios de almacenamiento en la nube en un unico volumen virtual con semantica RAID y cifrado de conocimiento cero.">
+<meta name="description" content="LibreDisk agrega varios servicios de almacenamiento en la nube en un unico volumen con semantica RAID y cifrado de conocimiento cero. Pre-alfa: el nucleo funciona y esta verificado contra cuentas reales.">
 <style>
 :root{
   --bg:#0e1116; --panel:#161b22; --line:#262d38;
@@ -39,6 +39,18 @@ pre{background:var(--panel);border:1px solid var(--line);border-radius:10px;
 code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .no li{color:var(--muted);margin-bottom:9px}
 .no b{color:var(--fg);font-weight:600}
+.est{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:26px}
+.est h3{font-size:14px;margin:0 0 12px;font-weight:600}
+.est ul{list-style:none;margin:0;padding:0;font-size:15px}
+.est li{padding:7px 0 7px 26px;position:relative;color:var(--muted)}
+.est li b{color:var(--fg);font-weight:600}
+.si li::before{content:"";position:absolute;left:0;top:14px;width:11px;height:11px;
+  border-radius:50%;background:var(--accent)}
+.no2 li::before{content:"";position:absolute;left:0;top:14px;width:11px;height:11px;
+  border-radius:50%;border:1px solid var(--muted)}
+.si h3{color:var(--accent)}
+.no2 h3{color:var(--muted)}
+.nota{font-size:14px;color:var(--muted);border-left:2px solid var(--line);padding-left:16px;margin:22px 0 0}
 footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 </style>
 </head>
@@ -46,7 +58,7 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 <div class="wrap">
 
 <header>
-  <div class="badge">Pre-alfa · en diseño</div>
+  <div class="badge">Pre-alfa · el núcleo funciona</div>
   <h1>Libre<span>Disk</span></h1>
   <p class="tag">Una sola unidad. Muchas nubes.</p>
 </header>
@@ -54,11 +66,62 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 <section>
   <p class="lead">LibreDisk agrega varios servicios de almacenamiento en la nube
   —S3, Backblaze B2, Cloudflare R2, Storj, Nextcloud/WebDAV, Google Drive, OneDrive—
-  en <strong>un único volumen virtual</strong> que se monta como una unidad más del
-  sistema en Windows y Linux, con semántica tipo RAID y cifrado de conocimiento cero.</p>
+  en <strong>un único volumen</strong> con semántica tipo RAID y cifrado de conocimiento cero.
+  El objetivo es que se monte como una unidad más del sistema en Windows y Linux;
+  <strong>todavía no lo hace</strong>, y abajo se explica exactamente por dónde va.</p>
   <p>Si RAID convirtió varios discos poco fiables en un volumen fiable, LibreDisk hace lo
   mismo con varias cuentas de nube: <strong>ningún proveedor tiene tus datos completos,
   ninguno puede leerlos, y la caída de uno no te deja sin volumen.</strong></p>
+</section>
+
+<section>
+  <h2>Estado</h2>
+  <div class="est">
+    <div class="si">
+      <h3>Funciona y está probado</h3>
+      <ul>
+        <li><b>Cifrado por trozo.</b> XChaCha20-Poly1305 con clave Argon2id, nombres de fichero incluidos</li>
+        <li><b>Erasure coding.</b> Reed-Solomon <code>k+m</code>, espejo y concatenación</li>
+        <li><b>Troceado y lectura por rango.</b> Leer 4 KiB no baja el fichero entero</li>
+        <li><b>Árbol de metadatos copy-on-write.</b> Una raíz antigua sigue siendo legible: instantáneas gratis</li>
+        <li><b>Línea de órdenes.</b> Crear volumen, subir, listar, leer, <code>scrub</code> y <code>rebuild</code></li>
+        <li><b>Google Drive y OneDrive</b> pasan la suite de conformidad contra cuentas reales</li>
+      </ul>
+    </div>
+    <div class="no2">
+      <h3>Todavía no</h3>
+      <ul>
+        <li><b>No se monta como unidad.</b> Es el siguiente hito: WinFsp en Windows, FUSE en Linux</li>
+        <li><b>No hay índice local.</b> Cada operación paga una petición por nivel del árbol</li>
+        <li><b>No hay caché ni escritura diferida.</b> Subir es síncrono y lento</li>
+        <li><b>No hay interfaz gráfica</b></li>
+        <li><b>Un solo escritor.</b> Varias máquinas escribiendo a la vez está fuera de alcance</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Medido, no prometido</h2>
+  <p>El proyecto se apoya en medidas contra cuentas reales, no en estimaciones. Dos ejemplos
+  que cambiaron el diseño:</p>
+  <table class="tbl">
+    <tr>
+      <td>Preguntar a Google Drive por un objeto que no existe cuesta <strong>~6,5 s</strong></td>
+      <td>Revisar un volumen de 1 TB objeto a objeto serían semanas. Por eso la revisión
+      <em>enumera</em> en vez de preguntar, y baja a minutos</td>
+    </tr>
+    <tr>
+      <td>Enumerar cuesta una petición <strong>por directorio</strong>, no una en total</td>
+      <td>Drive y OneDrive son jerárquicos. El reparto de los trozos en carpetas tiene un
+      precio que hay que medir antes de fijarlo</td>
+    </tr>
+  </table>
+  <p class="nota">La prueba que importa, hecha contra cuentas reales: un volumen
+  <code>rs(2,1)</code> repartido entre Google Drive, OneDrive y un disco local. Se sube un
+  fichero, <strong>se destruye un proveedor entero</strong>, el fichero se sigue leyendo byte
+  a byte idéntico, y <code>rebuild</code> regenera los fragmentos que faltaban en 34 segundos.
+  Con una salvedad honesta: fue 1 MB, no 10 GB.</p>
 </section>
 
 <section>
@@ -74,10 +137,10 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 <section>
   <h2>Cómo funciona</h2>
   <div class="grid">
-    <div class="card"><h3>Trozos inmutables</h3><p>Cada archivo se corta en trozos de 16 MiB, direccionados por su hash BLAKE3. Copy-on-write: nada se sobrescribe.</p></div>
+    <div class="card"><h3>Trozos inmutables</h3><p>Cada archivo se corta en trozos de 16 MiB, direccionados por su hash BLAKE3. Copy-on-write: nada se sobrescribe jamás.</p></div>
     <div class="card"><h3>Erasure coding</h3><p>Reed-Solomon <code>k+m</code>. Con <code>rs(4,2)</code> sobre 6 proveedores sobrevives a 2 caídas con 1,5× de sobrecoste.</p></div>
     <div class="card"><h3>Cifrado en cliente</h3><p>XChaCha20-Poly1305 por trozo, clave derivada con Argon2id. El proveedor ve blobs opacos.</p></div>
-    <div class="card"><h3>Montaje nativo</h3><p>FUSE en Linux, WinFsp en Windows. Una unidad normal para tus aplicaciones.</p></div>
+    <div class="card"><h3>Montaje nativo <em>(pendiente)</em></h3><p>WinFsp en Windows, FUSE en Linux. Es el siguiente hito; hoy se usa desde la línea de órdenes.</p></div>
   </div>
 </section>
 
@@ -99,12 +162,15 @@ rs(k,m)       k de k+m     m caídas        (k+m)/k ×</code></pre>
     <li><b>No es magia contra los Términos de Servicio.</b> Las nubes de consumo
     desaconsejan este patrón de uso; los proveedores de primera clase son los compatibles
     con S3 y los autoalojados.</li>
+    <li><b>No es software terminado.</b> No hay versión publicada, el formato en disco puede
+    cambiar sin aviso, y no debes confiarle todavía datos que no tengas en otro sitio.</li>
   </ul>
 </section>
 
 <footer>
   <div class="wrap" style="padding:0">
-    LibreDisk · AGPL-3.0 · proyecto en fase de diseño, sin versión utilizable todavía.
+    LibreDisk · AGPL-3.0 · pre-alfa: el núcleo funciona y está cubierto por pruebas,
+    pero no hay versión utilizable para usuarios finales.
   </div>
 </footer>
 
