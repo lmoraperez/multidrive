@@ -66,12 +66,14 @@ pub trait Backend: Send + Sync {
     ///
     /// **Una llamada a `list` no es una peticion.** En un almacen plano (S3 y compatibles) se
     /// le parece, pero OneDrive y Google Drive son jerarquicos y OpenDAL recorre el arbol
-    /// nivel a nivel: cuesta una peticion por directorio. Medido contra una cuenta real de
-    /// OneDrive, enumerar tres objetos a tres niveles de profundidad tarda ~11 s. Con la
-    /// disposicion que produce `ChunkId::shard_key` (`chunks/<2 hex>/<hash>.<n>`) son 257
-    /// directorios por proveedor, asi que una enumeracion completa son minutos, no un
-    /// instante. Sigue siendo el orden de magnitud correcto frente a preguntar 400 000 veces,
-    /// pero no es gratis y conviene no contarlo como si lo fuera.
+    /// nivel a nivel: cuesta una peticion por directorio. Medido con cinco pasadas contra
+    /// cuentas reales de las dos nubes, un `list` sobre un prefijo vacio cuesta ~1,1 s en
+    /// ambas, y del orden de 3 a 4 s por directorio cuando hay algo debajo. Con la disposicion
+    /// que produce `ChunkId::shard_key` (`chunks/<2 hex>/<hash>.<n>`) son 257 directorios por
+    /// proveedor: una enumeracion completa esta entre 5 y 17 minutos, no es un instante. Sigue
+    /// siendo el orden de magnitud correcto frente a preguntar 400 000 veces, pero no es
+    /// gratis y conviene no contarlo como si lo fuera. Cifras y metodo en
+    /// `docs/VIABILIDAD.md`, seccion 7.
     ///
     /// Contrato del que depende el resto de LibreDisk:
     ///

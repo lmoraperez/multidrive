@@ -302,7 +302,107 @@ tandas del mismo día y la misma red, lo que la hace más sólida de lo habitual
 de OneDrive venía de Graph Explorer y las medidas de ancho de banda están tomadas sobre una
 única cuenta personal, que es justo donde Microsoft aplica la limitación más agresiva.
 
-## 7. Honestidad sobre el rendimiento
+## 7. Enumerar: qué cuesta `list`
+
+Cinco pasadas del **2026-09-21**, con la suite ya de once comprobaciones. **Las once pasan
+en las cinco, en las dos nubes.**
+
+Antes de leer una sola cifra: **estas medidas no son continuación de las de §5 y §6.** Otra
+máquina, otra red, otro día y una cuenta de Drive recién creada. Son una segunda muestra
+independiente, no la misma serie con más puntos. Eso las hace menos comparables y, a la vez,
+más útiles: §5 y §6 decían que faltaba medir desde otra red, y esto es esa otra red.
+
+| Comprobación | OneDrive | Drive |
+|---|---:|---:|
+| `listado_de_prefijo_vacio` | 1 133 ms (disp. 84 %) | 1 137 ms (disp. 31 %) |
+| `listado_enumera_lo_escrito` | 10 397 ms (disp. 44 %) | 15 148 ms (disp. 30 %) |
+
+### Una llamada a `list` no es una petición
+
+Es la corrección más importante de esta sección, porque se dio por supuesto lo contrario.
+En un almacén plano tipo S3 enumerar un prefijo se aproxima a una petición. OneDrive y Drive
+son **jerárquicos**, y OpenDAL recorre el árbol nivel a nivel: paga una petición por
+directorio.
+
+`listado_enumera_lo_escrito` no mide solo eso. Escribe tres objetos y después enumera, así
+que su mediana incluye tres `put` secuenciales. Descontándolos con el suelo por operación de
+la tabla de abajo, el `list` en sí queda en unos **8 s en OneDrive y 11 s en Drive** para un
+prefijo con tres directorios debajo: del orden de **3 a 4 s por directorio**.
+
+### El suelo de una enumeración es idéntico en las dos nubes
+
+`listado_de_prefijo_vacio` sí es una medida limpia: un único `list` sobre un prefijo sin nada
+debajo. **1 133 ms en OneDrive y 1 137 ms en Drive.**
+
+Que dos proveedores que difieren en todo lo demás coincidan en cuatro milisegundos es lo
+bastante llamativo como para no darlo por bueno sin repetirlo desde otra red. Si se sostiene,
+dice que el coste de enumerar lo pone el número de directorios y no el proveedor.
+
+### Enumerar un proveedor entero
+
+`ChunkId::shard_key` produce `chunks/<2 hex>/<hash>.<n>`, o sea **257 directorios** por
+proveedor: `chunks/` más los 256 del segundo nivel.
+
+| | Enumeración completa, 1 proveedor |
+|---|---|
+| Al suelo medido (1,1 s/directorio) | ~4,7 min |
+| Al coste del caso poblado (3–4 s/directorio) | ~13–17 min |
+
+Compárese con lo que costaba preguntar fragmento a fragmento por un volumen de 1 TB: **30
+días en Drive** (§5) y **2,4 días en OneDrive** (§6). La conclusión de §5 y §6 se confirma y
+se puede cerrar: `list` era necesario, y resuelve el problema.
+
+Pero deja uno nuevo, más pequeño y de diseño: **el prefijo de dos caracteres ahora cuesta
+dinero.** Existe para no acumular millones de objetos en un mismo directorio, que es lo que
+degrada a los almacenes planos. En los jerárquicos el incentivo va justo al revés: cada nivel
+de anidamiento es una petición más por enumeración. Es el mismo patrón que el tamaño de
+trozo, y probablemente la misma respuesta: **que dependa del proveedor.**
+
+### Qué dice esta red de las medidas del 18
+
+Dos cosas opuestas, y conviene separarlas.
+
+**La relación de ancho de banda aguanta.** Con el método de §6 —`fragmento_de_4_mib` menos
+`integridad_binaria`, que son 8 MiB movidos:
+
+| | 2026-09-18 | 2026-09-21 |
+|---|---:|---:|
+| Drive | ~3,2 MB/s | ~1,4 MB/s |
+| OneDrive | ~1,9 MB/s | ~0,85 MB/s |
+| **Drive / OneDrive** | **1,7×** | **1,7×** |
+
+Esta red es unas 2,3 veces más lenta en absoluto, pero la proporción se reproduce con dos
+decimales. La conclusión de §6 sobre bytes —Drive mueve datos ~1,7 veces más rápido— es
+robusta frente al cambio de red.
+
+**El suelo por operación no aguanta.** Y esa es la cifra sobre la que §6 apoya su conclusión
+más fuerte:
+
+| `borrar_inexistente` (1 op) | 2026-09-18 | 2026-09-21 |
+|---|---:|---:|
+| Drive | 2 443 ms | 1 267 ms |
+| OneDrive | 515 ms | 774 ms |
+| **Drive / OneDrive** | **4,7×** | **1,6×** |
+
+Drive mejoró y OneDrive empeoró. El "**4,7 veces más barato por operación**" de §6 **no se
+reproduce**. En el peor caso de Drive, el `get` que falla, la ventaja pasa de 12,9× a 4,0×:
+sigue existiendo, pero es otra magnitud.
+
+La hipótesis más plausible está en el propio §5: OpenDAL resuelve cada ruta de Drive
+**buscándola**, así que el coste depende de lo que haya en la cuenta. La cuenta de Drive del
+21 se creó para esta prueba y está vacía; la del 18 no. Si es eso, el número de §6 no estaba
+mal: estaba midiendo también el contenido de la cuenta, que es una variable que nadie había
+declarado. **Sin verificarlo es solo una hipótesis**, y la forma de comprobarla es repetir
+contra las dos cuentas desde la misma red.
+
+### Cuánto fiarse de estos números
+
+Menos que de los de §5 y §6, no más. Cinco pasadas, una tarde, una red doméstica y cuentas
+distintas de las de entonces. Lo único que aquí se puede dar por cerrado es lo cualitativo:
+las once comprobaciones pasan, enumerar cuesta una petición por directorio, y `list` convierte
+el `scrub` de inviable en caro. Los milisegundos concretos son de esta tarde y de esta línea.
+
+## 8. Honestidad sobre el rendimiento
 
 Posicionarlo correctamente desde el README evita el 90% de las malas reseñas:
 

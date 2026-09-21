@@ -134,8 +134,9 @@ export LIBREDISK_TEST_ONEDRIVE_ROOT=/libredisk-pruebas   # opcional
   importa al contrato de `Backend`, y eso no distingue un caso del otro—, así que asume que
   tras cada tanda quedan unos 6 MB en la papelera hasta que la vacíes.
 
-Las nueve comprobaciones pasan en cinco pasadas. Las latencias, y en qué se diferencian de
-las de Drive, en [VIABILIDAD.md §6](VIABILIDAD.md#6-medidas-reales-contra-onedrive).
+Las once comprobaciones pasan en cinco pasadas, también las dos de listado. Las latencias, y
+en qué se diferencian de las de Drive, en [VIABILIDAD.md §6](VIABILIDAD.md#6-medidas-reales-contra-onedrive)
+y [§7](VIABILIDAD.md#7-enumerar-qué-cuesta-list).
 
 ## Google Drive
 
