@@ -292,9 +292,15 @@ impl ChunkStore {
     /// Revisa muchos trozos con **una** enumeracion por proveedor, en vez de una pregunta
     /// por fragmento.
     ///
-    /// Es la diferencia entre `n * m` llamadas y `m`. Con lo medido contra Google Drive
-    /// (~6,5 s por consultar algo que no existe, que es justo el caso normal de `scrub`) y un
-    /// volumen de 1 TB, revisarlo trozo a trozo son semanas. Para eso existe
+    /// Es la diferencia entre `n * m` llamadas y `m`, donde `n` es el numero de trozos. Con
+    /// lo medido contra Google Drive (~6,5 s por consultar algo que no existe, que es justo
+    /// el caso normal de `scrub`) y un volumen de 1 TB, revisarlo trozo a trozo son semanas.
+    /// Para eso existe [`Backend::list`].
+    ///
+    /// Que sean `m` llamadas **no** quiere decir `m` peticiones de red: contra un proveedor
+    /// jerarquico cada `list` recorre el arbol y cuesta una peticion por directorio. Lo que
+    /// desaparece es la dependencia de `n`, que era lo que hacia inviable el scrub; el coste
+    /// que queda depende de como este repartido el arbol, y eso esta medido en
     /// [`Backend::list`].
     ///
     /// Un proveedor que no se deja enumerar **no** se cuenta como un proveedor vacio: eso
@@ -687,6 +693,9 @@ mod tests {
     /// Cuenta las llamadas al proveedor. La razon de ser de [`Backend::list`] es que revisar
     /// n trozos deje de costar n llamadas por proveedor, y eso hay que poder afirmarlo con
     /// numeros, no suponerlo.
+    ///
+    /// Cuenta llamadas al trait, no peticiones de red: lo que se comprueba aqui es que el
+    /// coste deje de depender del numero de trozos, no que enumerar sea gratis.
     struct Contador {
         inner: OpendalBackend,
         exists: AtomicUsize,

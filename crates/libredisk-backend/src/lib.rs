@@ -62,7 +62,16 @@ pub trait Backend: Send + Sync {
     /// saber que fragmentos siguen vivos, y preguntarlo de uno en uno con
     /// [`Backend::exists`] no escala. Contra Google Drive una consulta por algo que no existe
     /// cuesta ~6,5 s; un volumen de 1 TB son ~400 000 fragmentos, que en serie serian
-    /// semanas. Enumerar resuelve de una pasada lo que preguntar cobra por fragmento.
+    /// semanas. Enumerar cambia ese coste por uno que ya no depende del numero de fragmentos.
+    ///
+    /// **Una llamada a `list` no es una peticion.** En un almacen plano (S3 y compatibles) se
+    /// le parece, pero OneDrive y Google Drive son jerarquicos y OpenDAL recorre el arbol
+    /// nivel a nivel: cuesta una peticion por directorio. Medido contra una cuenta real de
+    /// OneDrive, enumerar tres objetos a tres niveles de profundidad tarda ~11 s. Con la
+    /// disposicion que produce `ChunkId::shard_key` (`chunks/<2 hex>/<hash>.<n>`) son 257
+    /// directorios por proveedor, asi que una enumeracion completa son minutos, no un
+    /// instante. Sigue siendo el orden de magnitud correcto frente a preguntar 400 000 veces,
+    /// pero no es gratis y conviene no contarlo como si lo fuera.
     ///
     /// Contrato del que depende el resto de LibreDisk:
     ///

@@ -21,8 +21,10 @@ Pila elegida: **Rust + OpenDAL**.
 - [ ] Mismo trato para S3 y WebDAV
 - [x] `list` en el `trait Backend`: en Drive, preguntar por algo que no existe cuesta 6,5 s,
       y eso es justo lo que hacía `scrub`. Un volumen de 1 TB serían 30 días en serie.
-      Ya se enumera: `ChunkStore::scrub_many` gasta **una llamada por proveedor** en vez de
-      una por fragmento, y un test que cuenta llamadas lo verifica en vez de suponerlo.
+      Ya se enumera: `ChunkStore::scrub_many` gasta **una llamada a `list` por proveedor** en
+      vez de una por fragmento, y un test que cuenta llamadas lo verifica en vez de suponerlo.
+      El coste deja de depender del número de trozos; lo que queda depende del árbol (ver más
+      abajo).
       Un proveedor que no se deja enumerar se declara en `ScrubReport::unlistable` en vez de
       darse por vacío: una caída pasajera no puede leerse como pérdida total
 - [x] OneDrive vuelve a pasar la suite con las once comprobaciones, ya con `list`. Hizo falta
@@ -32,6 +34,13 @@ Pila elegida: **Rust + OpenDAL**.
       En debug reventaba con un panic; en release fallaba al deserializar. Corregido aguas
       arriba en 0.59.2, que es la primera con el arreglo y exige 1.91
 - [ ] Volver a pasar la suite contra Google Drive con las dos comprobaciones de listado
+- [ ] Medir y decidir el anidamiento de `shard_key` en proveedores jerárquicos. Enumerar tres
+      objetos a tres niveles de profundidad en OneDrive cuesta **~11 s**: OpenDAL recorre el
+      árbol nivel a nivel y paga una petición por directorio. Con `chunks/<2 hex>/` son 257
+      directorios por proveedor, o sea minutos por enumeración completa. El prefijo de dos
+      caracteres existe para no acumular millones de objetos en un mismo directorio, que es lo
+      que degrada a los almacenes planos; en los jerárquicos el incentivo va justo al revés.
+      Puede que el anidamiento deba depender del proveedor, igual que el tamaño de trozo
 - [ ] Tamano de trozo por proveedor: 16 MiB se queda corto donde el coste es por operacion
 - [ ] Trocear ficheros en trozos de 16 MiB (el almacén opera sobre un trozo suelto)
 - [ ] Metadatos en SQLite + manifiestos COW
