@@ -25,9 +25,13 @@ Pila elegida: **Rust + OpenDAL**.
       una por fragmento, y un test que cuenta llamadas lo verifica en vez de suponerlo.
       Un proveedor que no se deja enumerar se declara en `ScrubReport::unlistable` en vez de
       darse por vacío: una caída pasajera no puede leerse como pérdida total
-- [ ] Volver a pasar la suite contra Drive y OneDrive. Al añadir `list` la suite pasó de
-      nueve comprobaciones a once, y las dos nuevas **no se han probado contra ninguna nube
-      real**: enumerar es justo donde Drive y OneDrive se comportan distinto
+- [x] OneDrive vuelve a pasar la suite con las once comprobaciones, ya con `list`. Hizo falta
+      subir OpenDAL de 0.57.0 a 0.59.2, y con ello el MSRV de 1.85 a **1.91**: el lister de
+      OneDrive en 0.57 consultaba versiones de cada fichero porque leía la *capacidad* del
+      servicio en vez de lo que pedía el llamante, y construía la URL con la ruta duplicada.
+      En debug reventaba con un panic; en release fallaba al deserializar. Corregido aguas
+      arriba en 0.59.2, que es la primera con el arreglo y exige 1.91
+- [ ] Volver a pasar la suite contra Google Drive con las dos comprobaciones de listado
 - [ ] Tamano de trozo por proveedor: 16 MiB se queda corto donde el coste es por operacion
 - [ ] Trocear ficheros en trozos de 16 MiB (el almacén opera sobre un trozo suelto)
 - [ ] Metadatos en SQLite + manifiestos COW

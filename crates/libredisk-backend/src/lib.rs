@@ -127,12 +127,10 @@ impl OpendalBackend {
         builder: impl opendal::Builder,
     ) -> Result<Self, BackendError> {
         let name = name.into();
-        let op = Operator::new(builder)
-            .map_err(|source| BackendError::Config {
-                name: name.clone(),
-                source: Box::new(source),
-            })?
-            .finish();
+        let op = Operator::new(builder).map_err(|source| BackendError::Config {
+            name: name.clone(),
+            source: Box::new(source),
+        })?;
         Ok(Self { name, op })
     }
 
