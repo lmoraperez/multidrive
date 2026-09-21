@@ -13,7 +13,7 @@ version = "0.0.1"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/lmoraperez/libredisk"
-rust-version = "1.85"
+rust-version = "1.91"
 
 [workspace.dependencies]
 libredisk-crypto  = { path = "crates/libredisk-crypto" }
