@@ -17,7 +17,7 @@ pub use windows::{Montaje, montar};
 
 #[cfg(not(windows))]
 pub fn montar(
-    _volumen: libredisk_core::tree::Volume,
+    _volumen: std::sync::Arc<libredisk_core::tree::Volume>,
     _punto: &str,
 ) -> anyhow::Result<std::convert::Infallible> {
     anyhow::bail!(

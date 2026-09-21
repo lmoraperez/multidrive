@@ -110,7 +110,12 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       va a la nube. Sirve para demostrar que funciona, no para usarlo
 - [x] CI multiplataforma (GitHub Actions: linux + windows)
 - [ ] Instalador MSI, servicio de Windows, certificado de firma de código
-- [ ] Caché de lectura: sin ella el montaje es una demostración, no una unidad
+- [x] Caché de lectura en memoria, acotada por bytes y con desalojo del menos usado. **No
+      necesita invalidación**, y no por simplificar: los trozos son inmutables y su nombre es
+      su contenido, así que una entrada cacheada no puede quedar obsoleta. Lo único mutable
+      del volumen es el puntero de raíz, que no pasa por la caché. Medido a través del
+      montaje sobre un proveedor local: leer 7,6 MiB pasa de **2 718 ms a 23 ms**, y contra
+      una nube de verdad la diferencia es mucho mayor porque la primera lectura son segundos
 
 ## v0.3 — "¿Lo puede usar alguien que no sea yo?"
 - [ ] GUI de escritorio (Tauri): asistente de volumen, salud, cola de subida

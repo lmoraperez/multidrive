@@ -44,7 +44,11 @@ fn proveedores() -> Result<Vec<Arc<dyn Backend>>> {
 ///
 /// El rescate lo necesita asi: si el puntero de raiz se ha perdido, no hay volumen que
 /// abrir, pero los trozos siguen ahi y se pueden leer igual.
-async fn almacen() -> Result<ChunkStore> {
+/// Cache por defecto. Modesta: en una orden suelta solo ayuda a lo que recorre el arbol,
+/// como `scrub` o `rescue`. El montaje pide mucha mas.
+const CACHE_POR_DEFECTO: usize = 64 * 1024 * 1024;
+
+async fn almacen(cache_bytes: usize) -> Result<ChunkStore> {
     let backends = proveedores()?;
 
     let header = header::read(&backends)
@@ -60,12 +64,17 @@ async fn almacen() -> Result<ChunkStore> {
         )
     })?;
     let key = MasterKey::derive(&frase()?, &header.salt)?;
-    Ok(ChunkStore::new(layout, backends, key)?)
+    Ok(ChunkStore::new(layout, backends, key)?.with_cache(cache_bytes))
 }
 
 /// Abre el volumen que haya en los proveedores del entorno.
 pub async fn abrir() -> Result<Volume> {
-    match Volume::open(almacen().await?).await {
+    abrir_con_cache(CACHE_POR_DEFECTO).await
+}
+
+/// Igual, con una cache del tamano que se pida. El montaje la quiere grande.
+pub async fn abrir_con_cache(cache_bytes: usize) -> Result<Volume> {
+    match Volume::open(almacen(cache_bytes).await?).await {
         Ok(v) => Ok(v),
         // Una frase de paso equivocada no da un error de descifrado: da un puntero de raiz
         // que no se abre, y por tanto "no hay raiz". Hay que decirlo, o parece corrupcion.
@@ -387,7 +396,7 @@ pub async fn rebuild() -> Result<()> {
 
 /// Reconstruye el volumen a partir de lo que quede en los proveedores.
 pub async fn rescue(adoptar: Option<&str>) -> Result<()> {
-    let store = almacen().await?;
+    let store = almacen(CACHE_POR_DEFECTO).await?;
     let publicada = tree::raiz_publicada(&store).await?;
 
     let inv = store.rescue().await?;
@@ -542,18 +551,37 @@ pub async fn header_import(origen: &str) -> Result<()> {
 }
 
 /// Monta el volumen como una unidad del sistema.
-pub async fn mount(punto: &str) -> Result<()> {
-    let volumen = abrir().await?;
-    let montaje = libredisk_mount::montar(volumen, punto)?;
+pub async fn mount(punto: &str, cache_mb: usize) -> Result<()> {
+    let volumen = Arc::new(abrir_con_cache(cache_mb * 1024 * 1024).await?);
+    let montaje = libredisk_mount::montar(Arc::clone(&volumen), punto)?;
 
     println!("montado en {punto}");
+    println!("cache         {cache_mb} MiB");
     println!();
-    println!("Solo lectura, y lento a proposito: cada operacion va a la nube sin cache.");
+    println!("Solo lectura. La primera lectura de cada trozo va a la nube; las siguientes no.");
     println!("Ctrl-C para desmontar.");
 
     tokio::signal::ctrl_c().await?;
     drop(montaje);
+
     println!();
     println!("desmontado");
+    if let Some(s) = volumen.store().cache_stats() {
+        let tasa = s
+            .tasa_de_acierto()
+            .map(|t| format!("{:.0}%", t * 100.0))
+            .unwrap_or_else(|| "-".into());
+        println!();
+        println!(
+            "cache: {} aciertos, {} fallos ({tasa})",
+            s.aciertos, s.fallos
+        );
+        println!(
+            "       {} trozos, {}, {} desalojos",
+            s.entradas,
+            tamano(s.bytes as u64),
+            s.desalojos
+        );
+    }
     Ok(())
 }
