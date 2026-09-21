@@ -86,6 +86,11 @@ enum Command {
     Scrub,
     /// Regenera los fragmentos que falten, donde todavia se pueda.
     Rebuild,
+    /// Monta el volumen como una unidad del sistema (Windows, WinFsp).
+    Mount {
+        /// Letra de unidad, como `Z:`, o un directorio vacio.
+        punto: String,
+    },
     /// Reconstruye el volumen a partir de lo que quede en los proveedores.
     ///
     /// Para cuando se ha perdido el puntero de raiz. Enumera todos los trozos, los
@@ -141,6 +146,7 @@ async fn main() -> Result<()> {
         Command::Rm { path } => volumen::rm(&path).await,
         Command::Scrub => volumen::scrub().await,
         Command::Rebuild => volumen::rebuild().await,
+        Command::Mount { punto } => volumen::mount(&punto).await,
         Command::Rescue { adoptar } => volumen::rescue(adoptar.as_deref()).await,
         Command::Header(HeaderCmd::Export { fichero }) => volumen::header_export(&fichero).await,
         Command::Header(HeaderCmd::Import { fichero }) => volumen::header_import(&fichero).await,

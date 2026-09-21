@@ -540,3 +540,20 @@ pub async fn header_import(origen: &str) -> Result<()> {
     println!("cabecera restaurada en {} proveedor(es)", backends.len());
     Ok(())
 }
+
+/// Monta el volumen como una unidad del sistema.
+pub async fn mount(punto: &str) -> Result<()> {
+    let volumen = abrir().await?;
+    let montaje = libredisk_mount::montar(volumen, punto)?;
+
+    println!("montado en {punto}");
+    println!();
+    println!("Solo lectura, y lento a proposito: cada operacion va a la nube sin cache.");
+    println!("Ctrl-C para desmontar.");
+
+    tokio::signal::ctrl_c().await?;
+    drop(montaje);
+    println!();
+    println!("desmontado");
+    Ok(())
+}

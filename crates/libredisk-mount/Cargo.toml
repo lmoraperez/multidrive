@@ -1,0 +1,20 @@
+[package]
+name = "libredisk-mount"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+libredisk-core.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+widestring = "1.2"
+winfsp = "0.13"
+
+[target.'cfg(windows)'.build-dependencies]
+winfsp = "0.13"

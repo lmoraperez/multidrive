@@ -23,3 +23,19 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Tests
         run: cargo test --workspace
+
+  # La capa de montaje solo existe en Windows, asi que el job de linux no la compila:
+  # `libredisk-mount` queda reducido a un stub por los `cfg(windows)` de sus dependencias.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: WinFsp
+        # winfsp-sys necesita bindgen, y bindgen necesita libclang.
+        run: |
+          choco install winfsp -y --no-progress
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+      - name: Tests
+        run: cargo test --workspace
