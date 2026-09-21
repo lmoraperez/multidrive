@@ -63,10 +63,30 @@ No prueba ninguna nube, pero recorre el mismo camino: configuración → suite �
 
 OpenDAL habla con Microsoft Graph. Hacen falta credenciales de una aplicación propia.
 
-1. [portal.azure.com](https://portal.azure.com) → **Microsoft Entra ID** → *App registrations*
-   → *New registration*. Elige el tipo de cuenta que corresponda (personal, organización o
-   ambas).
-2. *Authentication* → *Add a platform* → **Web**, con `http://localhost:8080` como URI de
+1. [portal.azure.com](https://portal.azure.com), **con la misma cuenta cuyo OneDrive vas a
+   usar**: si entras con otra, registrarás la app en un directorio que no es el de esa cuenta.
+
+   Busca `Microsoft Entra ID` en la barra de arriba —el menú lateral cambia de sitio entre
+   versiones del portal— → **Registros de aplicaciones** → **+ Nuevo registro**.
+
+   Deja el URI de redirección vacío; se configura en el paso 2. El campo que importa es
+   **Tipos de cuenta compatibles**, porque condiciona el endpoint del paso 5:
+
+   | Tu cuenta de OneDrive | Elige | Endpoint del paso 5 |
+   |---|---|---|
+   | Personal (outlook, hotmail, live) | *Solo cuentas personales de Microsoft* | `/consumers/` |
+   | Trabajo o estudios, un solo tenant | *Solo las cuentas de este directorio organizativo* | `/<id de inquilino>/` |
+   | Cualquiera, sin querer pensarlo | *Cualquier directorio organizativo y cuentas personales* | `/common/` |
+
+   > **`/common/` solo funciona si la app admite más de un tipo de cuenta.** Con *inquilino
+   > único* falla con `AADSTS50194: Application is not configured as a multi-tenant
+   > application`. Lo que sustituye a `/common/` es el **Id. de directorio (inquilino)** de
+   > *Información general*: es de solo lectura, no hay nada que editar.
+
+   De *Información general* sale también el **Id. de aplicación (cliente)**, que es el
+   `CLIENT_ID`. Si tu cuenta es de una organización, puede que *Nuevo registro* dé error de
+   permisos: hay un ajuste de tenant (*Los usuarios pueden registrar aplicaciones*) que los
+   administradores suelen desactivar.
    redirección. Azure admite `http://` sin TLS solo para `localhost`, así que vale.
 
    > **No elijas *Mobile and desktop applications*.** Esa plataforma registra la aplicación
@@ -77,7 +97,10 @@ OpenDAL habla con Microsoft Graph. Hacen falta credenciales de una aplicación p
 3. *API permissions* → *Microsoft Graph* → **Delegated** → `Files.ReadWrite` y
    **`offline_access`**. Sin `offline_access` no hay token de refresco y la prueba dejará de
    funcionar en una hora.
-4. *Certificates & secrets* → *New client secret*.
+4. *Certificados y secretos* → **Nuevo secreto de cliente**. Copia la columna **Valor**, no
+   *Id. secreto*, y hazlo en ese momento: el valor solo se muestra una vez y después hay que
+   generar otro. Si aparece truncado con `…`, usa el icono de copiar: seleccionar con el
+   ratón copia el texto a medias.
 5. Autoriza en el navegador:
 
    ```
@@ -140,19 +163,47 @@ y [§7](VIABILIDAD.md#7-enumerar-qué-cuesta-list).
 
 ## Google Drive
 
-1. [console.cloud.google.com](https://console.cloud.google.com) → proyecto nuevo → habilita
-   la **Google Drive API**.
-2. *OAuth consent screen* → tipo **External**, en modo *Testing*, y añade tu propia cuenta
-   como usuario de prueba.
+1. [console.cloud.google.com](https://console.cloud.google.com) → selector de proyecto arriba
+   → **Proyecto nuevo**. Con el proyecto ya seleccionado: **APIs y servicios** →
+   **Biblioteca** → busca `Google Drive API` → **Habilitar**.
+2. **Plataforma de autenticación de Google**, en
+   [/auth/overview](https://console.cloud.google.com/auth/overview).
 
-   > **En modo *Testing*, Google caduca los tokens de refresco a los 7 días.** Funcionará
-   > toda la semana y un día empezará a fallar con `invalid_grant`. No es un fallo de
-   > LibreDisk: hay que repetir el paso 4, o publicar la aplicación.
-3. *Credentials* → *Create credentials* → **OAuth client ID** → tipo *Web application*, con
-   `https://developers.google.com/oauthplayground` como URI de redirección.
-4. En el [OAuth Playground](https://developers.google.com/oauthplayground): engranaje →
-   *Use your own OAuth credentials* → pega el client ID y el secreto. Autoriza el ámbito
-   `https://www.googleapis.com/auth/drive` y canjea el código por tokens.
+   > Google movió aquí lo que antes era *OAuth consent screen*, y **ya no está bajo
+   > *APIs y servicios***. Buscar "autenticación" o "identity" en la consola lleva a
+   > *Identity Platform*, que es un producto de pago sin ninguna relación con esto. Si acabas
+   > en una página que ofrece *Habilitar Identity Platform*, te has pasado de sitio.
+
+   La primera vez sale un asistente de **Comenzar** que lo pide todo de golpe: nombre de la
+   app, correo de asistencia, **Público → Externo**, correo de contacto y condiciones. Al
+   terminar quedan cuatro secciones sueltas, de las que hacen falta dos:
+
+   | Sección | Qué hacer |
+   |---|---|
+   | **Público** ([/auth/audience](https://console.cloud.google.com/auth/audience)) | Tipo de usuario **Externo**, y tu propia cuenta en *Usuarios de prueba* |
+   | **Acceso a los datos** ([/auth/scopes](https://console.cloud.google.com/auth/scopes)) | *Agregar o quitar permisos* → `https://www.googleapis.com/auth/drive` |
+
+   > **El usuario de prueba no es opcional.** Sin él, autorizar falla con *"Acceso bloqueado:
+   > no se ha completado el proceso de verificación de la app"*, que parece un problema del
+   > cliente OAuth y no lo es.
+
+   > **En modo *Prueba*, Google caduca los tokens de refresco a los 7 días.** Funcionará toda
+   > la semana y un día empezará a fallar con `invalid_grant`. No es un fallo de LibreDisk:
+   > hay que repetir el paso 4, o publicar la aplicación.
+3. Sección **Clientes** ([/auth/clients](https://console.cloud.google.com/auth/clients)) →
+   **+ Crear cliente** → tipo *Aplicación web*, con
+   `https://developers.google.com/oauthplayground` en *URIs de redireccionamiento
+   autorizados*. **Sin barra final**: Google compara la cadena exacta y una barra de más da
+   `redirect_uri_mismatch`. A diferencia de Azure, el secreto de Google se puede volver a
+   consultar después.
+4. En el [OAuth Playground](https://developers.google.com/oauthplayground): engranaje ⚙ →
+   *Use your own OAuth credentials* → pega el ID de cliente y el secreto. En la caja **Input
+   your own scopes**, abajo del panel izquierdo, escribe
+   `https://www.googleapis.com/auth/drive` → *Authorize APIs*.
+
+   Saldrá una pantalla de *"Google no ha verificado esta aplicación"*: es lo esperado en modo
+   Prueba. **Configuración avanzada** → **Ir a … (no seguro)**; sin eso no continúa. Vuelto al
+   Playground, paso 2 → *Exchange authorization code for tokens*, y ahí está el refresh token.
 
 ```sh
 export LIBREDISK_TEST_GDRIVE_REFRESH_TOKEN=...
