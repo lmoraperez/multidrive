@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod file;
 pub mod header;
+pub mod rescue;
 pub mod tree;
 
 #[cfg(test)]
@@ -71,6 +72,8 @@ pub enum CoreError {
     RootExists,
     #[error("ningun proveedor acepto el puntero de raiz")]
     RootNotPublished,
+    #[error("el trozo {0} no pertenece a este volumen, o se cifro con otra clave")]
+    Foreign(ChunkId),
     #[error("ya hay un volumen creado en estos proveedores")]
     VolumeExists,
     #[error("no hay ningun volumen en estos proveedores")]
@@ -90,7 +93,10 @@ pub enum CoreError {
 }
 
 /// Identificador de un trozo: el BLAKE3 de su contenido en claro, en hexadecimal.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+///
+/// Ordena por su hexadecimal. No significa nada semanticamente, pero hace que cualquier
+/// recorrido o informe salga en el mismo orden dos veces seguidas.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ChunkId(String);
 
 /// Prefijo comun de todos los fragmentos, y por tanto lo que se le pasa a
@@ -105,6 +111,18 @@ impl ChunkId {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Reconstruye un identificador a partir de su hexadecimal.
+    ///
+    /// Solo hace falta para el rescate, que parte de las claves que hay en los
+    /// proveedores en vez de un manifiesto. Valida la forma antes de aceptarla: 64
+    /// caracteres hexadecimales en minuscula, que es lo que produce BLAKE3.
+    pub fn parse(s: &str) -> Option<Self> {
+        let bien = s.len() == 64
+            && s.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+        bien.then(|| Self(s.to_string()))
     }
 
     /// Clave del fragmento `index` de este trozo dentro de un proveedor.

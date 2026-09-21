@@ -487,6 +487,19 @@ fn segmentos(path: &str) -> Result<Vec<String>, CoreError> {
     Ok(out)
 }
 
+/// Publica una raiz concreta, saltandose el camino normal.
+///
+/// Existe para el rescate: cuando el puntero se ha perdido y hay que volver a apuntar a un
+/// nodo que se encontro rebuscando. Fuera de ese caso, la raiz la publica [`Volume`] sola.
+pub async fn publicar_raiz(store: &ChunkStore, root: Root) -> Result<(), CoreError> {
+    publicar(store, &root).await
+}
+
+/// La raiz publicada ahora mismo, si la hay. Tambien para el rescate.
+pub async fn raiz_publicada(store: &ChunkStore) -> Result<Option<Root>, CoreError> {
+    leer_raiz(store).await
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

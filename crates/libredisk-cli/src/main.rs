@@ -86,6 +86,19 @@ enum Command {
     Scrub,
     /// Regenera los fragmentos que falten, donde todavia se pueda.
     Rebuild,
+    /// Reconstruye el volumen a partir de lo que quede en los proveedores.
+    ///
+    /// Para cuando se ha perdido el puntero de raiz. Enumera todos los trozos, los
+    /// descifra y busca los directorios a los que no apunta nadie: son las raices
+    /// candidatas, incluidas las de versiones anteriores.
+    Rescue {
+        /// Identificador de la raiz a la que volver.
+        #[arg(long)]
+        adoptar: Option<String>,
+    },
+    /// Respalda o restaura la cabecera del volumen, que lleva la sal.
+    #[command(subcommand)]
+    Header(HeaderCmd),
 }
 
 #[derive(Subcommand)]
@@ -98,6 +111,14 @@ enum VolumeCmd {
     },
     /// Topologia, proveedores y generacion actual.
     Status,
+}
+
+#[derive(Subcommand)]
+enum HeaderCmd {
+    /// Vuelca la cabecera a un fichero local, para guardarla con la frase de paso.
+    Export { fichero: String },
+    /// Restaura la cabecera en los proveedores desde un fichero local.
+    Import { fichero: String },
 }
 
 #[tokio::main]
@@ -120,6 +141,9 @@ async fn main() -> Result<()> {
         Command::Rm { path } => volumen::rm(&path).await,
         Command::Scrub => volumen::scrub().await,
         Command::Rebuild => volumen::rebuild().await,
+        Command::Rescue { adoptar } => volumen::rescue(adoptar.as_deref()).await,
+        Command::Header(HeaderCmd::Export { fichero }) => volumen::header_export(&fichero).await,
+        Command::Header(HeaderCmd::Import { fichero }) => volumen::header_import(&fichero).await,
     }
 }
 

@@ -114,7 +114,14 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [ ] Avisos claros de Términos de Servicio en la UI
 
 ## v0.5 — Robustez
-- [ ] `libredisk rescue`: reconstruir metadatos solo desde los backends
+- [x] `libredisk rescue`: reconstruir metadatos solo desde los backends. Enumera los trozos,
+      los descifra y busca los directorios a los que no apunta nadie: son las raíces
+      candidatas, incluidas las de versiones anteriores, y se describen por su contenido para
+      poder elegir sin mirar hashes. **No hizo falta la cabecera autodescriptiva por trozo**
+      que preveía ARQUITECTURA: la longitud sellada se deduce porque `split` rellena hasta un
+      múltiplo de *k*, y el tag de XChaCha20-Poly1305 desambigua. Se añade también
+      `libredisk header export`/`import`, que es el respaldo que de verdad importa: la
+      cabecera lleva la sal, y sin sal no hay clave
 - [ ] Rebalanceo al añadir/retirar un proveedor
 - [ ] Instantáneas y retención
 - [ ] macOS (FSKit o NFS loopback; macFUSE tiene problemas de licencia)
@@ -179,9 +186,11 @@ tanto **en solo lectura**, o espera al *lease* renovable de v0.5.
 
 ### Dónde encaja
 
-No antes de la v0.3, y la razón es de dependencia, no de prioridad: **la capa VFS sobre la
-que se apoyaría SAF todavía no existe.** Hoy `ChunkStore` opera sobre un trozo suelto
-(`put(&[u8]) -> ChunkRef`); no hay fichero, ni ruta, ni inodo.
+Ya no por falta de capa VFS: `Volume` tiene `lookup`, `read_dir`, `read_at` y `manifiesto`,
+que es justo lo que un `DocumentsProvider` necesita. Lo que falta ahora es lo que haría
+soportable usarlo desde un móvil —índice local y caché— y resolver el modelo de un solo
+escritor. Ver [Recuperación ante desastre](ARQUITECTURA.md#recuperación-ante-desastre) para
+lo que un lector de solo lectura necesita: el id de la raíz y nada más.
 
 Lo barato mientras tanto, para no perder la opción: un job de CI con
 `cargo check --target aarch64-linux-android` sobre `libredisk-crypto` y `libredisk-raid`.

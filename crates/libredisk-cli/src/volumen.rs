@@ -8,8 +8,10 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use libredisk_backend::{Backend, live};
+use libredisk_core::ChunkId;
 use libredisk_core::header::{self, HEADER_KEY, HEADER_VERSION, Header};
-use libredisk_core::tree::{Kind, Volume};
+use libredisk_core::rescue;
+use libredisk_core::tree::{self, Kind, Volume};
 use libredisk_core::{ChunkStore, CoreError};
 use libredisk_crypto::MasterKey;
 use libredisk_raid::Layout;
@@ -38,8 +40,11 @@ fn proveedores() -> Result<Vec<Arc<dyn Backend>>> {
         .collect())
 }
 
-/// Abre el volumen que haya en los proveedores del entorno.
-pub async fn abrir() -> Result<Volume> {
+/// Construye el almacen a partir de la cabecera, **sin** abrir el volumen.
+///
+/// El rescate lo necesita asi: si el puntero de raiz se ha perdido, no hay volumen que
+/// abrir, pero los trozos siguen ahi y se pueden leer igual.
+async fn almacen() -> Result<ChunkStore> {
     let backends = proveedores()?;
 
     let header = header::read(&backends)
@@ -55,9 +60,12 @@ pub async fn abrir() -> Result<Volume> {
         )
     })?;
     let key = MasterKey::derive(&frase()?, &header.salt)?;
-    let store = ChunkStore::new(layout, backends, key)?;
+    Ok(ChunkStore::new(layout, backends, key)?)
+}
 
-    match Volume::open(store).await {
+/// Abre el volumen que haya en los proveedores del entorno.
+pub async fn abrir() -> Result<Volume> {
+    match Volume::open(almacen().await?).await {
         Ok(v) => Ok(v),
         // Una frase de paso equivocada no da un error de descifrado: da un puntero de raiz
         // que no se abre, y por tanto "no hay raiz". Hay que decirlo, o parece corrupcion.
@@ -374,5 +382,161 @@ pub async fn rebuild() -> Result<()> {
     if irreparables > 0 {
         anyhow::bail!("{irreparables} trozo(s) ya no tienen fragmentos suficientes");
     }
+    Ok(())
+}
+
+/// Reconstruye el volumen a partir de lo que quede en los proveedores.
+pub async fn rescue(adoptar: Option<&str>) -> Result<()> {
+    let store = almacen().await?;
+    let publicada = tree::raiz_publicada(&store).await?;
+
+    let inv = store.rescue().await?;
+
+    println!("directorios     {}", inv.directorios.len());
+    println!("ficheros        {}", inv.ficheros.len());
+    println!("trozos de datos {}", inv.datos.len());
+    if !inv.huerfanos.is_empty() {
+        println!(
+            "huerfanos       {}   (no cuelgan de ningun fichero encontrado)",
+            inv.huerfanos.len()
+        );
+    }
+    if !inv.ajenos.is_empty() {
+        println!(
+            "ajenos          {}   (no descifran: otro volumen, u otra frase)",
+            inv.ajenos.len()
+        );
+    }
+    for (id, motivo) in &inv.ilegibles {
+        println!("  ILEGIBLE      {id}: {motivo}");
+    }
+    for (i, motivo) in &inv.sin_enumerar {
+        println!("  AVISO         el proveedor {i} no se dejo enumerar: {motivo}");
+    }
+
+    if let Some(id) = adoptar {
+        return adoptar_raiz(&store, id, publicada.as_ref()).await;
+    }
+
+    println!();
+    if inv.raices.is_empty() {
+        println!("No se encontro ninguna raiz candidata.");
+        if !inv.is_complete() {
+            println!("Pero el inventario esta incompleto: arregla el acceso y repite.");
+        }
+        return Ok(());
+    }
+
+    println!("raices candidatas ({}):", inv.raices.len());
+    for id in &inv.raices {
+        let r = inv.resumen(id);
+        let actual = match &publicada {
+            Some(p) if p.node.id == *id => "  <- la publicada ahora",
+            _ => "",
+        };
+        println!();
+        println!("  {id}{actual}");
+        println!(
+            "    {} fichero(s), {} en {} directorio(s){}",
+            r.ficheros,
+            tamano(r.bytes),
+            r.directorios,
+            if r.rotos > 0 {
+                format!(", {} nodo(s) ROTOS", r.rotos)
+            } else {
+                String::new()
+            }
+        );
+        for ruta in inv.rutas(id, 6) {
+            println!("    {ruta}");
+        }
+        if r.ficheros > 6 {
+            println!("    ... y {} mas", r.ficheros - 6);
+        }
+    }
+
+    println!();
+    println!("Para volver a una de ellas:");
+    println!("  libredisk rescue --adoptar <id>");
+    println!();
+    println!("Adoptar no borra nada: las demas raices siguen ahi y se puede volver.");
+    if !inv.is_complete() {
+        println!();
+        println!("AVISO: algun proveedor no se dejo enumerar, asi que falta por mirar.");
+    }
+    Ok(())
+}
+
+async fn adoptar_raiz(
+    store: &ChunkStore,
+    id: &str,
+    publicada: Option<&libredisk_core::tree::Root>,
+) -> Result<()> {
+    let id = ChunkId::parse(id)
+        .ok_or_else(|| anyhow::anyhow!("'{id}' no tiene forma de identificador de trozo"))?;
+
+    let (chunk, _) = store
+        .recover_blind(&id)
+        .await
+        .with_context(|| format!("no se pudo recuperar el trozo {id}"))?;
+
+    // Por encima de la que hubiera, para que cualquier lector prefiera esta.
+    let generacion = publicada.map(|r| r.generation + 1).unwrap_or(1);
+    rescue::adoptar(store, chunk, generacion).await?;
+
+    println!();
+    println!("raiz adoptada: {id}");
+    println!("generacion:    {generacion}");
+    Ok(())
+}
+
+/// Vuelca la cabecera a un fichero local.
+///
+/// Es el respaldo que de verdad importa. La cabecera lleva la sal, y sin sal no hay clave
+/// con la que descifrar nada: si se perdiera de todos los proveedores a la vez, los trozos
+/// seguirian ahi y no habria forma de leerlos. Guardala junto a la frase de paso.
+pub async fn header_export(destino: &str) -> Result<()> {
+    let backends = proveedores()?;
+    let header = header::read(&backends)
+        .await?
+        .ok_or(CoreError::NoVolume)
+        .context("no hay ningun volumen del que exportar la cabecera")?;
+
+    let json = serde_json::to_vec_pretty(&header)?;
+    tokio::fs::write(destino, &json)
+        .await
+        .with_context(|| format!("no se pudo escribir '{destino}'"))?;
+
+    println!("cabecera exportada a {destino}");
+    println!();
+    println!("No es un secreto —la sal no lo es— pero sin ella el volumen es ilegible.");
+    println!("Guardala donde guardes la frase de paso, no en la misma maquina del volumen.");
+    Ok(())
+}
+
+/// Restaura una cabecera en los proveedores desde un fichero local.
+pub async fn header_import(origen: &str) -> Result<()> {
+    let backends = proveedores()?;
+    let bytes = tokio::fs::read(origen)
+        .await
+        .with_context(|| format!("no se pudo leer '{origen}'"))?;
+    let nueva: header::Header = serde_json::from_slice(&bytes)
+        .with_context(|| format!("'{origen}' no contiene una cabecera valida"))?;
+
+    // Restaurar encima de una cabecera distinta mezclaria dos volumenes.
+    if let Some(actual) = header::read(&backends).await? {
+        if actual != nueva {
+            bail!(
+                "ya hay una cabecera distinta en estos proveedores.\n\
+                 Restaurar encima mezclaria dos volumenes; borra la actual a mano si estas seguro."
+            );
+        }
+        println!("la cabecera que ya habia es identica; no hay nada que cambiar");
+        return Ok(());
+    }
+
+    nueva.check_backends(&backends)?;
+    header::write(&backends, &nueva).await?;
+    println!("cabecera restaurada en {} proveedor(es)", backends.len());
     Ok(())
 }

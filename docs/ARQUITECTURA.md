@@ -94,8 +94,11 @@ Tres cosas distintas se apoyan en que la verdad esté fuera:
 
 - Perder el disco local no puede significar perder el volumen.
 - `libredisk rescue` reconstruye el árbol escaneando los proveedores aunque no quede ninguna
-  copia local. Para eso cada trozo llevará una cabecera autodescriptiva con el ID de su
-  manifiesto. **Todavía sin implementar.**
+  copia local del puntero de raíz. **Implementado**, y sin necesitar la cabecera
+  autodescriptiva por trozo que este documento preveía: la longitud sellada se deduce, porque
+  `split` rellena hasta un múltiplo de *k* y solo hay *k* candidatos, y el tag de
+  XChaCha20-Poly1305 dice cuál es el bueno sin ambigüedad. Dos verificaciones independientes,
+  cero bytes de formato añadidos.
 - Un lector de solo lectura —el caso de [Android](ROADMAP.md#móvil-android)— necesita
   exactamente una cosa: el id de la raíz. No replica una base ni reproduce un diario, y baja
   solo la rama del árbol que el usuario abre, que es justo el patrón de acceso de SAF. Si los
@@ -103,6 +106,47 @@ Tres cosas distintas se apoyan en que la verdad esté fuera:
 
 Android **no es el motivo** de esta decisión —lo son `rescue` y la falta de renombrado
 atómico— pero pide exactamente la misma propiedad. Conviene saber que no cuesta nada extra.
+
+### Recuperación ante desastre
+
+Si se rompe la máquina donde vive el volumen, **no se pierde nada**, y no por suerte: es la
+consecuencia directa de que la verdad esté en los proveedores. Hoy el programa no guarda
+ningún estado local —ni índice, ni caché, ni base de datos—, así que la máquina es
+desechable.
+
+Para recuperar hacen falta tres cosas, y solo tres:
+
+| | Se puede volver a conseguir |
+|---|---|
+| La **frase de paso** | **No.** No se guarda en ninguna parte. Es el único punto sin recuperación |
+| Acceso a las **cuentas** de los proveedores | Sí: los tokens se regeneran rehaciendo el OAuth |
+| El software | Sí, está en el repositorio |
+
+De la máquina muerta no hace falta nada. La cabecera (sal, topología y orden de proveedores)
+y el puntero de raíz viven replicados en los propios proveedores.
+
+Los riesgos reales, por gravedad:
+
+1. **La frase de paso.** Trátala como la semilla de una cartera: gestor de contraseñas y
+   copia en papel en otro sitio físico.
+2. **La cabecera.** Lleva la sal, y sin sal no hay clave con la que descifrar nada. Va
+   replicada en todos los proveedores, pero `libredisk header export` la vuelca a un fichero
+   para guardarla junto a la frase. Sin ella los trozos son ilegibles para siempre.
+3. **Perder una cuenta de nube.** Con `rs(k,m)` sobrevives a perder *m*. Por eso los
+   proveedores deben estar en cuentas, e idealmente en empresas, distintas.
+4. **Usar un directorio local como proveedor.** Muere con la máquina y consume presupuesto de
+   redundancia.
+
+Si se pierde el puntero de raíz pero queda la cabecera, `libredisk rescue` enumera los
+trozos, los descifra y encuentra los directorios a los que no apunta nadie: son las raíces
+candidatas. Como aquí nada se sobrescribe, aparecen también las de versiones anteriores, y el
+rescate las describe por su contenido —cuántos ficheros, qué rutas— para poder elegir sin
+mirar hashes. Adoptar una no borra las demás.
+
+> **Esto se degrada en cuanto haya caché de escritura diferida.** Ese día existirá una ventana
+> real en la que hay datos en la máquina que todavía no están en las nubes, y ahí sí habría
+> pérdida. El índice local tiene que seguir siendo una caché, nunca el origen, y la interfaz
+> tiene que distinguir "guardado localmente" de "a salvo en la nube".
 
 ### Concurrencia
 **v1 = un solo escritor, varios lectores.** El bloqueo distribuido entre máquinas es un
