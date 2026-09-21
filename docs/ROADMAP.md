@@ -33,14 +33,20 @@ Pila elegida: **Rust + OpenDAL**.
       servicio en vez de lo que pedía el llamante, y construía la URL con la ruta duplicada.
       En debug reventaba con un panic; en release fallaba al deserializar. Corregido aguas
       arriba en 0.59.2, que es la primera con el arreglo y exige 1.91
-- [ ] Volver a pasar la suite contra Google Drive con las dos comprobaciones de listado
-- [ ] Medir y decidir el anidamiento de `shard_key` en proveedores jerárquicos. Enumerar tres
-      objetos a tres niveles de profundidad en OneDrive cuesta **~11 s**: OpenDAL recorre el
-      árbol nivel a nivel y paga una petición por directorio. Con `chunks/<2 hex>/` son 257
-      directorios por proveedor, o sea minutos por enumeración completa. El prefijo de dos
-      caracteres existe para no acumular millones de objetos en un mismo directorio, que es lo
-      que degrada a los almacenes planos; en los jerárquicos el incentivo va justo al revés.
-      Puede que el anidamiento deba depender del proveedor, igual que el tamaño de trozo
+- [x] Google Drive vuelve a pasar la suite con las once comprobaciones, ya con `list`. No hizo
+      falta tocar nada: el lister de Drive no tenía el fallo del de OneDrive
+- [ ] Decidir el anidamiento de `shard_key` en proveedores jerárquicos. Medido en
+      [VIABILIDAD.md §7](VIABILIDAD.md#7-enumerar-qué-cuesta-list): OpenDAL recorre el árbol
+      nivel a nivel y paga una petición por directorio — ~1,1 s el suelo en las dos nubes,
+      3-4 s con contenido debajo. Con `chunks/<2 hex>/` son 257 directorios por proveedor, o
+      sea entre 5 y 17 minutos por enumeración completa. El prefijo de dos caracteres existe
+      para no acumular millones de objetos en un mismo directorio, que es lo que degrada a los
+      almacenes planos; en los jerárquicos el incentivo va justo al revés. Probablemente deba
+      depender del proveedor, igual que el tamaño de trozo
+- [ ] Repetir las medidas de §5 y §6 desde la misma red que las de §7. El "4,7× más barato
+      por operación" de OneDrive no se reprodujo el 2026-09-21 (salió 1,6×), y la hipótesis
+      —que el coste de Drive depende de cuánto haya en la cuenta, porque OpenDAL resuelve
+      rutas buscando— está sin verificar
 - [ ] Tamano de trozo por proveedor: 16 MiB se queda corto donde el coste es por operacion
 - [ ] Trocear ficheros en trozos de 16 MiB (el almacén opera sobre un trozo suelto)
 - [ ] Metadatos en SQLite + manifiestos COW
