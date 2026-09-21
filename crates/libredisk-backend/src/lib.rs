@@ -138,10 +138,21 @@ impl OpendalBackend {
         builder: impl opendal::Builder,
     ) -> Result<Self, BackendError> {
         let name = name.into();
-        let op = Operator::new(builder).map_err(|source| BackendError::Config {
-            name: name.clone(),
-            source: Box::new(source),
-        })?;
+        let op = Operator::new(builder)
+            .map_err(|source| BackendError::Config {
+                name: name.clone(),
+                source: Box::new(source),
+            })?
+            // Reintentar no es una optimizacion, es correccion. Probando contra cuentas
+            // reales se perdio una escritura suelta a OneDrive y una lectura suelta a
+            // Drive, las dos transitorias: la primera dejo un volumen con menos
+            // redundancia de la pedida sin que nadie se enterara, y la segunda hizo que
+            // un scrub se saltara medio arbol.
+            //
+            // Es seguro en las cinco operaciones del trait, y lo es **porque** los trozos
+            // son inmutables: repetir un put reescribe los mismos bytes en la misma clave,
+            // y get, exists, list y delete no tienen efectos que se acumulen.
+            .layer(opendal::layers::RetryLayer::new().with_jitter());
         Ok(Self { name, op })
     }
 
