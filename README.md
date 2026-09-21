@@ -19,7 +19,7 @@ Sitio del proyecto: https://libredisk.chambaya.net
 Requiere Rust estable (edición 2024).
 
 ```sh
-cargo test --workspace          # 119 tests
+cargo test --workspace          # 130 tests
 cargo run -- layout rs:4,2      # tolerancia y sobrecoste de una topología
 cargo run -- demo --layout rs:4,2 --kib 512
 cargo run -- check              # conformidad de los proveedores configurados
@@ -46,6 +46,9 @@ cargo run -- rebuild                      # regenerar lo que falte
 
 cargo run -- header export ./cabecera.json   # respaldo: sin la sal no hay clave
 cargo run -- rescue                          # si se pierde el puntero de raiz
+
+cargo run -- put ./grande.mkv /medios/grande.mkv --diferido   # vuelve enseguida
+cargo run -- sync                                             # y sube cuando toque
 cargo run -- mount Z:                        # montarlo como unidad (Windows)
 ```
 

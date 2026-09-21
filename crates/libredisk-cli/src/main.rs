@@ -63,7 +63,17 @@ enum Command {
         path: String,
     },
     /// Sube un fichero local al volumen.
-    Put { local: String, remoto: String },
+    Put {
+        local: String,
+        remoto: String,
+        /// Prepara la subida en local y vuelve enseguida, sin tocar los proveedores.
+        ///
+        /// Lo escrito queda **solo en esta maquina** hasta `libredisk sync`.
+        #[arg(long)]
+        diferido: bool,
+    },
+    /// Sube lo que haya quedado pendiente de una escritura diferida.
+    Sync,
     /// Baja un fichero del volumen.
     Get {
         remoto: String,
@@ -147,7 +157,18 @@ async fn main() -> Result<()> {
         Command::Volume(VolumeCmd::Create { layout }) => volumen::create(&layout).await,
         Command::Volume(VolumeCmd::Status) => volumen::status().await,
         Command::Ls { path } => volumen::ls(&path).await,
-        Command::Put { local, remoto } => volumen::put(&local, &remoto).await,
+        Command::Put {
+            local,
+            remoto,
+            diferido,
+        } => {
+            if diferido {
+                volumen::put_diferido(&local, &remoto).await
+            } else {
+                volumen::put(&local, &remoto).await
+            }
+        }
+        Command::Sync => volumen::sync().await,
         Command::Get { remoto, local } => volumen::get(&remoto, local.as_deref()).await,
         Command::Cat {
             remoto,

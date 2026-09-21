@@ -148,6 +148,12 @@ mirar hashes. Adoptar una no borra las demás.
 > pérdida. El índice local tiene que seguir siendo una caché, nunca el origen, y la interfaz
 > tiene que distinguir "guardado localmente" de "a salvo en la nube".
 
+> **La escritura diferida rompe esto a propósito, y hay que saberlo.** Entre `put --diferido`
+> y `sync` hay datos que **solo existen en esta máquina**: si muere en esa ventana, se
+> pierden. No es evitable —es la definición de diferir— pero sí decible, y por eso
+> `libredisk status` distingue "pendiente" de "a salvo en los proveedores" y `put --diferido`
+> lo avisa en mayúsculas.
+
 ### Concurrencia
 **v1 = un solo escritor, varios lectores.** El bloqueo distribuido entre máquinas es un
 problema difícil y no pertenece a un MVP. Se materializa como un *lease* renovable

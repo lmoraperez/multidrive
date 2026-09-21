@@ -74,7 +74,13 @@ Pila elegida: **Rust + OpenDAL**.
       el hash al leer —una caché corrupta en silencio sería peor que no tenerla— y va separada
       por volumen, porque dos volúmenes pueden tener el mismo trozo sellado con claves
       distintas y se invalidarían mutuamente
-- [ ] Escritura diferida: es lo que falta para poder montar en lectura-escritura
+- [x] Escritura diferida. `put --diferido` prepara en local y vuelve enseguida; `sync` sube.
+      El invariante que la sostiene: **nunca se publica una raíz que apunte a trozos que
+      todavía no estén en los proveedores**. Si una subida falla, la raíz se queda esperando y
+      el volumen se sigue viendo como antes de la escritura — un estado viejo, pero íntegro.
+      Sobrevive a un corte: la cola se recupera del diario al arrancar
+- [ ] Montaje en lectura-escritura. La pieza de abajo ya está; falta el camino de escritura de
+      WinFsp y decidir cuándo se sincroniza solo
 - [ ] Montaje FUSE de solo lectura → luego lectura/escritura
 - [x] `libredisk scrub` y `rebuild` expuestos en la CLI. `scrub` recorre el árbol, enumera
       los proveedores y dice qué le falta a cada trozo y dónde; si un nodo no se deja leer,

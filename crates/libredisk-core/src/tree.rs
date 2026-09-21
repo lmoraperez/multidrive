@@ -397,6 +397,17 @@ impl Volume {
 /// Va cifrado como cualquier otra cosa: en claro revelaria el identificador de la raiz, que
 /// es el hash de su contenido.
 async fn publicar(store: &ChunkStore, root: &Root) -> Result<(), CoreError> {
+    // Con escritura diferida, la raiz **no se publica**: se encola. Publicarla ahora dejaria
+    // el volumen apuntando a trozos que siguen sin subir, que es justo el estado que este
+    // diseno no puede permitirse.
+    if let Some(cola) = store.writeback() {
+        return cola.stage_root(root.clone()).await;
+    }
+    publicar_ahora(store, root).await
+}
+
+/// Publica de verdad, sin mirar la cola. Es lo que usa `sync` cuando ya no queda nada arriba.
+pub(crate) async fn publicar_ahora(store: &ChunkStore, root: &Root) -> Result<(), CoreError> {
     let claro = serde_json::to_vec(root)?;
     let sellado = store.key.seal(&claro, ROOT_KEY.as_bytes())?;
 
