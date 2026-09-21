@@ -18,3 +18,9 @@ winfsp = "0.13"
 
 [target.'cfg(windows)'.build-dependencies]
 winfsp = "0.13"
+
+[dev-dependencies]
+libredisk-backend.workspace = true
+libredisk-crypto.workspace = true
+libredisk-raid.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

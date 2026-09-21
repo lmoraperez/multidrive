@@ -98,15 +98,14 @@ Pila elegida: **Rust + OpenDAL**.
       dos publicaciones habría una generación intermedia en la que el fichero no está en
       ninguno de los dos sitios, y un lector podría pillarla. Hay un test que lo comprueba
       abriendo la raíz anterior y la nueva
-- [ ] Resolución **sin distinguir mayúsculas** en la capa de montaje. El árbol sí distingue,
-      y eso está bien: en Linux un sistema de ficheros distingue, y el núcleo sirve a los dos.
-      Pero Windows espera lo contrario, así que el volumen se declara sensible a mayúsculas —
-      que es honesto, pero no es lo que una aplicación de Windows supone.
-      Se descubrió porque un `Rename-Item` creó un directorio `ORIGEN` duplicado: Windows
-      normaliza las rutas a mayúsculas cuando el sistema de ficheros dice ser insensible, y
-      entonces dejaban de casar. Lo correcto es resolver sin distinguir **en el montaje**,
-      conservando la forma guardada
-- [ ] Montaje FUSE de solo lectura → luego lectura/escritura
+- [x] Resolución **sin distinguir mayúsculas** en la capa de montaje. El árbol sigue
+      distinguiendo —en Linux un sistema de ficheros distingue, y el núcleo sirve a los dos—
+      y la traducción vive solo en el adaptador de WinFsp: `canonica` devuelve la forma
+      guardada, y al crear se traduce el padre pero se respeta la forma que escribió el
+      usuario, que es lo que significa `case_preserved_names`.
+      Primero se prueba la ruta tal cual, que es el caso normal porque Windows devuelve los
+      nombres como se los dimos al listar; solo si falla se baja por el árbol comparando sin
+      distinguir
 - [x] `libredisk scrub` y `rebuild` expuestos en la CLI. `scrub` recorre el árbol, enumera
       los proveedores y dice qué le falta a cada trozo y dónde; si un nodo no se deja leer,
       avisa de que el recorrido quedó **incompleto** en vez de dar un resumen tranquilizador
