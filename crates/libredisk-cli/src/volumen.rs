@@ -4,11 +4,13 @@
 //! `LIBREDISK_PASSPHRASE` y nunca de un argumento: lo que se escribe en la linea de ordenes
 //! acaba en el historial del intérprete y en la lista de procesos.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use libredisk_backend::{Backend, live};
 use libredisk_core::ChunkId;
+use libredisk_core::diskcache::DiskCache;
 use libredisk_core::header::{self, HEADER_KEY, HEADER_VERSION, Header};
 use libredisk_core::rescue;
 use libredisk_core::tree::{self, Kind, Volume};
@@ -48,7 +50,32 @@ fn proveedores() -> Result<Vec<Arc<dyn Backend>>> {
 /// como `scrub` o `rescue`. El montaje pide mucha mas.
 const CACHE_POR_DEFECTO: usize = 64 * 1024 * 1024;
 
+/// Directorio por defecto de la cache en disco, **separado por volumen**.
+///
+/// La separacion no es cosmetica: dos volumenes pueden contener un trozo con el mismo
+/// identificador —mismo contenido en claro— pero sellado con claves distintas. Si
+/// compartieran directorio, cada uno veria el fichero del otro como corrupto y lo borraria,
+/// turnandose para invalidarse mutuamente.
+fn dir_cache(salt: &[u8]) -> PathBuf {
+    let base = std::env::var("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir());
+    let etiqueta = &blake3_hex(salt)[..16];
+    base.join("libredisk").join("cache").join(etiqueta)
+}
+
+/// La sal no es secreta, pero su hash es un nombre de carpeta mas corto y sin sorpresas.
+fn blake3_hex(datos: &[u8]) -> String {
+    use libredisk_core::ChunkId;
+    ChunkId::of(datos).as_str().to_string()
+}
+
 async fn almacen(cache_bytes: usize) -> Result<ChunkStore> {
+    almacen_completo(cache_bytes, 0).await
+}
+
+/// Igual, anadiendo la cache en disco si se pide.
+async fn almacen_completo(cache_bytes: usize, disco_bytes: usize) -> Result<ChunkStore> {
     let backends = proveedores()?;
 
     let header = header::read(&backends)
@@ -64,7 +91,16 @@ async fn almacen(cache_bytes: usize) -> Result<ChunkStore> {
         )
     })?;
     let key = MasterKey::derive(&frase()?, &header.salt)?;
-    Ok(ChunkStore::new(layout, backends, key)?.with_cache(cache_bytes))
+    let mut store = ChunkStore::new(layout, backends, key)?.with_cache(cache_bytes);
+
+    if disco_bytes > 0 {
+        let dir = dir_cache(&header.salt);
+        let disco = DiskCache::open(&dir, disco_bytes)
+            .await
+            .with_context(|| format!("no se pudo abrir la cache en '{}'", dir.display()))?;
+        store = store.with_disk_cache(disco);
+    }
+    Ok(store)
 }
 
 /// Abre el volumen que haya en los proveedores del entorno.
@@ -74,7 +110,12 @@ pub async fn abrir() -> Result<Volume> {
 
 /// Igual, con una cache del tamano que se pida. El montaje la quiere grande.
 pub async fn abrir_con_cache(cache_bytes: usize) -> Result<Volume> {
-    match Volume::open(almacen(cache_bytes).await?).await {
+    abrir_completo(cache_bytes, 0).await
+}
+
+/// Con los dos escalones de cache: memoria y disco.
+pub async fn abrir_completo(cache_bytes: usize, disco_bytes: usize) -> Result<Volume> {
+    match Volume::open(almacen_completo(cache_bytes, disco_bytes).await?).await {
         Ok(v) => Ok(v),
         // Una frase de paso equivocada no da un error de descifrado: da un puntero de raiz
         // que no se abre, y por tanto "no hay raiz". Hay que decirlo, o parece corrupcion.
@@ -551,12 +592,15 @@ pub async fn header_import(origen: &str) -> Result<()> {
 }
 
 /// Monta el volumen como una unidad del sistema.
-pub async fn mount(punto: &str, cache_mb: usize) -> Result<()> {
-    let volumen = Arc::new(abrir_con_cache(cache_mb * 1024 * 1024).await?);
+pub async fn mount(punto: &str, cache_mb: usize, disco_mb: usize) -> Result<()> {
+    let volumen = Arc::new(abrir_completo(cache_mb * 1024 * 1024, disco_mb * 1024 * 1024).await?);
     let montaje = libredisk_mount::montar(Arc::clone(&volumen), punto)?;
 
     println!("montado en {punto}");
-    println!("cache         {cache_mb} MiB");
+    println!("cache memoria {cache_mb} MiB");
+    if disco_mb > 0 {
+        println!("cache disco   {disco_mb} MiB (cifrada, sobrevive al reinicio)");
+    }
     println!();
     println!("Solo lectura. La primera lectura de cada trozo va a la nube; las siguientes no.");
     println!("Ctrl-C para desmontar.");

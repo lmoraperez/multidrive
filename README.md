@@ -19,7 +19,7 @@ Sitio del proyecto: https://libredisk.chambaya.net
 Requiere Rust estable (edición 2024).
 
 ```sh
-cargo test --workspace          # 109 tests
+cargo test --workspace          # 119 tests
 cargo run -- layout rs:4,2      # tolerancia y sobrecoste de una topología
 cargo run -- demo --layout rs:4,2 --kib 512
 cargo run -- check              # conformidad de los proveedores configurados
@@ -60,6 +60,10 @@ Es **de solo lectura**: escribir a través del montaje exige antes una caché co
 diferida. Leer sí va razonable, porque hay caché en memoria (`--cache-mb`, 512 por defecto):
 la primera lectura de cada trozo va a la nube y las siguientes no. Medido sobre un proveedor
 local, releer 7,6 MiB pasa de 2 718 ms a 23 ms.
+
+Hay además una **caché en disco** (`--disco-mb`, 4096 por defecto) que sobrevive al reinicio,
+así que montar de nuevo no vuelve a pagar la red. Guarda los trozos **cifrados**: los datos
+no quedan en claro en la máquina.
 
 En Linux todavía no hay montaje: hará falta FUSE.
 
