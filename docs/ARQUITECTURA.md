@@ -68,13 +68,41 @@ Ejemplo práctico: `rs(4,2)` con 6 proveedores → sobrevive a que 2 te suspenda
 con 1,5× de sobrecoste de espacio.
 
 ### Metadatos
-SQLite local (o `redb`) con el árbol de inodos y el mapa de trozos. **Se replica a la nube**
-(diario WAL + instantánea periódica en *n* proveedores), porque perder el disco local no
-puede significar perder el volumen.
 
-Cada trozo lleva además una cabecera autodescriptiva con el ID de su manifiesto, para que
-`libredisk rescue` pueda reconstruir el árbol escaneando los proveedores aunque no quede
-ninguna copia de la base de metadatos.
+**La verdad vive en los proveedores, no en el disco local.** El árbol es una estructura
+*copy-on-write* de nodos inmutables, y cada nodo es un trozo más: pasa por el mismo
+`ChunkStore` que los datos, así que hereda cifrado, reparto RAID, direccionamiento por
+contenido y deduplicación sin una línea de código propia. Los nombres de fichero quedan
+cifrados porque el nodo entero lo está.
+
+Modificar algo reescribe los nodos desde la hoja hasta la raíz (*path copying*) y termina
+intercambiando un único puntero. Eso es lo que da atomicidad sobre almacenes que no tienen ni
+renombrado atómico ni escritura en sitio.
+
+**El puntero a la raíz es un objeto suelto en una clave conocida**, no un registro dentro de
+una base de datos. Es deliberado: cualquier lector que tenga la frase de paso arranca leyendo
+esa única clave, sin necesidad de entender ningún esquema. Es el único objeto mutable del
+sistema y, por tanto, el único sitio donde vive la atomicidad.
+
+Un índice local (SQLite o `redb`) es una **caché** de ese árbol, no su origen. Sirve para no
+pagar una petición por nivel en cada `lookup` y para agrupar escrituras, que es obligatorio:
+con los costes medidos en [VIABILIDAD.md §7](VIABILIDAD.md#7-enumerar-qué-cuesta-list), un
+cambio de metadatos que reescriba cuatro niveles sobre seis proveedores son 24 subidas, o sea
+segundos. **El escritor de metadatos no puede ser síncrono.**
+
+Tres cosas distintas se apoyan en que la verdad esté fuera:
+
+- Perder el disco local no puede significar perder el volumen.
+- `libredisk rescue` reconstruye el árbol escaneando los proveedores aunque no quede ninguna
+  copia local. Para eso cada trozo llevará una cabecera autodescriptiva con el ID de su
+  manifiesto. **Todavía sin implementar.**
+- Un lector de solo lectura —el caso de [Android](ROADMAP.md#móvil-android)— necesita
+  exactamente una cosa: el id de la raíz. No replica una base ni reproduce un diario, y baja
+  solo la rama del árbol que el usuario abre, que es justo el patrón de acceso de SAF. Si los
+  metadatos vivieran solo en una base local, un lector externo tendría que replicarla entera.
+
+Android **no es el motivo** de esta decisión —lo son `rescue` y la falta de renombrado
+atómico— pero pide exactamente la misma propiedad. Conviene saber que no cuesta nada extra.
 
 ### Concurrencia
 **v1 = un solo escritor, varios lectores.** El bloqueo distribuido entre máquinas es un
