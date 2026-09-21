@@ -760,6 +760,13 @@ pub async fn sync() -> Result<()> {
         informe.subidos,
         tamano(informe.bytes)
     );
+    if informe.descartados > 0 {
+        println!(
+            "descartados   {} ({}) por no colgar ya de la raiz final",
+            informe.descartados,
+            tamano(informe.bytes_descartados)
+        );
+    }
     if informe.raiz_publicada {
         println!("raiz          publicada");
     }
