@@ -23,6 +23,7 @@ use libredisk_raid::{Layout, RaidError};
 use serde::{Deserialize, Serialize};
 
 pub mod cache;
+pub mod diskcache;
 pub mod file;
 pub mod header;
 pub mod rescue;
@@ -211,8 +212,12 @@ pub struct ChunkStore {
     layout: Layout,
     backends: Vec<Arc<dyn Backend>>,
     key: MasterKey,
-    /// Cache de lectura. Sin ella cada operacion del sistema de ficheros va a la red.
+    /// Cache de lectura en memoria. Sin ella cada operacion del sistema de ficheros va a la
+    /// red.
     cache: Option<cache::ChunkCache>,
+    /// Segundo escalon, en disco y sobreviviendo al reinicio. Guarda el blob **sellado**:
+    /// los datos del usuario no se quedan en claro en la maquina.
+    disco: Option<diskcache::DiskCache>,
 }
 
 impl std::fmt::Debug for ChunkStore {
@@ -246,6 +251,7 @@ impl ChunkStore {
             backends,
             key,
             cache: None,
+            disco: None,
         })
     }
 
@@ -260,6 +266,17 @@ impl ChunkStore {
     pub fn with_cache(mut self, bytes: usize) -> Self {
         self.cache = Some(cache::ChunkCache::new(bytes));
         self
+    }
+
+    /// Anade el segundo escalon: una cache en disco que sobrevive al proceso.
+    pub fn with_disk_cache(mut self, disco: diskcache::DiskCache) -> Self {
+        self.disco = Some(disco);
+        self
+    }
+
+    /// Estadisticas de la cache en disco, si la hay.
+    pub fn disk_stats(&self) -> Option<diskcache::Stats> {
+        self.disco.as_ref().map(diskcache::DiskCache::stats)
     }
 
     /// Estadisticas de la cache, si la hay.
@@ -324,17 +341,47 @@ impl ChunkStore {
     /// copiar 16 MiB en cada acierto. Es rapido comparado con la red, pero es gratis
     /// evitarlo, y `read_at` hace muchas lecturas pequenas sobre el mismo trozo.
     pub async fn get_shared(&self, chunk: &ChunkRef) -> Result<Arc<Vec<u8>>, CoreError> {
+        // Escalon 1: memoria. Ya en claro, sin descifrar nada.
         if let Some(cache) = &self.cache
             && let Some(datos) = cache.get(&chunk.id)
         {
             return Ok(datos);
         }
 
-        let datos = Arc::new(self.recover(chunk).await?.1);
-        if let Some(cache) = &self.cache {
-            cache.put(chunk.id.clone(), Arc::clone(&datos));
+        // Escalon 2: disco. Guarda el blob sellado, asi que hay que abrirlo; a cambio, los
+        // datos del usuario no estan en claro en la maquina.
+        if let Some(disco) = &self.disco {
+            let aad = chunk.id.as_str().as_bytes().to_vec();
+            // Se descifra una sola vez: el verificado y el resultado salen del mismo paso.
+            // Comprobar el hash ademas del tag separa una cache de una fuente de corrupcion
+            // silenciosa.
+            let abierto = disco
+                .get(&chunk.id, |bytes| {
+                    let claro = self.key.open(bytes, &aad).ok()?;
+                    (ChunkId::of(&claro) == chunk.id).then_some(claro)
+                })
+                .await;
+
+            if let Some(claro) = abierto {
+                let claro = Arc::new(claro);
+                if let Some(cache) = &self.cache {
+                    cache.put(chunk.id.clone(), Arc::clone(&claro));
+                }
+                return Ok(claro);
+            }
         }
-        Ok(datos)
+
+        // Escalon 3: los proveedores.
+        let (sellado, claro) = self.recover(chunk).await?;
+        let claro = Arc::new(claro);
+
+        if let Some(disco) = &self.disco {
+            disco.put(&chunk.id, &sellado).await;
+        }
+        if let Some(cache) = &self.cache {
+            cache.put(chunk.id.clone(), Arc::clone(&claro));
+        }
+        Ok(claro)
     }
 
     /// Reconstruye un trozo y devuelve `(sellado, claro)`, ambos verificados.

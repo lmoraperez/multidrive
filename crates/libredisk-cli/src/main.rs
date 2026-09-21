@@ -96,6 +96,12 @@ enum Command {
         /// lectura del sistema de ficheros se resuelve contra la nube.
         #[arg(long, default_value_t = 512)]
         cache_mb: usize,
+        /// Tamano de la cache en disco, en MiB. Con 0, no se usa.
+        ///
+        /// Guarda los trozos **cifrados** y sobrevive al reinicio: es lo que evita pagar el
+        /// arranque en frio cada vez que se monta.
+        #[arg(long, default_value_t = 4096)]
+        disco_mb: usize,
     },
     /// Reconstruye el volumen a partir de lo que quede en los proveedores.
     ///
@@ -152,7 +158,11 @@ async fn main() -> Result<()> {
         Command::Rm { path } => volumen::rm(&path).await,
         Command::Scrub => volumen::scrub().await,
         Command::Rebuild => volumen::rebuild().await,
-        Command::Mount { punto, cache_mb } => volumen::mount(&punto, cache_mb).await,
+        Command::Mount {
+            punto,
+            cache_mb,
+            disco_mb,
+        } => volumen::mount(&punto, cache_mb, disco_mb).await,
         Command::Rescue { adoptar } => volumen::rescue(adoptar.as_deref()).await,
         Command::Header(HeaderCmd::Export { fichero }) => volumen::header_export(&fichero).await,
         Command::Header(HeaderCmd::Import { fichero }) => volumen::header_import(&fichero).await,

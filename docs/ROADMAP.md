@@ -62,11 +62,19 @@ Pila elegida: **Rust + OpenDAL**.
       **único objeto mutable** del sistema: va en espejo a todos los proveedores, no repartido
       con RAID, porque tiene que leerse aunque solo sobreviva uno. Como nada se sobrescribe,
       una raíz vieja sigue siendo legible: eso son **instantáneas sin código dedicado**
-- [ ] Índice local (SQLite o `redb`) como caché del árbol. No es la verdad, es una caché: hoy
-      cada `lookup` paga una petición por nivel, y cada escritura publica una raíz nueva. Con
-      los costes de [VIABILIDAD.md §7](VIABILIDAD.md#7-enumerar-qué-cuesta-list), escribir un
-      fichero hondo son segundos. El escritor de metadatos no puede ser síncrono
-- [ ] Caché local en disco con escritura diferida
+- [ ] ~~Índice local (SQLite o `redb`)~~. **Descartado**: la caché de trozos lo hace
+      innecesario. Un índice de rutas serviría para evitar la petición por nivel en un
+      `lookup` en frío, pero como los nodos del árbol *son* trozos, la caché general ya los
+      guarda, y sin esquema, sin migraciones y sin invalidación. El direccionamiento por
+      contenido hace que la solución general salga más simple que la especializada
+- [x] Caché local en disco. Segundo escalón: memoria, disco, proveedores. Guarda el blob
+      **cifrado**, no el contenido: cachear en claro sería más rápido pero dejaría los datos
+      del usuario sin cifrar en la máquina local, que es justo lo que este proyecto promete
+      que no pasa. Sobrevive al reinicio reconstruyendo su índice del directorio, se verifica
+      el hash al leer —una caché corrupta en silencio sería peor que no tenerla— y va separada
+      por volumen, porque dos volúmenes pueden tener el mismo trozo sellado con claves
+      distintas y se invalidarían mutuamente
+- [ ] Escritura diferida: es lo que falta para poder montar en lectura-escritura
 - [ ] Montaje FUSE de solo lectura → luego lectura/escritura
 - [x] `libredisk scrub` y `rebuild` expuestos en la CLI. `scrub` recorre el árbol, enumera
       los proveedores y dice qué le falta a cada trozo y dónde; si un nodo no se deja leer,
