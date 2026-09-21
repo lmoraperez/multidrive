@@ -236,7 +236,7 @@ impl Drop for Montaje {
 }
 
 /// Monta el volumen en un punto de montaje: una letra (`Z:`) o un directorio vacio.
-pub fn montar(volumen: Volume, punto: &str) -> Result<Montaje> {
+pub fn montar(volumen: Arc<Volume>, punto: &str) -> Result<Montaje> {
     winfsp::winfsp_init()
         .context(
             "no se pudo inicializar WinFsp.\n\
@@ -258,7 +258,7 @@ pub fn montar(volumen: Volume, punto: &str) -> Result<Montaje> {
         .file_info_timeout(CACHE_MS);
 
     let fs = LibreDiskFs {
-        volumen: Arc::new(volumen),
+        volumen,
         rt: Handle::current(),
     };
 

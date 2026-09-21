@@ -222,7 +222,7 @@ impl ChunkStore {
 
         while pos < fin {
             // `validate` garantiza que los trozos cubren `len`, asi que este indice existe.
-            let datos = self.get(&manifest.chunks[i]).await?;
+            let datos = self.get_shared(&manifest.chunks[i]).await?;
             let disponible = datos.len().saturating_sub(dentro);
             let toma = ((fin - pos) as usize).min(disponible);
             salida.extend_from_slice(&datos[dentro..dentro + toma]);

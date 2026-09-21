@@ -464,7 +464,9 @@ fn unir(destino: &mut Vec<String>, nuevos: Vec<String>) {
 }
 
 async fn sacar_nodo(store: &ChunkStore, node: &ChunkRef) -> Result<Node, CoreError> {
-    let bytes = store.get(node).await?;
+    // `get_shared` en vez de `get`: los nodos se releen constantemente al recorrer rutas, y
+    // con cache el acierto no cuesta ni una copia.
+    let bytes = store.get_shared(node).await?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 

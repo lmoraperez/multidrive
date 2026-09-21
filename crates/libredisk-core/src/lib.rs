@@ -22,6 +22,7 @@ use libredisk_crypto::MasterKey;
 use libredisk_raid::{Layout, RaidError};
 use serde::{Deserialize, Serialize};
 
+pub mod cache;
 pub mod file;
 pub mod header;
 pub mod rescue;
@@ -210,6 +211,8 @@ pub struct ChunkStore {
     layout: Layout,
     backends: Vec<Arc<dyn Backend>>,
     key: MasterKey,
+    /// Cache de lectura. Sin ella cada operacion del sistema de ficheros va a la red.
+    cache: Option<cache::ChunkCache>,
 }
 
 impl std::fmt::Debug for ChunkStore {
@@ -242,11 +245,26 @@ impl ChunkStore {
             layout,
             backends,
             key,
+            cache: None,
         })
     }
 
     pub fn layout(&self) -> Layout {
         self.layout
+    }
+
+    /// Activa una cache de lectura de `bytes` de capacidad.
+    ///
+    /// No hace falta invalidarla nunca: los trozos son inmutables y su nombre es su
+    /// contenido. Ver [`cache`].
+    pub fn with_cache(mut self, bytes: usize) -> Self {
+        self.cache = Some(cache::ChunkCache::new(bytes));
+        self
+    }
+
+    /// Estadisticas de la cache, si la hay.
+    pub fn cache_stats(&self) -> Option<cache::Stats> {
+        self.cache.as_ref().map(cache::ChunkCache::stats)
     }
 
     pub fn backend_names(&self) -> Vec<&str> {
@@ -297,7 +315,26 @@ impl ChunkStore {
 
     /// Descarga, reconstruye, descifra y **verifica** un trozo.
     pub async fn get(&self, chunk: &ChunkRef) -> Result<Vec<u8>, CoreError> {
-        Ok(self.recover(chunk).await?.1)
+        Ok(self.get_shared(chunk).await?.as_ref().clone())
+    }
+
+    /// Igual que [`ChunkStore::get`] pero compartiendo el buffer en vez de copiarlo.
+    ///
+    /// Existe por la cache: con trozos de 16 MiB, devolver un `Vec` propio obligaria a
+    /// copiar 16 MiB en cada acierto. Es rapido comparado con la red, pero es gratis
+    /// evitarlo, y `read_at` hace muchas lecturas pequenas sobre el mismo trozo.
+    pub async fn get_shared(&self, chunk: &ChunkRef) -> Result<Arc<Vec<u8>>, CoreError> {
+        if let Some(cache) = &self.cache
+            && let Some(datos) = cache.get(&chunk.id)
+        {
+            return Ok(datos);
+        }
+
+        let datos = Arc::new(self.recover(chunk).await?.1);
+        if let Some(cache) = &self.cache {
+            cache.put(chunk.id.clone(), Arc::clone(&datos));
+        }
+        Ok(datos)
     }
 
     /// Reconstruye un trozo y devuelve `(sellado, claro)`, ambos verificados.
