@@ -93,8 +93,19 @@ Pila elegida: **Rust + OpenDAL**.
       Es seguro descartar porque un trozo preparado se escribió en esta sesión y la raíz que
       ya estuviera publicada es anterior: no puede referenciarlo. Si el recorrido falla no se
       descarta nada, que es el lado prudente del error
-- [ ] `rename` en el montaje: hoy mover o renombrar desde el Explorador no funciona. Necesita
-      que el árbol sepa aplicar dos cambios en una sola publicación, o no sería atómico
+- [x] `rename` en el montaje. Renombrar y mover desde el Explorador funcionan. Los dos
+      cambios —quitar del origen, poner en el destino— salen en **una sola raíz**: si fueran
+      dos publicaciones habría una generación intermedia en la que el fichero no está en
+      ninguno de los dos sitios, y un lector podría pillarla. Hay un test que lo comprueba
+      abriendo la raíz anterior y la nueva
+- [ ] Resolución **sin distinguir mayúsculas** en la capa de montaje. El árbol sí distingue,
+      y eso está bien: en Linux un sistema de ficheros distingue, y el núcleo sirve a los dos.
+      Pero Windows espera lo contrario, así que el volumen se declara sensible a mayúsculas —
+      que es honesto, pero no es lo que una aplicación de Windows supone.
+      Se descubrió porque un `Rename-Item` creó un directorio `ORIGEN` duplicado: Windows
+      normaliza las rutas a mayúsculas cuando el sistema de ficheros dice ser insensible, y
+      entonces dejaban de casar. Lo correcto es resolver sin distinguir **en el montaje**,
+      conservando la forma guardada
 - [ ] Montaje FUSE de solo lectura → luego lectura/escritura
 - [x] `libredisk scrub` y `rebuild` expuestos en la CLI. `scrub` recorre el árbol, enumera
       los proveedores y dice qué le falta a cada trozo y dónde; si un nodo no se deja leer,

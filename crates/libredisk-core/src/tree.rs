@@ -71,6 +71,9 @@ pub struct Root {
     pub node: ChunkRef,
 }
 
+/// Un cambio en el arbol: poner una entrada en una ruta, o quitarla.
+type Cambio = (Vec<String>, Option<Entry>);
+
 /// Un volumen: un [`ChunkStore`] mas la raiz del arbol que vive en el.
 pub struct Volume {
     store: ChunkStore,
@@ -405,67 +408,181 @@ impl Volume {
         segs: &[String],
         cambio: Option<Entry>,
     ) -> Result<Vec<String>, CoreError> {
-        let Some((nombre, padres)) = segs.split_last() else {
-            return Err(CoreError::InvalidPath("no hay nada que cambiar".into()));
-        };
+        self.aplicar_varios(vec![(segs.to_vec(), cambio)]).await
+    }
 
-        // Al insertar se crean los directorios que falten; al borrar, su ausencia es un error.
-        let crear = cambio.is_some();
+    /// Aplica varios cambios y publica **una sola raiz**.
+    ///
+    /// Existe por `rename`: mover un fichero es quitarlo de un sitio y ponerlo en otro, y
+    /// hacerlo en dos publicaciones dejaria una ventana en la que el fichero no esta en
+    /// ninguno de los dos. Un sistema de ficheros no puede permitirse eso.
+    ///
+    /// Es el *path copying* de siempre, pero sobre la union de las ramas tocadas: se cargan
+    /// los directorios por los que pasan todos los cambios, se aplican en memoria, y se
+    /// escriben de abajo arriba para que cada padre vea ya a sus hijos nuevos.
+    async fn aplicar_varios(&mut self, cambios: Vec<Cambio>) -> Result<Vec<String>, CoreError> {
+        if cambios.is_empty() {
+            return Ok(Vec::new());
+        }
+        for (segs, _) in &cambios {
+            if segs.is_empty() {
+                return Err(CoreError::InvalidPath("la raiz no se puede cambiar".into()));
+            }
+        }
 
-        let mut cadena: Vec<BTreeMap<String, Entry>> = Vec::with_capacity(padres.len());
-        let mut actual = self.leer_dir(&self.root.node.clone()).await?;
+        let mut ramas = self.cargar_ramas(&cambios).await?;
 
-        for seg in padres {
-            let siguiente = match actual.get(seg) {
-                Some(e) if e.kind == Kind::Dir => {
-                    let n = e.node.clone();
-                    self.leer_dir(&n).await?
+        // Aplicar en memoria. A estas alturas todos los directorios implicados estan cargados.
+        for (segs, cambio) in &cambios {
+            let (nombre, padres) = segs.split_last().expect("comprobado arriba");
+            let dir = ramas
+                .get_mut(padres)
+                .expect("cargar_ramas dejo cargado todo el camino");
+            match cambio {
+                Some(entrada) => {
+                    dir.insert(nombre.clone(), entrada.clone());
                 }
-                Some(_) => return Err(CoreError::NotADirectory(seg.clone())),
-                None if crear => BTreeMap::new(),
-                None => return Err(CoreError::PathNotFound(seg.clone())),
-            };
-            cadena.push(std::mem::replace(&mut actual, siguiente));
-        }
-
-        match cambio {
-            Some(e) => {
-                actual.insert(nombre.clone(), e);
-            }
-            None => {
-                actual
-                    .remove(nombre)
-                    .ok_or_else(|| CoreError::PathNotFound(nombre.clone()))?;
+                None => {
+                    dir.remove(nombre)
+                        .ok_or_else(|| CoreError::PathNotFound(nombre.clone()))?;
+                }
             }
         }
 
-        // De vuelta hacia arriba, un nodo nuevo por nivel.
+        // Escribir de abajo arriba: un padre tiene que escribirse cuando sus hijos ya tienen
+        // identificador nuevo, o apuntaria a la version vieja.
+        let mut rutas: Vec<Vec<String>> = ramas.keys().cloned().collect();
+        rutas.sort_by_key(|r| std::cmp::Reverse(r.len()));
+
         let mut degraded = Vec::new();
-        let (mut hijo, d) = poner_nodo(&self.store, &Node::Dir(actual.clone())).await?;
-        unir(&mut degraded, d);
-        let mut len = actual.len() as u64;
-        for (mut padre, seg) in cadena.into_iter().zip(padres).rev() {
-            padre.insert(
-                seg.clone(),
-                Entry {
-                    node: hijo,
-                    kind: Kind::Dir,
-                    len,
-                },
-            );
-            len = padre.len() as u64;
-            let (nuevo, d) = poner_nodo(&self.store, &Node::Dir(padre)).await?;
+        let mut raiz_nueva = None;
+
+        for ruta in rutas {
+            let contenido = ramas.get(&ruta).expect("esta en el mapa").clone();
+            let len = contenido.len() as u64;
+            let (node, d) = poner_nodo(&self.store, &Node::Dir(contenido)).await?;
             unir(&mut degraded, d);
-            hijo = nuevo;
+
+            match ruta.split_last() {
+                Some((nombre, padre)) => {
+                    ramas
+                        .get_mut(padre)
+                        .expect("el padre se cargo con el hijo")
+                        .insert(
+                            nombre.clone(),
+                            Entry {
+                                node,
+                                kind: Kind::Dir,
+                                len,
+                            },
+                        );
+                }
+                None => raiz_nueva = Some(node),
+            }
         }
 
         let nueva = Root {
             generation: self.root.generation + 1,
-            node: hijo,
+            node: raiz_nueva.expect("la raiz siempre esta en el mapa"),
         };
         publicar(&self.store, &nueva).await?;
         self.root = nueva;
         Ok(degraded)
+    }
+
+    /// Carga los directorios por los que pasan los cambios, indexados por su ruta.
+    ///
+    /// Se hace en una pasada aparte para no mezclar lecturas de red con la manipulacion del
+    /// arbol en memoria: asi la parte delicada —aplicar los cambios— no tiene esperas dentro.
+    async fn cargar_ramas(
+        &self,
+        cambios: &[Cambio],
+    ) -> Result<BTreeMap<Vec<String>, BTreeMap<String, Entry>>, CoreError> {
+        let mut ramas = BTreeMap::new();
+        ramas.insert(Vec::new(), self.leer_dir(&self.root.node.clone()).await?);
+
+        for (segs, cambio) in cambios {
+            let (_, padres) = segs.split_last().expect("comprobado por el llamante");
+            let mut prefijo: Vec<String> = Vec::new();
+
+            for seg in padres {
+                let mut siguiente = prefijo.clone();
+                siguiente.push(seg.clone());
+
+                if !ramas.contains_key(&siguiente) {
+                    // Se clona la entrada para soltar el prestamo del mapa antes de esperar.
+                    let entrada = ramas.get(&prefijo).and_then(|p| p.get(seg)).cloned();
+                    let contenido = match entrada {
+                        Some(e) if e.kind == Kind::Dir => self.leer_dir(&e.node).await?,
+                        Some(_) => return Err(CoreError::NotADirectory(seg.clone())),
+                        // Al insertar se crean los directorios que falten; al borrar, su
+                        // ausencia es un error.
+                        None if cambio.is_some() => BTreeMap::new(),
+                        None => return Err(CoreError::PathNotFound(seg.clone())),
+                    };
+                    ramas.insert(siguiente.clone(), contenido);
+                }
+                prefijo = siguiente;
+            }
+        }
+        Ok(ramas)
+    }
+
+    /// Mueve o renombra. `reemplazar` decide si puede pisar algo que ya exista en el destino.
+    ///
+    /// Los dos cambios —quitar del origen, poner en el destino— salen en **una sola raiz**,
+    /// asi que para cualquier lector el fichero nunca deja de estar en alguno de los dos
+    /// sitios.
+    pub async fn rename(
+        &mut self,
+        origen: &str,
+        destino: &str,
+        reemplazar: bool,
+    ) -> Result<Vec<String>, CoreError> {
+        let de = segmentos(origen)?;
+        let a = segmentos(destino)?;
+
+        if de.is_empty() || a.is_empty() {
+            return Err(CoreError::InvalidPath("la raiz no se mueve".into()));
+        }
+        if de == a {
+            return Ok(Vec::new());
+        }
+        // Meter un directorio dentro de si mismo dejaria una rama inalcanzable y un ciclo.
+        if a.len() > de.len() && a[..de.len()] == de[..] {
+            return Err(CoreError::InvalidPath(format!(
+                "'{destino}' esta dentro de '{origen}'"
+            )));
+        }
+
+        let entrada = self
+            .buscar(&de)
+            .await?
+            .ok_or_else(|| CoreError::PathNotFound(origen.to_string()))?;
+
+        // El directorio de destino tiene que existir ya. Crearlo al vuelo, como hace
+        // `write_file`, aqui esconderia errores: fue asi como un `rename` con la ruta en
+        // mayusculas creo un directorio duplicado en vez de fallar.
+        if let Some((_, padres)) = a.split_last()
+            && !padres.is_empty()
+            && !matches!(self.buscar(padres).await?, Some(e) if e.kind == Kind::Dir)
+        {
+            return Err(CoreError::PathNotFound(format!(
+                "el directorio de destino de '{destino}' no existe"
+            )));
+        }
+
+        if let Some(ya) = self.buscar(&a).await? {
+            if !reemplazar {
+                return Err(CoreError::InvalidPath(format!("'{destino}' ya existe")));
+            }
+            if ya.kind == Kind::Dir && ya.len != 0 {
+                return Err(CoreError::DirNotEmpty(destino.to_string()));
+            }
+        }
+
+        self.aplicar_varios(vec![(de, None), (a, Some(entrada))])
+            .await
     }
 
     async fn leer_dir(&self, node: &ChunkRef) -> Result<BTreeMap<String, Entry>, CoreError> {
@@ -1054,5 +1171,176 @@ mod tests_escritura {
         s.get_file(&nuevo, &mut salida).await.unwrap();
         assert_eq!(&salida[500..], b"lejos");
         assert_eq!(&salida[..500], &vec![0u8; 500][..]);
+    }
+}
+
+#[cfg(test)]
+mod tests_rename {
+    use libredisk_raid::Layout;
+
+    use super::*;
+    use crate::testutil::{backends, store_sobre};
+
+    fn rs() -> Layout {
+        Layout::ReedSolomon { k: 4, m: 2 }
+    }
+
+    async fn volumen() -> Volume {
+        let bs = backends(6);
+        Volume::create(store_sobre(&bs, rs())).await.unwrap().0
+    }
+
+    #[tokio::test]
+    async fn renombrar_en_el_mismo_directorio() {
+        let mut v = volumen().await;
+        v.write_file("/viejo.txt", &b"contenido"[..]).await.unwrap();
+
+        v.rename("/viejo.txt", "/nuevo.txt", false).await.unwrap();
+
+        assert!(v.lookup("/viejo.txt").await.unwrap().is_none());
+        assert_eq!(v.read_at("/nuevo.txt", 0, 50).await.unwrap(), b"contenido");
+    }
+
+    #[tokio::test]
+    async fn mover_a_otro_directorio() {
+        let mut v = volumen().await;
+        v.write_file("/a/uno.txt", &b"datos"[..]).await.unwrap();
+        v.mkdir_p("/b").await.unwrap();
+
+        v.rename("/a/uno.txt", "/b/dos.txt", false).await.unwrap();
+
+        assert!(v.read_dir("/a").await.unwrap().is_empty());
+        assert_eq!(v.read_at("/b/dos.txt", 0, 50).await.unwrap(), b"datos");
+    }
+
+    /// **La razon de que `aplicar_varios` exista.** Los dos cambios tienen que salir en una
+    /// sola raiz: si fueran dos, habria una generacion intermedia en la que el fichero no
+    /// esta en ninguno de los dos sitios.
+    #[tokio::test]
+    async fn mover_gasta_una_sola_generacion() {
+        let mut v = volumen().await;
+        v.write_file("/a/uno.txt", &b"datos"[..]).await.unwrap();
+        v.mkdir_p("/b").await.unwrap();
+
+        let antes = v.root().generation;
+        v.rename("/a/uno.txt", "/b/uno.txt", false).await.unwrap();
+
+        assert_eq!(
+            v.root().generation,
+            antes + 1,
+            "mover no puede publicar dos raices"
+        );
+    }
+
+    /// Y visto desde fuera: ningun lector puede pillar el estado intermedio, porque no
+    /// existe. Se comprueba que la raiz anterior tiene el fichero en el origen y la nueva en
+    /// el destino, sin nada en medio.
+    #[tokio::test]
+    async fn no_hay_estado_intermedio_visible() {
+        let bs = backends(6);
+        let mut v = Volume::create(store_sobre(&bs, rs())).await.unwrap().0;
+        v.write_file("/a/uno.txt", &b"datos"[..]).await.unwrap();
+        v.mkdir_p("/b").await.unwrap();
+        let raiz_antes = v.root().clone();
+
+        v.rename("/a/uno.txt", "/b/uno.txt", false).await.unwrap();
+
+        // La raiz vieja: el fichero sigue en el origen.
+        let viejo = Volume::at(store_sobre(&bs, rs()), raiz_antes);
+        assert!(viejo.lookup("/a/uno.txt").await.unwrap().is_some());
+        assert!(viejo.lookup("/b/uno.txt").await.unwrap().is_none());
+
+        // La nueva: esta en el destino. No hay ninguna en la que falte en las dos.
+        assert!(v.lookup("/a/uno.txt").await.unwrap().is_none());
+        assert!(v.lookup("/b/uno.txt").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn mover_un_directorio_se_lleva_su_contenido() {
+        let mut v = volumen().await;
+        v.write_file("/origen/hondo/f.txt", &b"x"[..])
+            .await
+            .unwrap();
+        v.mkdir_p("/destino").await.unwrap();
+
+        v.rename("/origen/hondo", "/destino/movido", false)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            v.read_at("/destino/movido/f.txt", 0, 10).await.unwrap(),
+            b"x"
+        );
+        assert!(v.read_dir("/origen").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn no_se_pisa_el_destino_sin_permiso() {
+        let mut v = volumen().await;
+        v.write_file("/a.txt", &b"uno"[..]).await.unwrap();
+        v.write_file("/b.txt", &b"dos"[..]).await.unwrap();
+
+        assert!(v.rename("/a.txt", "/b.txt", false).await.is_err());
+        assert_eq!(v.read_at("/b.txt", 0, 10).await.unwrap(), b"dos");
+
+        // Con permiso, si.
+        v.rename("/a.txt", "/b.txt", true).await.unwrap();
+        assert_eq!(v.read_at("/b.txt", 0, 10).await.unwrap(), b"uno");
+        assert!(v.lookup("/a.txt").await.unwrap().is_none());
+    }
+
+    /// Meter un directorio dentro de si mismo dejaria una rama inalcanzable y un ciclo.
+    #[tokio::test]
+    async fn no_se_puede_mover_un_directorio_dentro_de_si_mismo() {
+        let mut v = volumen().await;
+        v.mkdir_p("/dir/sub").await.unwrap();
+
+        assert!(matches!(
+            v.rename("/dir", "/dir/sub/dir", false).await,
+            Err(CoreError::InvalidPath(_))
+        ));
+        // Y el arbol sigue intacto.
+        assert!(v.lookup("/dir/sub").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn mover_lo_que_no_existe_falla() {
+        let mut v = volumen().await;
+        assert!(matches!(
+            v.rename("/fantasma.txt", "/otro.txt", false).await,
+            Err(CoreError::PathNotFound(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn mover_a_la_misma_ruta_no_hace_nada() {
+        let mut v = volumen().await;
+        v.write_file("/a.txt", &b"x"[..]).await.unwrap();
+        let antes = v.root().generation;
+
+        v.rename("/a.txt", "/a.txt", false).await.unwrap();
+
+        assert_eq!(v.root().generation, antes, "no publica una raiz para nada");
+        assert!(v.lookup("/a.txt").await.unwrap().is_some());
+    }
+
+    /// Mover a un directorio que no existe tiene que fallar, no crearlo.
+    ///
+    /// `write_file` si crea los directorios que faltan, pero en un `rename` eso esconde
+    /// errores: fue asi como una ruta llegada en mayusculas creo un directorio duplicado en
+    /// vez de dar error.
+    #[tokio::test]
+    async fn mover_a_un_directorio_inexistente_falla() {
+        let mut v = volumen().await;
+        v.write_file("/a.txt", &b"x"[..]).await.unwrap();
+
+        assert!(matches!(
+            v.rename("/a.txt", "/nuevo/hondo/a.txt", false).await,
+            Err(CoreError::PathNotFound(_))
+        ));
+
+        // Y no se ha tocado nada.
+        assert_eq!(v.read_at("/a.txt", 0, 10).await.unwrap(), b"x");
+        assert!(v.lookup("/nuevo").await.unwrap().is_none());
     }
 }

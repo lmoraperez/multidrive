@@ -498,6 +498,39 @@ impl FileSystemContext for LibreDiskFs {
         Ok(())
     }
 
+    fn rename(
+        &self,
+        context: &Self::FileContext,
+        _file_name: &U16CStr,
+        new_file_name: &U16CStr,
+        replace_if_exists: bool,
+    ) -> winfsp::Result<()> {
+        if self.solo_lectura {
+            return Err(self.no_escribible());
+        }
+
+        // Lo que este en el buffer tiene que bajar antes de mover, o se escribiria sobre una
+        // ruta que ya no existe.
+        self.materializar(context)?;
+
+        let destino = Self::ruta(new_file_name);
+        let mut v = self.volumen.write().map_err(|_| Self::eio())?;
+        self.esperar(v.rename(&context.ruta, &destino, replace_if_exists))
+            .map_err(|e| match e {
+                libredisk_core::CoreError::PathNotFound(_) => {
+                    winfsp::FspError::NTSTATUS(STATUS_OBJECT_NAME_NOT_FOUND)
+                }
+                libredisk_core::CoreError::DirNotEmpty(_) => {
+                    winfsp::FspError::NTSTATUS(STATUS_DIRECTORY_NOT_EMPTY)
+                }
+                libredisk_core::CoreError::InvalidPath(_) => {
+                    winfsp::FspError::NTSTATUS(STATUS_OBJECT_NAME_COLLISION)
+                }
+                _ => Self::eio(),
+            })?;
+        Ok(())
+    }
+
     fn cleanup(&self, context: &Self::FileContext, _file_name: Option<&U16CStr>, flags: u32) {
         let borrar =
             flags & CLEANUP_DELETE != 0 || context.marcado_para_borrar.load(Ordering::Relaxed);
@@ -584,7 +617,15 @@ pub fn montar(volumen: Arc<RwLock<Volume>>, punto: &str, solo_lectura: bool) -> 
         .sector_size(4096)
         .sectors_per_allocation_unit(1)
         .max_component_length(255)
-        .case_sensitive_search(false)
+        // El arbol distingue mayusculas, asi que el volumen tiene que declararlo. Decir lo
+        // contrario no es un detalle: Windows normaliza las rutas a mayusculas cuando un
+        // sistema de ficheros dice ser insensible, y entonces `origen` y `ORIGEN` dejan de
+        // casar. Se descubrio porque un `Rename-Item` creo un directorio duplicado.
+        //
+        // Lo correcto de cara a Windows seria resolver sin distinguir y conservar la forma
+        // guardada, pero eso va en la capa de montaje, no en el nucleo: en Linux un sistema
+        // de ficheros SI distingue, y el nucleo tiene que servir a los dos.
+        .case_sensitive_search(true)
         .case_preserved_names(true)
         .unicode_on_disk(true)
         .read_only_volume(solo_lectura)
