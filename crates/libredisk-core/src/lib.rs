@@ -23,6 +23,10 @@ use libredisk_raid::{Layout, RaidError};
 use serde::{Deserialize, Serialize};
 
 pub mod file;
+pub mod tree;
+
+#[cfg(test)]
+mod testutil;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
@@ -48,6 +52,24 @@ pub enum CoreError {
     InvalidManifest(String),
     #[error("fallo de E/S local: {0}")]
     Io(#[from] std::io::Error),
+    #[error("fallo al serializar metadatos: {0}")]
+    Serde(#[from] serde_json::Error),
+    #[error("la ruta '{0}' no existe")]
+    PathNotFound(String),
+    #[error("'{0}' no es un directorio")]
+    NotADirectory(String),
+    #[error("'{0}' no es un fichero")]
+    NotAFile(String),
+    #[error("el directorio '{0}' no esta vacio")]
+    DirNotEmpty(String),
+    #[error("ruta invalida: {0}")]
+    InvalidPath(String),
+    #[error("el volumen no tiene ninguna raiz publicada")]
+    NoRoot,
+    #[error("ya hay una raiz publicada: crear encima dejaria el arbol anterior inalcanzable")]
+    RootExists,
+    #[error("ningun proveedor acepto el puntero de raiz")]
+    RootNotPublished,
     #[error(transparent)]
     Crypto(#[from] libredisk_crypto::CryptoError),
     #[error(transparent)]
@@ -422,24 +444,12 @@ impl ChunkStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::Ordering;
 
     use async_trait::async_trait;
     use libredisk_backend::OpendalBackend;
 
-    fn clave() -> MasterKey {
-        MasterKey::derive_with("frase de prueba", b"sal-de-prueba-16", 8, 1).unwrap()
-    }
-
-    fn store(layout: Layout) -> ChunkStore {
-        let backends: Vec<Arc<dyn Backend>> = (0..layout.shard_count())
-            .map(|i| {
-                Arc::new(OpendalBackend::memory(format!("proveedor-{i}")).unwrap())
-                    as Arc<dyn Backend>
-            })
-            .collect();
-        ChunkStore::new(layout, backends, clave()).unwrap()
-    }
+    use crate::testutil::{clave, como_backends, contadores, reiniciar, store};
 
     /// Simula que un proveedor desaparece: borra todos sus fragmentos.
     async fn tirar_proveedor(store: &ChunkStore, chunk: &ChunkRef, index: usize) {
@@ -698,73 +708,22 @@ mod tests {
         assert!(informe.is_complete());
     }
 
-    /// Cuenta las llamadas al proveedor. La razon de ser de [`Backend::list`] es que revisar
-    /// n trozos deje de costar n llamadas por proveedor, y eso hay que poder afirmarlo con
-    /// numeros, no suponerlo.
-    ///
-    /// Cuenta llamadas al trait, no peticiones de red: lo que se comprueba aqui es que el
-    /// coste deje de depender del numero de trozos, no que enumerar sea gratis.
-    struct Contador {
-        inner: OpendalBackend,
-        exists: AtomicUsize,
-        list: AtomicUsize,
-    }
-
-    #[async_trait]
-    impl Backend for Contador {
-        fn name(&self) -> &str {
-            self.inner.name()
-        }
-        async fn put(&self, key: &str, data: Vec<u8>) -> Result<(), BackendError> {
-            self.inner.put(key, data).await
-        }
-        async fn get(&self, key: &str) -> Result<Vec<u8>, BackendError> {
-            self.inner.get(key).await
-        }
-        async fn delete(&self, key: &str) -> Result<(), BackendError> {
-            self.inner.delete(key).await
-        }
-        async fn exists(&self, key: &str) -> Result<bool, BackendError> {
-            self.exists.fetch_add(1, Ordering::Relaxed);
-            self.inner.exists(key).await
-        }
-        async fn list(&self, prefix: &str) -> Result<Vec<String>, BackendError> {
-            self.list.fetch_add(1, Ordering::Relaxed);
-            self.inner.list(prefix).await
-        }
-    }
-
     #[tokio::test]
     async fn scrub_many_enumera_una_vez_por_proveedor_en_vez_de_preguntar_por_fragmento() {
         let layout = Layout::ReedSolomon { k: 4, m: 2 };
-        let contadores: Vec<Arc<Contador>> = (0..layout.shard_count())
-            .map(|i| {
-                Arc::new(Contador {
-                    inner: OpendalBackend::memory(format!("proveedor-{i}")).unwrap(),
-                    exists: AtomicUsize::new(0),
-                    list: AtomicUsize::new(0),
-                })
-            })
-            .collect();
-        let backends: Vec<Arc<dyn Backend>> = contadores
-            .iter()
-            .map(|c| c.clone() as Arc<dyn Backend>)
-            .collect();
-        let s = ChunkStore::new(layout, backends, clave()).unwrap();
+        let cs = contadores(layout.shard_count());
+        let s = ChunkStore::new(layout, como_backends(&cs), clave()).unwrap();
 
         let mut chunks = Vec::new();
         for n in 0..25 {
             chunks.push(s.put(&datos(500 + n)).await.unwrap().chunk);
         }
-        for c in &contadores {
-            c.exists.store(0, Ordering::Relaxed);
-            c.list.store(0, Ordering::Relaxed);
-        }
+        reiniciar(&cs);
 
         s.scrub_many(&chunks).await;
-        for c in &contadores {
+        for c in &cs {
             assert_eq!(
-                c.list.load(Ordering::Relaxed),
+                c.lists.load(Ordering::Relaxed),
                 1,
                 "una enumeracion por proveedor, no una por trozo"
             );
@@ -779,7 +738,7 @@ mod tests {
         for chunk in &chunks {
             s.scrub(chunk).await;
         }
-        for c in &contadores {
+        for c in &cs {
             assert_eq!(
                 c.exists.load(Ordering::Relaxed),
                 chunks.len(),

@@ -260,16 +260,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    use async_trait::async_trait;
-    use libredisk_backend::{Backend, BackendError, OpendalBackend};
-    use libredisk_crypto::MasterKey;
-    use libredisk_raid::Layout;
-
     use super::*;
     use crate::ChunkId;
+    use crate::testutil::{clave, como_backends, contadores, reiniciar, store, total_gets};
+    use libredisk_raid::Layout;
 
     /// Trozos de 256 bytes en las pruebas: los limites son lo que importa, y con 16 MiB cada
     /// caso costaria segundos sin probar nada distinto.
@@ -277,20 +271,6 @@ mod tests {
 
     fn rs() -> Layout {
         Layout::ReedSolomon { k: 4, m: 2 }
-    }
-
-    fn clave() -> MasterKey {
-        MasterKey::derive_with("frase de prueba", b"sal-de-prueba-16", 8, 1).unwrap()
-    }
-
-    fn store(layout: Layout) -> ChunkStore {
-        let backends: Vec<Arc<dyn Backend>> = (0..layout.shard_count())
-            .map(|i| {
-                Arc::new(OpendalBackend::memory(format!("proveedor-{i}")).unwrap())
-                    as Arc<dyn Backend>
-            })
-            .collect();
-        ChunkStore::new(layout, backends, clave()).unwrap()
     }
 
     /// Datos sin repeticiones: si un offset se calcula mal, el contenido no coincide.
@@ -399,82 +379,34 @@ mod tests {
 
     /// Cuenta descargas. Es la razon de ser de `read_at`: sin ella, leer unos pocos bytes
     /// obligaria a reconstruir el fichero entero desde los proveedores.
-    struct ContadorGet {
-        inner: OpendalBackend,
-        gets: AtomicUsize,
-    }
-
-    #[async_trait]
-    impl Backend for ContadorGet {
-        fn name(&self) -> &str {
-            self.inner.name()
-        }
-        async fn put(&self, key: &str, data: Vec<u8>) -> Result<(), BackendError> {
-            self.inner.put(key, data).await
-        }
-        async fn get(&self, key: &str) -> Result<Vec<u8>, BackendError> {
-            self.gets.fetch_add(1, Ordering::Relaxed);
-            self.inner.get(key).await
-        }
-        async fn delete(&self, key: &str) -> Result<(), BackendError> {
-            self.inner.delete(key).await
-        }
-        async fn exists(&self, key: &str) -> Result<bool, BackendError> {
-            self.inner.exists(key).await
-        }
-        async fn list(&self, prefix: &str) -> Result<Vec<String>, BackendError> {
-            self.inner.list(prefix).await
-        }
-    }
-
     #[tokio::test]
     async fn read_at_solo_baja_los_trozos_que_el_rango_toca() {
         let layout = rs();
-        let contadores: Vec<Arc<ContadorGet>> = (0..layout.shard_count())
-            .map(|i| {
-                Arc::new(ContadorGet {
-                    inner: OpendalBackend::memory(format!("proveedor-{i}")).unwrap(),
-                    gets: AtomicUsize::new(0),
-                })
-            })
-            .collect();
-        let backends: Vec<Arc<dyn Backend>> = contadores
-            .iter()
-            .map(|c| c.clone() as Arc<dyn Backend>)
-            .collect();
-        let s = ChunkStore::new(layout, backends, clave()).unwrap();
+        let cs = contadores(layout.shard_count());
+        let s = ChunkStore::new(layout, como_backends(&cs), clave()).unwrap();
 
         let d = datos(20 * TAM);
         let m = s.put_file_with(&d[..], TAM).await.unwrap().manifest;
         assert_eq!(m.chunks.len(), 20);
 
-        let bajados = |cs: &[Arc<ContadorGet>]| -> usize {
-            cs.iter().map(|c| c.gets.load(Ordering::Relaxed)).sum()
-        };
-        let reiniciar = |cs: &[Arc<ContadorGet>]| {
-            for c in cs {
-                c.gets.store(0, Ordering::Relaxed);
-            }
-        };
-
         // Veinte bytes dentro de un solo trozo: un fragmento por proveedor y nada mas.
-        reiniciar(&contadores);
+        reiniciar(&cs);
         s.read_at(&m, (5 * TAM + 10) as u64, 20).await.unwrap();
         assert_eq!(
-            bajados(&contadores),
+            total_gets(&cs),
             layout.shard_count(),
             "leer dentro de un trozo no puede tocar los otros diecinueve"
         );
 
         // Un rango que cruza una frontera: exactamente dos trozos.
-        reiniciar(&contadores);
+        reiniciar(&cs);
         s.read_at(&m, (TAM - 5) as u64, 10).await.unwrap();
-        assert_eq!(bajados(&contadores), 2 * layout.shard_count());
+        assert_eq!(total_gets(&cs), 2 * layout.shard_count());
 
         // Y el fichero entero sigue costando los veinte, claro.
-        reiniciar(&contadores);
+        reiniciar(&cs);
         s.get_file(&m, &mut Vec::new()).await.unwrap();
-        assert_eq!(bajados(&contadores), 20 * layout.shard_count());
+        assert_eq!(total_gets(&cs), 20 * layout.shard_count());
     }
 
     /// El direccionamiento por contenido da deduplicacion sin pedirla.

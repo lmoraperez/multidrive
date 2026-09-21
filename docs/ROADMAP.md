@@ -54,7 +54,18 @@ Pila elegida: **Rust + OpenDAL**.
       rango toca**, que es lo que hace viable el montaje, y lo verifica un test que cuenta
       descargas. El troceado es de tamaño fijo, no por contenido: insertar un byte al
       principio reescribe el fichero entero, y a cambio localizar un offset es una división
-- [ ] Metadatos en SQLite + manifiestos COW
+- [x] Manifiestos COW. El árbol vive en los proveedores como nodos inmutables, y cada nodo es
+      un trozo más: pasa por el mismo `ChunkStore` que los datos, así que hereda cifrado,
+      RAID, direccionamiento por contenido y deduplicación sin código propio. Los nombres de
+      fichero quedan cifrados, y hay un test que lo comprueba contra los blobs. Modificar algo
+      reescribe la rama hasta la raíz y termina intercambiando un único puntero, que es el
+      **único objeto mutable** del sistema: va en espejo a todos los proveedores, no repartido
+      con RAID, porque tiene que leerse aunque solo sobreviva uno. Como nada se sobrescribe,
+      una raíz vieja sigue siendo legible: eso son **instantáneas sin código dedicado**
+- [ ] Índice local (SQLite o `redb`) como caché del árbol. No es la verdad, es una caché: hoy
+      cada `lookup` paga una petición por nivel, y cada escritura publica una raíz nueva. Con
+      los costes de [VIABILIDAD.md §7](VIABILIDAD.md#7-enumerar-qué-cuesta-list), escribir un
+      fichero hondo son segundos. El escritor de metadatos no puede ser síncrono
 - [ ] Caché local en disco con escritura diferida
 - [ ] Montaje FUSE de solo lectura → luego lectura/escritura
 - [ ] `libredisk scrub` y `rebuild` expuestos en la CLI
