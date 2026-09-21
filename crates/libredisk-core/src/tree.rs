@@ -208,6 +208,94 @@ impl Volume {
         }
     }
 
+    /// Crea un fichero vacio. Falla si ya existe algo en esa ruta.
+    pub async fn create_file(&mut self, path: &str) -> Result<Vec<String>, CoreError> {
+        let segs = segmentos(path)?;
+        if segs.is_empty() {
+            return Err(CoreError::InvalidPath("la raiz no es un fichero".into()));
+        }
+        if self.buscar(&segs).await?.is_some() {
+            return Err(CoreError::InvalidPath(format!("'{path}' ya existe")));
+        }
+        self.publicar_fichero(&segs, Manifest::empty(crate::file::CHUNK_SIZE))
+            .await
+    }
+
+    /// Escribe `datos` en `offset`, creando el fichero si no existe.
+    ///
+    /// Ojo con el coste: escribir dentro de un fichero reescribe los trozos que el rango
+    /// toque, enteros. Ver [`ChunkStore::write_at`]. Quien llame muchas veces seguidas sobre
+    /// el mismo trozo deberia acumular antes en un buffer.
+    pub async fn write_at(
+        &mut self,
+        path: &str,
+        offset: u64,
+        datos: &[u8],
+    ) -> Result<Vec<String>, CoreError> {
+        let segs = segmentos(path)?;
+        if segs.is_empty() {
+            return Err(CoreError::InvalidPath("la raiz no es un fichero".into()));
+        }
+
+        let actual = match self.buscar(&segs).await? {
+            Some(e) if e.kind == Kind::File => self.manifiesto_de(&e).await?,
+            Some(_) => return Err(CoreError::NotAFile(path.to_string())),
+            None => Manifest::empty(crate::file::CHUNK_SIZE),
+        };
+
+        let (nuevo, mut degraded) = self.store.write_at(&actual, offset, datos).await?;
+        let del_arbol = self.publicar_fichero(&segs, nuevo).await?;
+        unir(&mut degraded, del_arbol);
+        Ok(degraded)
+    }
+
+    /// Cambia la longitud de un fichero: recorta, o extiende con ceros.
+    pub async fn truncate(&mut self, path: &str, nueva_len: u64) -> Result<Vec<String>, CoreError> {
+        let segs = segmentos(path)?;
+        let entrada = self
+            .buscar(&segs)
+            .await?
+            .ok_or_else(|| CoreError::PathNotFound(path.to_string()))?;
+        if entrada.kind != Kind::File {
+            return Err(CoreError::NotAFile(path.to_string()));
+        }
+
+        let actual = self.manifiesto_de(&entrada).await?;
+        let (nuevo, mut degraded) = self.store.truncate(&actual, nueva_len).await?;
+        let del_arbol = self.publicar_fichero(&segs, nuevo).await?;
+        unir(&mut degraded, del_arbol);
+        Ok(degraded)
+    }
+
+    /// Guarda un manifiesto como nodo y lo cuelga de la ruta.
+    async fn publicar_fichero(
+        &mut self,
+        segs: &[String],
+        manifest: Manifest,
+    ) -> Result<Vec<String>, CoreError> {
+        let len = manifest.len;
+        let (node, mut degraded) = poner_nodo(&self.store, &Node::File(manifest)).await?;
+        let del_arbol = self
+            .aplicar(
+                segs,
+                Some(Entry {
+                    node,
+                    kind: Kind::File,
+                    len,
+                }),
+            )
+            .await?;
+        unir(&mut degraded, del_arbol);
+        Ok(degraded)
+    }
+
+    /// El manifiesto que hay detras de una entrada ya resuelta.
+    async fn manifiesto_de(&self, entrada: &Entry) -> Result<Manifest, CoreError> {
+        match sacar_nodo(&self.store, &entrada.node).await? {
+            Node::File(m) => Ok(m),
+            Node::Dir(_) => Err(CoreError::NotAFile(entrada.node.id.to_string())),
+        }
+    }
     /// Crea un directorio y los que falten por encima. No es error si ya existe.
     pub async fn mkdir_p(&mut self, path: &str) -> Result<Vec<String>, CoreError> {
         let segs = segmentos(path)?;
@@ -761,5 +849,210 @@ mod tests {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests_escritura {
+    use libredisk_raid::Layout;
+
+    use super::*;
+    use crate::file::Manifest;
+    use crate::testutil::{backends, store, store_sobre};
+
+    const TAM: usize = 256;
+
+    fn rs() -> Layout {
+        Layout::ReedSolomon { k: 4, m: 2 }
+    }
+
+    fn datos(n: usize) -> Vec<u8> {
+        (0..n).map(|i| (i.wrapping_mul(31) % 251) as u8).collect()
+    }
+
+    async fn volumen() -> Volume {
+        let bs = backends(6);
+        Volume::create(store_sobre(&bs, rs())).await.unwrap().0
+    }
+
+    #[tokio::test]
+    async fn escribir_en_un_fichero_que_no_existe_lo_crea() {
+        let mut v = volumen().await;
+        v.write_at("/nuevo.txt", 0, b"hola").await.unwrap();
+
+        assert_eq!(v.read_at("/nuevo.txt", 0, 100).await.unwrap(), b"hola");
+        assert_eq!(v.lookup("/nuevo.txt").await.unwrap().unwrap().len, 4);
+    }
+
+    #[tokio::test]
+    async fn sobrescribir_en_medio() {
+        let mut v = volumen().await;
+        v.write_at("/a.txt", 0, b"0123456789").await.unwrap();
+        v.write_at("/a.txt", 3, b"XYZ").await.unwrap();
+
+        assert_eq!(v.read_at("/a.txt", 0, 100).await.unwrap(), b"012XYZ6789");
+        assert_eq!(v.lookup("/a.txt").await.unwrap().unwrap().len, 10);
+    }
+
+    #[tokio::test]
+    async fn escribir_mas_alla_del_final_extiende() {
+        let mut v = volumen().await;
+        v.write_at("/a.txt", 0, b"abc").await.unwrap();
+        v.write_at("/a.txt", 10, b"xyz").await.unwrap();
+
+        let todo = v.read_at("/a.txt", 0, 100).await.unwrap();
+        assert_eq!(todo.len(), 13);
+        assert_eq!(&todo[..3], b"abc");
+        assert_eq!(
+            &todo[3..10],
+            &[0u8; 7],
+            "el hueco se rellena con ceros, como en cualquier sistema de ficheros"
+        );
+        assert_eq!(&todo[10..], b"xyz");
+    }
+
+    /// Los limites de trozo son donde esto se rompe si esta mal.
+    #[tokio::test]
+    async fn escribir_cruzando_fronteras_de_trozo() {
+        let bs = backends(6);
+        let s = store_sobre(&bs, rs());
+
+        let original = datos(1000);
+        let m = s.put_file_with(&original[..], TAM).await.unwrap().manifest;
+
+        // Un parche que empieza en el trozo 0 y acaba en el 2.
+        let parche = vec![0xAAu8; 400];
+        let (nuevo, _) = s.write_at(&m, 200, &parche).await.unwrap();
+
+        let mut esperado = original.clone();
+        esperado[200..600].copy_from_slice(&parche);
+
+        let mut salida = Vec::new();
+        s.get_file(&nuevo, &mut salida).await.unwrap();
+        assert_eq!(salida, esperado);
+        assert_eq!(nuevo.len, 1000);
+        nuevo.validate().unwrap();
+    }
+
+    #[tokio::test]
+    async fn truncar_recorta_y_extiende() {
+        let bs = backends(6);
+        let s = store_sobre(&bs, rs());
+        let original = datos(1000);
+        let m = s.put_file_with(&original[..], TAM).await.unwrap().manifest;
+
+        // Recortar.
+        let (corto, _) = s.truncate(&m, 300).await.unwrap();
+        assert_eq!(corto.len, 300);
+        corto.validate().unwrap();
+        let mut salida = Vec::new();
+        s.get_file(&corto, &mut salida).await.unwrap();
+        assert_eq!(salida, &original[..300]);
+
+        // Extender: lo nuevo son ceros.
+        let (largo, _) = s.truncate(&corto, 700).await.unwrap();
+        assert_eq!(largo.len, 700);
+        largo.validate().unwrap();
+        let mut salida = Vec::new();
+        s.get_file(&largo, &mut salida).await.unwrap();
+        assert_eq!(&salida[..300], &original[..300]);
+        assert_eq!(&salida[300..], &vec![0u8; 400][..]);
+    }
+
+    #[tokio::test]
+    async fn truncar_a_cero_deja_un_fichero_vacio() {
+        let mut v = volumen().await;
+        v.write_at("/a.txt", 0, b"algo").await.unwrap();
+        v.truncate("/a.txt", 0).await.unwrap();
+
+        assert_eq!(v.lookup("/a.txt").await.unwrap().unwrap().len, 0);
+        assert!(v.read_at("/a.txt", 0, 10).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn crear_un_fichero_vacio() {
+        let mut v = volumen().await;
+        v.create_file("/vacio.txt").await.unwrap();
+
+        assert_eq!(v.lookup("/vacio.txt").await.unwrap().unwrap().len, 0);
+        assert!(v.create_file("/vacio.txt").await.is_err(), "no se pisa");
+    }
+
+    /// **El coste, medido.** Escribir dentro reescribe trozos enteros, y eso tiene que estar
+    /// a la vista en vez de descubrirse en produccion.
+    #[tokio::test]
+    async fn escribir_dentro_reescribe_el_trozo_entero() {
+        let s = store(rs());
+        let original = datos(4 * TAM);
+        let m = s.put_file_with(&original[..], TAM).await.unwrap().manifest;
+        assert_eq!(m.chunks.len(), 4);
+
+        // Un byte en el trozo 1.
+        let (nuevo, _) = s.write_at(&m, TAM as u64 + 5, b"X").await.unwrap();
+
+        assert_eq!(
+            nuevo.chunks[0], m.chunks[0],
+            "los trozos que no toca se reaprovechan tal cual"
+        );
+        assert_eq!(nuevo.chunks[2], m.chunks[2]);
+        assert_eq!(nuevo.chunks[3], m.chunks[3]);
+        assert_ne!(
+            nuevo.chunks[1], m.chunks[1],
+            "y el que toca es un trozo nuevo entero: 256 bytes subidos por 1 byte escrito"
+        );
+    }
+
+    /// Extender por el final no puede reescribir lo anterior.
+    #[tokio::test]
+    async fn anadir_al_final_no_toca_los_trozos_llenos() {
+        let s = store(rs());
+        let m = s
+            .put_file_with(&datos(2 * TAM)[..], TAM)
+            .await
+            .unwrap()
+            .manifest;
+
+        let (nuevo, _) = s.write_at(&m, (2 * TAM) as u64, b"cola").await.unwrap();
+
+        assert_eq!(nuevo.chunks.len(), 3);
+        assert_eq!(nuevo.chunks[0], m.chunks[0]);
+        assert_eq!(nuevo.chunks[1], m.chunks[1]);
+        assert_eq!(nuevo.chunks[2].plain_len, 4);
+    }
+
+    #[tokio::test]
+    async fn no_se_puede_escribir_sobre_un_directorio() {
+        let mut v = volumen().await;
+        v.mkdir_p("/dir").await.unwrap();
+        assert!(matches!(
+            v.write_at("/dir", 0, b"x").await,
+            Err(CoreError::NotAFile(_))
+        ));
+    }
+
+    /// Escribir en un fichero vacio recien creado, que es el caso que hace un `open` con
+    /// creacion seguido de un `write`.
+    #[tokio::test]
+    async fn crear_y_luego_escribir() {
+        let mut v = volumen().await;
+        v.create_file("/a.bin").await.unwrap();
+        v.write_at("/a.bin", 0, &datos(3 * TAM)).await.unwrap();
+
+        let leido = v.read_at("/a.bin", 0, 10_000).await.unwrap();
+        assert_eq!(leido, datos(3 * TAM));
+    }
+
+    #[tokio::test]
+    async fn un_manifiesto_vacio_admite_escritura_en_cualquier_offset() {
+        let s = store(rs());
+        let vacio = Manifest::empty(TAM);
+        let (nuevo, _) = s.write_at(&vacio, 500, b"lejos").await.unwrap();
+
+        assert_eq!(nuevo.len, 505);
+        nuevo.validate().unwrap();
+        let mut salida = Vec::new();
+        s.get_file(&nuevo, &mut salida).await.unwrap();
+        assert_eq!(&salida[500..], b"lejos");
+        assert_eq!(&salida[..500], &vec![0u8; 500][..]);
     }
 }

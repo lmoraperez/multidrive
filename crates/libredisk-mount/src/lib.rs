@@ -4,10 +4,9 @@
 //! [`libredisk_core::tree::Volume`]. Las operaciones ya existen todas —`lookup`, `read_dir`,
 //! `read_at`, `manifiesto`—; aqui solo se cambian de idioma.
 //!
-//! Por ahora **solo lectura y solo Windows**, con WinFsp. Escribir a traves del montaje exige
-//! antes una cache con escritura diferida: sin ella, cada `write` del sistema seria una subida
-//! sincrona a varias nubes, y ningun programa esta preparado para que escribir 4 KiB tarde
-//! segundos.
+//! Por ahora **solo Windows**, con WinFsp. Se puede montar en lectura o en lectura-escritura;
+//! escribir acumula en un buffer por descriptor y materializa al cerrar, porque los trozos son
+//! inmutables y escribir dentro significa reescribir el trozo entero.
 
 #[cfg(windows)]
 mod windows;
@@ -17,8 +16,9 @@ pub use windows::{Montaje, montar};
 
 #[cfg(not(windows))]
 pub fn montar(
-    _volumen: std::sync::Arc<libredisk_core::tree::Volume>,
+    _volumen: std::sync::Arc<std::sync::RwLock<libredisk_core::tree::Volume>>,
     _punto: &str,
+    _solo_lectura: bool,
 ) -> anyhow::Result<std::convert::Infallible> {
     anyhow::bail!(
         "el montaje solo esta implementado en Windows (WinFsp).\n\

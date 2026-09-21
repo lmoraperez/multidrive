@@ -632,17 +632,32 @@ pub async fn header_import(origen: &str) -> Result<()> {
 }
 
 /// Monta el volumen como una unidad del sistema.
-pub async fn mount(punto: &str, cache_mb: usize, disco_mb: usize) -> Result<()> {
-    let volumen = Arc::new(abrir_completo(cache_mb * 1024 * 1024, disco_mb * 1024 * 1024).await?);
-    let montaje = libredisk_mount::montar(Arc::clone(&volumen), punto)?;
+pub async fn mount(punto: &str, cache_mb: usize, disco_mb: usize, escritura: bool) -> Result<()> {
+    // Montar en escritura difiere siempre: cada `write` del sistema no puede ser una subida
+    // sincrona a varias nubes. Lo pendiente se sube luego con `libredisk sync`.
+    let store = almacen_todo(cache_mb * 1024 * 1024, disco_mb * 1024 * 1024, escritura).await?;
+    let volumen = Arc::new(std::sync::RwLock::new(Volume::open(store).await?));
+    let montaje = libredisk_mount::montar(Arc::clone(&volumen), punto, !escritura)?;
 
     println!("montado en {punto}");
+    println!(
+        "modo          {}",
+        if escritura {
+            "lectura y escritura (diferida)"
+        } else {
+            "solo lectura"
+        }
+    );
     println!("cache memoria {cache_mb} MiB");
     if disco_mb > 0 {
         println!("cache disco   {disco_mb} MiB (cifrada, sobrevive al reinicio)");
     }
     println!();
-    println!("Solo lectura. La primera lectura de cada trozo va a la nube; las siguientes no.");
+    if escritura {
+        println!("Lo que escribas queda SOLO EN ESTA MAQUINA hasta que ejecutes `libredisk sync`.");
+    } else {
+        println!("La primera lectura de cada trozo va a la nube; las siguientes no.");
+    }
     println!("Ctrl-C para desmontar.");
 
     tokio::signal::ctrl_c().await?;
@@ -650,6 +665,7 @@ pub async fn mount(punto: &str, cache_mb: usize, disco_mb: usize) -> Result<()> 
 
     println!();
     println!("desmontado");
+    let volumen = volumen.read().expect("el montaje ya termino");
     if let Some(s) = volumen.store().cache_stats() {
         let tasa = s
             .tasa_de_acierto()
@@ -665,6 +681,30 @@ pub async fn mount(punto: &str, cache_mb: usize, disco_mb: usize) -> Result<()> 
             s.entradas,
             tamano(s.bytes as u64),
             s.desalojos
+        );
+    }
+    if let Some(s) = volumen.store().disk_stats() {
+        println!(
+            "disco: {} aciertos, {} fallos, {} trozos, {}",
+            s.aciertos,
+            s.fallos,
+            s.entradas,
+            tamano(s.bytes as u64)
+        );
+        if s.corruptos > 0 {
+            println!(
+                "       {} entradas descartadas por no cuadrar con su hash",
+                s.corruptos
+            );
+        }
+    }
+    let p = volumen.store().pendiente();
+    if !p.a_salvo() {
+        println!();
+        println!(
+            "PENDIENTE: {} trozo(s), {} SOLO EN ESTA MAQUINA. Ejecuta `libredisk sync`.",
+            p.trozos,
+            tamano(p.bytes)
         );
     }
     Ok(())
