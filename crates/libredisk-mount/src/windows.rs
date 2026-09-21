@@ -207,7 +207,8 @@ impl LibreDiskFs {
         info.hard_links = 0;
     }
 
-    fn mirar(&self, ruta: &str) -> Option<(bool, u64)> {
+    /// Busca una ruta exactamente como viene, sin tolerar diferencias de mayusculas.
+    fn mirar_exacto(&self, ruta: &str) -> Option<(bool, u64)> {
         if ruta == "/" {
             return Some((true, 0));
         }
@@ -216,6 +217,73 @@ impl LibreDiskFs {
             Ok(Some(entrada)) => Some((entrada.kind == Kind::Dir, entrada.len)),
             _ => None,
         }
+    }
+
+    /// Traduce una ruta de Windows a la forma **guardada en el arbol**.
+    ///
+    /// El arbol distingue mayusculas y tiene que seguir haciendolo: en Linux un sistema de
+    /// ficheros distingue, y el nucleo sirve a los dos. Windows no, y ademas normaliza las
+    /// rutas a mayusculas por su cuenta. La traduccion vive aqui, en la capa de montaje, que
+    /// es la unica que sabe a que sistema esta sirviendo.
+    ///
+    /// Primero se prueba la ruta tal cual, que es el caso normal: Windows suele devolver los
+    /// nombres tal y como se los dimos al listar. Solo si eso falla se baja por el arbol
+    /// comparando sin distinguir, que cuesta un `read_dir` por nivel.
+    ///
+    /// Si dos entradas se diferencian solo en las mayusculas —el arbol lo permite, aunque
+    /// Windows nunca las cree— gana la que coincida exactamente, y si no, la primera por
+    /// orden. Es arbitrario, pero es **determinista**, que es lo que importa.
+    fn canonica(&self, ruta: &str) -> Option<String> {
+        if ruta == "/" || ruta.is_empty() {
+            return Some("/".to_string());
+        }
+        if self.mirar_exacto(ruta).is_some() {
+            return Some(ruta.to_string());
+        }
+
+        let v = self.volumen.read().ok()?;
+        let mut actual = String::from("/");
+
+        for seg in ruta.split('/').filter(|s| !s.is_empty()) {
+            let entradas = self.esperar(v.read_dir(&actual)).ok()?;
+            let plegado = seg.to_lowercase();
+            let encontrado = entradas
+                .keys()
+                .find(|n| n.as_str() == seg)
+                .or_else(|| entradas.keys().find(|n| n.to_lowercase() == plegado))?
+                .clone();
+
+            if !actual.ends_with('/') {
+                actual.push('/');
+            }
+            actual.push_str(&encontrado);
+        }
+        Some(actual)
+    }
+
+    /// Como [`LibreDiskFs::canonica`], pero para una ruta que **todavia no existe**.
+    ///
+    /// Devuelve el directorio padre en su forma guardada mas el nombre tal y como lo escribio
+    /// quien llama. Eso es lo que hace que crear `Informe.TXT` dentro de `documentos` acabe
+    /// en `/documentos/Informe.TXT` y no en `/DOCUMENTOS/Informe.TXT`.
+    fn canonica_padre(&self, ruta: &str) -> Option<String> {
+        let (padre, hoja) = match ruta.rsplit_once('/') {
+            Some((p, h)) if !h.is_empty() => (if p.is_empty() { "/" } else { p }, h),
+            _ => return Some(ruta.to_string()),
+        };
+        let padre = self.canonica(padre)?;
+        Some(if padre.ends_with('/') {
+            format!("{padre}{hoja}")
+        } else {
+            format!("{padre}/{hoja}")
+        })
+    }
+
+    /// Busca una ruta tolerando diferencias de mayusculas, y dice con que forma se guardo.
+    fn mirar(&self, ruta: &str) -> Option<(String, bool, u64)> {
+        let canonica = self.canonica(ruta)?;
+        let (es_dir, len) = self.mirar_exacto(&canonica)?;
+        Some((canonica, es_dir, len))
     }
 
     fn no_escribible(&self) -> winfsp::FspError {
@@ -257,9 +325,8 @@ impl FileSystemContext for LibreDiskFs {
         _security_descriptor: Option<&mut [std::ffi::c_void]>,
         _reparse_point_resolver: impl FnOnce(&U16CStr) -> Option<FileSecurity>,
     ) -> winfsp::Result<FileSecurity> {
-        let ruta = Self::ruta(file_name);
-        let (es_dir, _) = self
-            .mirar(&ruta)
+        let (_, es_dir, _) = self
+            .mirar(&Self::ruta(file_name))
             .ok_or(winfsp::FspError::NTSTATUS(STATUS_OBJECT_NAME_NOT_FOUND))?;
 
         Ok(FileSecurity {
@@ -277,9 +344,10 @@ impl FileSystemContext for LibreDiskFs {
         _granted_access: u32,
         file_info: &mut OpenFileInfo,
     ) -> winfsp::Result<Self::FileContext> {
-        let ruta = Self::ruta(file_name);
-        let (es_dir, len) = self
-            .mirar(&ruta)
+        // Se guarda la forma **guardada**, no la que llego: todo lo que venga despues con
+        // este descriptor usara esa, y asi no hay dos nombres para lo mismo.
+        let (ruta, es_dir, len) = self
+            .mirar(&Self::ruta(file_name))
             .ok_or(winfsp::FspError::NTSTATUS(STATUS_OBJECT_NAME_NOT_FOUND))?;
 
         self.rellenar(file_info.as_mut(), es_dir, len);
@@ -303,7 +371,11 @@ impl FileSystemContext for LibreDiskFs {
             return Err(self.no_escribible());
         }
 
-        let ruta = Self::ruta(file_name);
+        // Al crear, el padre se traduce a su forma guardada pero la hoja se respeta tal y
+        // como la escribio el usuario: eso es `case_preserved_names`.
+        let ruta = self
+            .canonica_padre(&Self::ruta(file_name))
+            .ok_or(winfsp::FspError::NTSTATUS(STATUS_OBJECT_NAME_NOT_FOUND))?;
         if self.mirar(&ruta).is_some() {
             return Err(winfsp::FspError::NTSTATUS(STATUS_OBJECT_NAME_COLLISION));
         }
@@ -513,7 +585,9 @@ impl FileSystemContext for LibreDiskFs {
         // ruta que ya no existe.
         self.materializar(context)?;
 
-        let destino = Self::ruta(new_file_name);
+        let destino = self
+            .canonica_padre(&Self::ruta(new_file_name))
+            .ok_or(winfsp::FspError::NTSTATUS(STATUS_OBJECT_NAME_NOT_FOUND))?;
         let mut v = self.volumen.write().map_err(|_| Self::eio())?;
         self.esperar(v.rename(&context.ruta, &destino, replace_if_exists))
             .map_err(|e| match e {
@@ -617,15 +691,14 @@ pub fn montar(volumen: Arc<RwLock<Volume>>, punto: &str, solo_lectura: bool) -> 
         .sector_size(4096)
         .sectors_per_allocation_unit(1)
         .max_component_length(255)
-        // El arbol distingue mayusculas, asi que el volumen tiene que declararlo. Decir lo
-        // contrario no es un detalle: Windows normaliza las rutas a mayusculas cuando un
-        // sistema de ficheros dice ser insensible, y entonces `origen` y `ORIGEN` dejan de
-        // casar. Se descubrio porque un `Rename-Item` creo un directorio duplicado.
+        // Insensible a mayusculas, que es lo que una aplicacion de Windows espera. El arbol
+        // SI distingue —en Linux un sistema de ficheros distingue, y el nucleo sirve a los
+        // dos—, asi que la traduccion la hace `canonica` en esta misma capa.
         //
-        // Lo correcto de cara a Windows seria resolver sin distinguir y conservar la forma
-        // guardada, pero eso va en la capa de montaje, no en el nucleo: en Linux un sistema
-        // de ficheros SI distingue, y el nucleo tiene que servir a los dos.
-        .case_sensitive_search(true)
+        // Declararlo mal no es un detalle: Windows normaliza las rutas a mayusculas cuando
+        // el sistema de ficheros dice ser insensible. Con el arbol distinguiendo y sin
+        // traduccion, un `Rename-Item` llego a crear un directorio duplicado.
+        .case_sensitive_search(false)
         .case_preserved_names(true)
         .unicode_on_disk(true)
         .read_only_volume(solo_lectura)
@@ -711,5 +784,178 @@ mod tests {
         assert!(!b.vacio());
         b.vaciar();
         assert!(b.vacio());
+    }
+}
+
+#[cfg(test)]
+mod tests_mayusculas {
+    use std::sync::Arc;
+
+    use libredisk_backend::{Backend, OpendalBackend};
+    use libredisk_core::ChunkStore;
+    use libredisk_crypto::MasterKey;
+    use libredisk_raid::Layout;
+
+    use super::*;
+
+    /// Un sistema de ficheros con un arbol de prueba, sin montar nada.
+    ///
+    /// Solo se ejercita la traduccion de rutas, que es logica sobre el volumen: no hace falta
+    /// WinFsp ni un punto de montaje.
+    async fn fs_con(rutas: &[&str]) -> LibreDiskFs {
+        let backends: Vec<Arc<dyn Backend>> =
+            vec![Arc::new(OpendalBackend::memory("prueba").unwrap())];
+        let key = MasterKey::derive_with("frase", b"sal-de-prueba-16", 8, 1).unwrap();
+        let store = ChunkStore::new(Layout::Concat, backends, key).unwrap();
+
+        let (mut v, _) = Volume::create(store).await.unwrap();
+        for ruta in rutas {
+            v.write_file(ruta, &b"x"[..]).await.unwrap();
+        }
+
+        LibreDiskFs {
+            volumen: Arc::new(RwLock::new(v)),
+            rt: Handle::current(),
+            solo_lectura: false,
+            creado: 0,
+        }
+    }
+
+    /// Ejecuta fuera del runtime, que es de donde llama WinFsp.
+    ///
+    /// No es un tecnicismo del test: estos metodos bloquean sobre el runtime, y bloquear
+    /// desde un hilo del propio runtime es un panico. Funciona en produccion **porque** los
+    /// hilos de WinFsp no son del runtime, y el test tiene que reproducir esa condicion o no
+    /// estaria probando lo mismo.
+    async fn fuera_del_runtime<F, T>(fs: LibreDiskFs, f: F) -> T
+    where
+        F: FnOnce(&LibreDiskFs) -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        tokio::task::spawn_blocking(move || f(&fs)).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn la_ruta_exacta_se_devuelve_tal_cual() {
+        let fs = fs_con(&["/Documentos/Informe.TXT"]).await;
+        let r = fuera_del_runtime(fs, |fs| fs.canonica("/Documentos/Informe.TXT")).await;
+        assert_eq!(r.unwrap(), "/Documentos/Informe.TXT");
+    }
+
+    /// El caso que rompia: Windows normaliza a mayusculas y el arbol no casaba.
+    #[tokio::test]
+    async fn una_ruta_en_mayusculas_encuentra_la_guardada() {
+        let fs = fs_con(&["/origen/documento.txt"]).await;
+        let (a, b) = fuera_del_runtime(fs, |fs| {
+            (
+                fs.canonica("/ORIGEN/DOCUMENTO.TXT"),
+                fs.canonica("/Origen/Documento.Txt"),
+            )
+        })
+        .await;
+
+        assert_eq!(
+            a.unwrap(),
+            "/origen/documento.txt",
+            "devuelve la forma guardada, no la que llego"
+        );
+        assert_eq!(b.unwrap(), "/origen/documento.txt");
+    }
+
+    #[tokio::test]
+    async fn lo_que_no_existe_no_se_inventa() {
+        let fs = fs_con(&["/a/b.txt"]).await;
+        let (a, b) = fuera_del_runtime(fs, |fs| {
+            (fs.canonica("/a/c.txt"), fs.canonica("/otro/b.txt"))
+        })
+        .await;
+        assert!(a.is_none());
+        assert!(b.is_none());
+    }
+
+    #[tokio::test]
+    async fn la_raiz_siempre_se_resuelve() {
+        let fs = fs_con(&[]).await;
+        let (a, b) = fuera_del_runtime(fs, |fs| (fs.canonica("/"), fs.canonica(""))).await;
+        assert_eq!(a.unwrap(), "/");
+        assert_eq!(b.unwrap(), "/");
+    }
+
+    /// Al crear, el padre se traduce pero la hoja conserva la forma que escribio el usuario.
+    #[tokio::test]
+    async fn al_crear_se_conserva_la_forma_de_la_hoja() {
+        let fs = fs_con(&["/documentos/existente.txt"]).await;
+        let r = fuera_del_runtime(fs, |fs| fs.canonica_padre("/DOCUMENTOS/Informe.TXT")).await;
+
+        assert_eq!(
+            r.unwrap(),
+            "/documentos/Informe.TXT",
+            "padre traducido, hoja respetada"
+        );
+    }
+
+    #[tokio::test]
+    async fn al_crear_en_la_raiz_no_hay_padre_que_traducir() {
+        let fs = fs_con(&[]).await;
+        let r = fuera_del_runtime(fs, |fs| fs.canonica_padre("/Nuevo.txt")).await;
+        assert_eq!(r.unwrap(), "/Nuevo.txt");
+    }
+
+    #[tokio::test]
+    async fn crear_bajo_un_padre_inexistente_no_resuelve() {
+        let fs = fs_con(&[]).await;
+        let r = fuera_del_runtime(fs, |fs| fs.canonica_padre("/no/existe/a.txt")).await;
+        assert!(r.is_none());
+    }
+
+    /// Si hay dos entradas que solo se diferencian en las mayusculas —el arbol lo permite—,
+    /// gana la coincidencia exacta.
+    #[tokio::test]
+    async fn la_coincidencia_exacta_gana_a_la_aproximada() {
+        let fs = fs_con(&["/casos/Dato.txt", "/casos/dato.txt"]).await;
+        let (a, b) = fuera_del_runtime(fs, |fs| {
+            (
+                fs.canonica("/casos/Dato.txt"),
+                fs.canonica("/casos/dato.txt"),
+            )
+        })
+        .await;
+
+        assert_eq!(a.unwrap(), "/casos/Dato.txt");
+        assert_eq!(b.unwrap(), "/casos/dato.txt");
+    }
+
+    /// Y si ninguna coincide exactamente, la eleccion es arbitraria pero **estable**.
+    #[tokio::test]
+    async fn sin_coincidencia_exacta_la_eleccion_es_estable() {
+        let fs = fs_con(&["/casos/Dato.txt", "/casos/dato.txt"]).await;
+        let todas = fuera_del_runtime(fs, |fs| {
+            (0..5)
+                .map(|_| fs.canonica("/casos/DATO.TXT"))
+                .collect::<Vec<_>>()
+        })
+        .await;
+
+        assert!(todas[0].is_some());
+        assert!(
+            todas.windows(2).all(|p| p[0] == p[1]),
+            "la eleccion tiene que ser la misma cada vez: {todas:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn mirar_devuelve_la_forma_guardada_y_el_tipo() {
+        let fs = fs_con(&["/dir/fichero.bin"]).await;
+        let (f, d) =
+            fuera_del_runtime(fs, |fs| (fs.mirar("/DIR/FICHERO.BIN"), fs.mirar("/DIR"))).await;
+
+        let (ruta, es_dir, len) = f.unwrap();
+        assert_eq!(ruta, "/dir/fichero.bin");
+        assert!(!es_dir);
+        assert_eq!(len, 1);
+
+        let (ruta, es_dir, _) = d.unwrap();
+        assert_eq!(ruta, "/dir");
+        assert!(es_dir);
     }
 }

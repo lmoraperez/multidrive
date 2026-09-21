@@ -19,7 +19,7 @@ Sitio del proyecto: https://libredisk.chambaya.net
 Requiere Rust estable (edición 2024).
 
 ```sh
-cargo test --workspace          # 160 tests
+cargo test --workspace          # 170 tests
 cargo run -- layout rs:4,2      # tolerancia y sobrecoste de una topología
 cargo run -- demo --layout rs:4,2 --kib 512
 cargo run -- check              # conformidad de los proveedores configurados
