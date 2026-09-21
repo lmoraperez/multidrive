@@ -23,6 +23,7 @@ use libredisk_raid::{Layout, RaidError};
 use serde::{Deserialize, Serialize};
 
 pub mod file;
+pub mod header;
 pub mod tree;
 
 #[cfg(test)]
@@ -70,6 +71,16 @@ pub enum CoreError {
     RootExists,
     #[error("ningun proveedor acepto el puntero de raiz")]
     RootNotPublished,
+    #[error("ya hay un volumen creado en estos proveedores")]
+    VolumeExists,
+    #[error("no hay ningun volumen en estos proveedores")]
+    NoVolume,
+    #[error("los proveedores no coinciden con los del volumen: {0}")]
+    BackendMismatch(String),
+    #[error("los proveedores devuelven cabeceras distintas: {0}")]
+    HeaderConflict(String),
+    #[error("ningun proveedor acepto la cabecera del volumen")]
+    HeaderNotWritten,
     #[error(transparent)]
     Crypto(#[from] libredisk_crypto::CryptoError),
     #[error(transparent)]

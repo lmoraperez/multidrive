@@ -82,19 +82,19 @@ impl Volume {
     ///
     /// Falla si ya hay una raiz publicada: sobrescribirla dejaria el arbol anterior
     /// inalcanzable, que es perder el volumen sin decirlo.
-    pub async fn create(store: ChunkStore) -> Result<Self, CoreError> {
+    pub async fn create(store: ChunkStore) -> Result<(Self, Vec<String>), CoreError> {
         if leer_raiz(&store).await?.is_some() {
             return Err(CoreError::RootExists);
         }
 
         let vacia: BTreeMap<String, Entry> = BTreeMap::new();
-        let node = poner_nodo(&store, &Node::Dir(vacia)).await?;
+        let (node, degraded) = poner_nodo(&store, &Node::Dir(vacia)).await?;
         let root = Root {
             generation: 0,
             node,
         };
         publicar(&store, &root).await?;
-        Ok(Self { store, root })
+        Ok((Self { store, root }, degraded))
     }
 
     /// Abre un volumen existente leyendo el puntero de raiz.
@@ -148,7 +148,7 @@ impl Volume {
     }
 
     /// Escribe un fichero, creando los directorios que falten por el camino.
-    pub async fn write_file<R>(&mut self, path: &str, reader: R) -> Result<(), CoreError>
+    pub async fn write_file<R>(&mut self, path: &str, reader: R) -> Result<Vec<String>, CoreError>
     where
         R: AsyncRead + Unpin,
     {
@@ -159,23 +159,38 @@ impl Volume {
 
         let report = self.store.put_file(reader).await?;
         let len = report.manifest.len;
-        let node = poner_nodo(&self.store, &Node::File(report.manifest)).await?;
+        let mut degraded = report.degraded;
 
-        self.aplicar(
-            &segs,
-            Some(Entry {
-                node,
-                kind: Kind::File,
-                len,
-            }),
-        )
-        .await
+        let (node, del_nodo) = poner_nodo(&self.store, &Node::File(report.manifest)).await?;
+        unir(&mut degraded, del_nodo);
+
+        let del_arbol = self
+            .aplicar(
+                &segs,
+                Some(Entry {
+                    node,
+                    kind: Kind::File,
+                    len,
+                }),
+            )
+            .await?;
+        unir(&mut degraded, del_arbol);
+        Ok(degraded)
     }
 
     /// Lee un rango de un fichero, bajando solo los trozos que el rango toca.
     pub async fn read_at(&self, path: &str, offset: u64, len: usize) -> Result<Vec<u8>, CoreError> {
         let manifest = self.manifiesto(path).await?;
         self.store.read_at(&manifest, offset, len).await
+    }
+
+    /// Reconstruye un fichero entero y lo escribe en `writer`.
+    pub async fn read_file<W>(&self, path: &str, writer: W) -> Result<(), CoreError>
+    where
+        W: tokio::io::AsyncWrite + Unpin,
+    {
+        let manifest = self.manifiesto(path).await?;
+        self.store.get_file(&manifest, writer).await
     }
 
     /// El manifiesto de un fichero, para quien quiera leerlo entero o inspeccionarlo.
@@ -194,32 +209,35 @@ impl Volume {
     }
 
     /// Crea un directorio y los que falten por encima. No es error si ya existe.
-    pub async fn mkdir_p(&mut self, path: &str) -> Result<(), CoreError> {
+    pub async fn mkdir_p(&mut self, path: &str) -> Result<Vec<String>, CoreError> {
         let segs = segmentos(path)?;
         if segs.is_empty() {
-            return Ok(());
+            return Ok(Vec::new());
         }
         if let Some(e) = self.buscar(&segs).await? {
             return match e.kind {
-                Kind::Dir => Ok(()),
+                Kind::Dir => Ok(Vec::new()),
                 Kind::File => Err(CoreError::NotADirectory(path.to_string())),
             };
         }
 
-        let node = poner_nodo(&self.store, &Node::Dir(BTreeMap::new())).await?;
-        self.aplicar(
-            &segs,
-            Some(Entry {
-                node,
-                kind: Kind::Dir,
-                len: 0,
-            }),
-        )
-        .await
+        let (node, mut degraded) = poner_nodo(&self.store, &Node::Dir(BTreeMap::new())).await?;
+        let del_arbol = self
+            .aplicar(
+                &segs,
+                Some(Entry {
+                    node,
+                    kind: Kind::Dir,
+                    len: 0,
+                }),
+            )
+            .await?;
+        unir(&mut degraded, del_arbol);
+        Ok(degraded)
     }
 
     /// Borra un fichero, o un directorio **vacio**.
-    pub async fn remove(&mut self, path: &str) -> Result<(), CoreError> {
+    pub async fn remove(&mut self, path: &str) -> Result<Vec<String>, CoreError> {
         let segs = segmentos(path)?;
         if segs.is_empty() {
             return Err(CoreError::InvalidPath("la raiz no se borra".into()));
@@ -234,6 +252,37 @@ impl Volume {
         }
 
         self.aplicar(&segs, None).await
+    }
+
+    /// Recorre el arbol y devuelve todos los trozos que lo componen: los de los nodos y los
+    /// de los ficheros.
+    ///
+    /// Lo que no se pueda leer se devuelve aparte en vez de abortar. Un `scrub` que se rinde
+    /// en el primer nodo ilegible no sirve para diagnosticar nada, que es justo para lo que
+    /// se llama a un scrub.
+    pub async fn walk(&self) -> (Vec<ChunkRef>, Vec<(String, String)>) {
+        let mut pendientes = vec![("/".to_string(), self.root.node.clone())];
+        let mut chunks = Vec::new();
+        let mut ilegibles = Vec::new();
+
+        while let Some((ruta, nodo)) = pendientes.pop() {
+            chunks.push(nodo.clone());
+            match sacar_nodo(&self.store, &nodo).await {
+                Ok(Node::Dir(entradas)) => {
+                    for (nombre, entrada) in entradas {
+                        let hija = if ruta.ends_with('/') {
+                            format!("{ruta}{nombre}")
+                        } else {
+                            format!("{ruta}/{nombre}")
+                        };
+                        pendientes.push((hija, entrada.node));
+                    }
+                }
+                Ok(Node::File(manifest)) => chunks.extend(manifest.chunks),
+                Err(e) => ilegibles.push((ruta, e.to_string())),
+            }
+        }
+        (chunks, ilegibles)
     }
 
     /// Recorre la ruta desde la raiz.
@@ -263,7 +312,11 @@ impl Volume {
     /// se aplica el cambio en el mas profundo, y se vuelve a subir escribiendo un nodo nuevo
     /// por nivel. Al final se publica la raiz, que es el unico momento en que el volumen
     /// cambia para quien lo lea.
-    async fn aplicar(&mut self, segs: &[String], cambio: Option<Entry>) -> Result<(), CoreError> {
+    async fn aplicar(
+        &mut self,
+        segs: &[String],
+        cambio: Option<Entry>,
+    ) -> Result<Vec<String>, CoreError> {
         let Some((nombre, padres)) = segs.split_last() else {
             return Err(CoreError::InvalidPath("no hay nada que cambiar".into()));
         };
@@ -299,7 +352,9 @@ impl Volume {
         }
 
         // De vuelta hacia arriba, un nodo nuevo por nivel.
-        let mut hijo = poner_nodo(&self.store, &Node::Dir(actual.clone())).await?;
+        let mut degraded = Vec::new();
+        let (mut hijo, d) = poner_nodo(&self.store, &Node::Dir(actual.clone())).await?;
+        unir(&mut degraded, d);
         let mut len = actual.len() as u64;
         for (mut padre, seg) in cadena.into_iter().zip(padres).rev() {
             padre.insert(
@@ -311,7 +366,9 @@ impl Volume {
                 },
             );
             len = padre.len() as u64;
-            hijo = poner_nodo(&self.store, &Node::Dir(padre)).await?;
+            let (nuevo, d) = poner_nodo(&self.store, &Node::Dir(padre)).await?;
+            unir(&mut degraded, d);
+            hijo = nuevo;
         }
 
         let nueva = Root {
@@ -320,7 +377,7 @@ impl Volume {
         };
         publicar(&self.store, &nueva).await?;
         self.root = nueva;
-        Ok(())
+        Ok(degraded)
     }
 
     async fn leer_dir(&self, node: &ChunkRef) -> Result<BTreeMap<String, Entry>, CoreError> {
@@ -388,9 +445,22 @@ async fn leer_raiz(store: &ChunkStore) -> Result<Option<Root>, CoreError> {
 }
 
 /// Guarda un nodo como un trozo mas.
-async fn poner_nodo(store: &ChunkStore, node: &Node) -> Result<ChunkRef, CoreError> {
+///
+/// Devuelve tambien los proveedores que no aceptaron su fragmento. Tirar esa lista seria
+/// prometer una redundancia que no se tiene, que es peor que no tenerla.
+async fn poner_nodo(store: &ChunkStore, node: &Node) -> Result<(ChunkRef, Vec<String>), CoreError> {
     let bytes = serde_json::to_vec(node)?;
-    Ok(store.put(&bytes).await?.chunk)
+    let report = store.put(&bytes).await?;
+    Ok((report.chunk, report.degraded))
+}
+
+/// Acumula nombres de proveedores degradados sin repetirlos.
+fn unir(destino: &mut Vec<String>, nuevos: Vec<String>) {
+    for n in nuevos {
+        if !destino.contains(&n) {
+            destino.push(n);
+        }
+    }
 }
 
 async fn sacar_nodo(store: &ChunkStore, node: &ChunkRef) -> Result<Node, CoreError> {
@@ -434,7 +504,7 @@ mod tests {
     }
 
     async fn nuevo(bs: &[Arc<dyn Backend>]) -> Volume {
-        Volume::create(store_sobre(bs, rs())).await.unwrap()
+        Volume::create(store_sobre(bs, rs())).await.unwrap().0
     }
 
     #[tokio::test]
@@ -490,7 +560,8 @@ mod tests {
         let cs = contadores(6);
         let mut v = Volume::create(store_sobre(&como_backends(&cs), rs()))
             .await
-            .unwrap();
+            .unwrap()
+            .0;
         for i in 0..8 {
             v.write_file(&format!("/dir/f{i}.txt"), &b"x"[..])
                 .await

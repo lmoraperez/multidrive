@@ -68,14 +68,33 @@ Pila elegida: **Rust + OpenDAL**.
       fichero hondo son segundos. El escritor de metadatos no puede ser síncrono
 - [ ] Caché local en disco con escritura diferida
 - [ ] Montaje FUSE de solo lectura → luego lectura/escritura
-- [ ] `libredisk scrub` y `rebuild` expuestos en la CLI
+- [x] `libredisk scrub` y `rebuild` expuestos en la CLI. `scrub` recorre el árbol, enumera
+      los proveedores y dice qué le falta a cada trozo y dónde; si un nodo no se deja leer,
+      avisa de que el recorrido quedó **incompleto** en vez de dar un resumen tranquilizador
+      sobre lo poco que pudo mirar
+- [x] El volumen, expuesto en la CLI: `volume create`, `ls`, `put`, `get`, `cat`, `mkdir`,
+      `rm`, `volume status`, `scrub` y `rebuild`. Para abrir un volumen sabiendo solo la frase
+      de paso hizo falta una **cabecera en claro** (`libredisk-volume.json`, replicada en
+      todos los proveedores) con la sal, la topología y el orden de los proveedores: la sal no
+      puede ir cifrada porque sin ella no hay clave, y el orden es parte del formato porque el
+      índice de un fragmento es la posición de su proveedor
+- [x] Capa de reintentos de OpenDAL. No es una optimización, es corrección: probando contra
+      cuentas reales se perdió **una escritura suelta a OneDrive** —que dejó un volumen con
+      menos redundancia de la pedida— y **una lectura suelta a Drive**, que hizo que un
+      `scrub` se saltara medio árbol. Reintentar es seguro en las cinco operaciones del trait
+      *porque* los trozos son inmutables
 
 **Criterio de éxito:** montar un volumen `rs(2,1)` sobre 3 backends, copiar 10 GB, borrar un
 backend entero, y que el volumen siga íntegro y se reconstruya.
 
-> Estado: el criterio ya se cumple **a nivel de trozo** (`cargo run -- demo`, y los tests de
-> `libredisk-core` lo verifican en todas las combinaciones de caída). Falta que se cumpla a
-> nivel de *volumen montado*, que es lo que exige el resto de la lista.
+> Estado: **el criterio se cumple a nivel de volumen**, verificado el 2026-09-21 contra
+> cuentas reales. Un `rs(2,1)` sobre Google Drive, OneDrive y un directorio local: se sube un
+> fichero, se destruye un proveedor entero, el fichero se sigue leyendo byte a byte idéntico,
+> `rebuild` regenera los cuatro fragmentos que faltaban en 34 s y `scrub` vuelve a dar
+> redundancia completa.
+>
+> Con dos salvedades que hay que decir: fue **1 MB y no 10 GB**, y **no hay montaje** todavía,
+> que es lo que exige el resto de la lista.
 
 ## v0.2 — "¿Sobrevive a Windows?"
 - [ ] Capa de montaje con WinFsp

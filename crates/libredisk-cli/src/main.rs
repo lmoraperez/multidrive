@@ -5,6 +5,8 @@
 
 use std::sync::Arc;
 
+mod volumen;
+
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use libredisk_backend::{Backend, OpendalBackend, conformance, live};
@@ -52,6 +54,50 @@ enum Command {
         #[arg(long, default_value_t = 1)]
         pasadas: usize,
     },
+    /// Crea, inspecciona y usa un volumen sobre los proveedores del entorno.
+    #[command(subcommand)]
+    Volume(VolumeCmd),
+    /// Lista un directorio del volumen.
+    Ls {
+        #[arg(default_value = "/")]
+        path: String,
+    },
+    /// Sube un fichero local al volumen.
+    Put { local: String, remoto: String },
+    /// Baja un fichero del volumen.
+    Get {
+        remoto: String,
+        /// Destino local. Por defecto, el nombre del fichero.
+        local: Option<String>,
+    },
+    /// Muestra un trozo de un fichero sin bajarlo entero.
+    Cat {
+        remoto: String,
+        #[arg(long, default_value_t = 0)]
+        offset: u64,
+        #[arg(long, default_value_t = 4096)]
+        len: usize,
+    },
+    /// Crea un directorio, con los que falten por encima.
+    Mkdir { path: String },
+    /// Borra un fichero, o un directorio vacio.
+    Rm { path: String },
+    /// Revisa la salud de todos los trozos del volumen.
+    Scrub,
+    /// Regenera los fragmentos que falten, donde todavia se pueda.
+    Rebuild,
+}
+
+#[derive(Subcommand)]
+enum VolumeCmd {
+    /// Crea un volumen nuevo. Falla si ya hay uno.
+    Create {
+        /// Topologia: `concat`, `mirror:3` o `rs:4,2`.
+        #[arg(long, default_value = "rs:4,2")]
+        layout: String,
+    },
+    /// Topologia, proveedores y generacion actual.
+    Status,
 }
 
 #[tokio::main]
@@ -60,6 +106,20 @@ async fn main() -> Result<()> {
         Command::Layout { spec } => describir(&spec),
         Command::Demo { layout, kib, dir } => demo(&layout, kib, &dir).await,
         Command::Check { pasadas } => check(pasadas).await,
+        Command::Volume(VolumeCmd::Create { layout }) => volumen::create(&layout).await,
+        Command::Volume(VolumeCmd::Status) => volumen::status().await,
+        Command::Ls { path } => volumen::ls(&path).await,
+        Command::Put { local, remoto } => volumen::put(&local, &remoto).await,
+        Command::Get { remoto, local } => volumen::get(&remoto, local.as_deref()).await,
+        Command::Cat {
+            remoto,
+            offset,
+            len,
+        } => volumen::cat(&remoto, offset, len).await,
+        Command::Mkdir { path } => volumen::mkdir(&path).await,
+        Command::Rm { path } => volumen::rm(&path).await,
+        Command::Scrub => volumen::scrub().await,
+        Command::Rebuild => volumen::rebuild().await,
     }
 }
 

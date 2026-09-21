@@ -18,7 +18,7 @@ Sitio del proyecto: https://libredisk.chambaya.net
 Requiere Rust estable (edición 2024).
 
 ```sh
-cargo test --workspace          # 56 tests
+cargo test --workspace          # 93 tests
 cargo run -- layout rs:4,2      # tolerancia y sobrecoste de una topología
 cargo run -- demo --layout rs:4,2 --kib 512
 cargo run -- check              # conformidad de los proveedores configurados
@@ -27,6 +27,22 @@ cargo run -- check              # conformidad de los proveedores configurados
 `demo` hace el ciclo completo sobre directorios locales, uno por "proveedor": escribe un
 trozo cifrado y repartido, **borra dos proveedores enteros**, lo vuelve a leer íntegro y
 regenera los fragmentos que faltaban.
+
+## Un volumen de verdad
+
+Con proveedores configurados (ver [docs/PRUEBAS-PROVEEDORES.md](docs/PRUEBAS-PROVEEDORES.md))
+y una frase de paso:
+
+```sh
+export LIBREDISK_PASSPHRASE='...'        # no hay recuperación: si la pierdes, lo pierdes todo
+cargo run -- volume create --layout rs:2,1
+cargo run -- put ./pelicula.mkv /medios/pelicula.mkv
+cargo run -- ls /medios
+cargo run -- cat /medios/pelicula.mkv --offset 1000000 --len 64   # solo baja el trozo que toca
+cargo run -- get /medios/pelicula.mkv ./vuelta.mkv
+cargo run -- scrub                        # qué le falta a cada trozo, y dónde
+cargo run -- rebuild                      # regenerar lo que falte
+```
 
 ## Estructura
 
