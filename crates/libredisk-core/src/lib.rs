@@ -22,6 +22,8 @@ use libredisk_crypto::MasterKey;
 use libredisk_raid::{Layout, RaidError};
 use serde::{Deserialize, Serialize};
 
+pub mod file;
+
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
     #[error("la topologia {layout} necesita {needed} proveedores y se configuraron {given}")]
@@ -40,6 +42,12 @@ pub enum CoreError {
     },
     #[error("trozo {id} corrupto: el contenido recuperado tiene hash {actual}, que no corresponde")]
     HashMismatch { id: ChunkId, actual: ChunkId },
+    #[error("el tamano de trozo debe ser mayor que cero")]
+    ZeroChunkSize,
+    #[error("manifiesto invalido: {0}")]
+    InvalidManifest(String),
+    #[error("fallo de E/S local: {0}")]
+    Io(#[from] std::io::Error),
     #[error(transparent)]
     Crypto(#[from] libredisk_crypto::CryptoError),
     #[error(transparent)]
