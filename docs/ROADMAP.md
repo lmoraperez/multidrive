@@ -97,9 +97,20 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 > que es lo que exige el resto de la lista.
 
 ## v0.2 — "¿Sobrevive a Windows?"
-- [ ] Capa de montaje con WinFsp
+
+> **Windows se adelantó a Linux**, invirtiendo el orden original. El motivo es práctico: la
+> máquina de desarrollo es Windows, y FUSE no se puede ni compilar ahí. La capa VFS que ambos
+> necesitan ya estaba hecha, así que el trabajo era el adaptador.
+
+- [x] Capa de montaje con WinFsp. `libredisk mount Z:` y el volumen aparece como una unidad
+      más: el Explorador lista carpetas, `Copy-Item` copia ficheros y escribir se rechaza.
+      **Solo lectura**, porque escribir a través del montaje exige antes una caché con
+      escritura diferida: sin ella cada `write` de 4 KiB sería una subida síncrona a varias
+      nubes, y ningún programa espera eso. **Y es lento**, por la misma razón: cada operación
+      va a la nube. Sirve para demostrar que funciona, no para usarlo
+- [x] CI multiplataforma (GitHub Actions: linux + windows)
 - [ ] Instalador MSI, servicio de Windows, certificado de firma de código
-- [ ] CI multiplataforma (GitHub Actions: linux + windows)
+- [ ] Caché de lectura: sin ella el montaje es una demostración, no una unidad
 
 ## v0.3 — "¿Lo puede usar alguien que no sea yo?"
 - [ ] GUI de escritorio (Tauri): asistente de volumen, salud, cola de subida

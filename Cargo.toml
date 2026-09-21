@@ -6,6 +6,7 @@ members = [
     "crates/libredisk-backend",
     "crates/libredisk-core",
     "crates/libredisk-cli",
+    "crates/libredisk-mount",
 ]
 
 [workspace.package]
@@ -20,6 +21,7 @@ libredisk-crypto  = { path = "crates/libredisk-crypto" }
 libredisk-raid    = { path = "crates/libredisk-raid" }
 libredisk-backend = { path = "crates/libredisk-backend" }
 libredisk-core    = { path = "crates/libredisk-core" }
+libredisk-mount   = { path = "crates/libredisk-mount" }
 
 thiserror = "2"
 anyhow    = "1"

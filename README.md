@@ -7,9 +7,10 @@ WebDAV/Nextcloud, Google Drive, OneDrive, Dropbox…) en **un único volumen vir
 monta como una unidad más del sistema en Windows y Linux, con semántica tipo RAID
 (espejo, striping y paridad por *erasure coding*) y **cifrado de conocimiento cero**.
 
-> Estado: **pre-alfa.** El núcleo (cifrado, RAID, proveedores, almacén de trozos) funciona
-> y está cubierto por tests. Google Drive y OneDrive pasan la suite de conformidad contra
-> cuentas reales. Todavía **no se monta como unidad**: eso es el siguiente hito.
+> Estado: **pre-alfa.** El núcleo funciona y está cubierto por tests: cifrado, RAID,
+> troceado, árbol de metadatos copy-on-write y rescate. Google Drive y OneDrive pasan la
+> suite de conformidad contra cuentas reales. **Ya se monta como unidad en Windows**, en
+> solo lectura y sin caché: sirve para comprobar que funciona, no para trabajar encima.
 
 Sitio del proyecto: https://libredisk.chambaya.net
 
@@ -45,7 +46,20 @@ cargo run -- rebuild                      # regenerar lo que falte
 
 cargo run -- header export ./cabecera.json   # respaldo: sin la sal no hay clave
 cargo run -- rescue                          # si se pierde el puntero de raiz
+cargo run -- mount Z:                        # montarlo como unidad (Windows)
 ```
+
+## Montaje
+
+En Windows, `libredisk mount Z:` expone el volumen como una unidad del sistema: el
+Explorador lista carpetas, cualquier programa abre ficheros y `Copy-Item` copia. Requiere
+[WinFsp](https://winfsp.dev) instalado, el toolchain **MSVC** de Rust y la carpeta
+`C:\Program Files (x86)\WinFsp\bin` en el `PATH`.
+
+Es **de solo lectura y lento**, y las dos cosas por el mismo motivo: no hay caché, así que
+cada operación del sistema de ficheros se resuelve contra la nube. Sirve para comprobar que
+funciona, no para trabajar encima. En Linux todavía no hay montaje: hará falta FUSE.
+
 
 ## Estructura
 
@@ -55,6 +69,7 @@ cargo run -- rescue                          # si se pierde el puntero de raiz
 | `libredisk-raid` | Reed-Solomon `k+m`, espejo, concat |
 | `libredisk-backend` | `trait Backend` + adaptador OpenDAL (~40 proveedores) |
 | `libredisk-core` | Almacén de trozos: id por BLAKE3, `put`/`get`/`scrub`/`repair` |
+| `libredisk-mount` | Montaje como unidad del sistema: WinFsp en Windows |
 | `libredisk-cli` | Binario `libredisk` |
 
 ---
