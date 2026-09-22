@@ -260,10 +260,11 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       —una ventana no tiene— sino al panel. Cerrar el volumen desmonta primero: dejar una
       unidad sirviendo un volumen que la ventana dice haber cerrado sería mentir en la peor
       dirección
-- [ ] Conseguir automatizar el recorrido completo de la ventana. Ni `SendKeys` ni un `WM_CHAR`
-      puesto a mano llegan a un WebView2, que lleva su propia cadena de entrada. Lo que queda
-      sin comprobar de punta a punta es el cableado de JavaScript; la lógica está en funciones
-      con tests
+- [x] El recorrido completo de la ventana —crear, montar, escribir por la unidad y desmontar—
+      **está probado a mano** sobre un volumen de directorios locales
+- [ ] Automatizarlo. Ni `SendKeys` ni un `WM_CHAR` puesto a mano llegan a un WebView2, que
+      lleva su propia cadena de entrada, así que el cableado de JavaScript se comprueba a mano
+      o no se comprueba. La lógica que no es cableado sí vive en funciones con tests
 - [ ] **Estimador de coste mensual** por topología y proveedor
 - [ ] Indicador honesto de "guardado localmente" vs "a salvo en la nube"
 
