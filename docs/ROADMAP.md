@@ -308,7 +308,18 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       subida no diera error dice que se escribió, no que esté ahí, y lo que se iba a borrar es
       lo único que quedaría si no lo estuviera. Se enumera y se cuenta antes de destruir la
       red de seguridad; si falta algo, no se borra nada y se dice
-- [ ] Retirar un proveedor
+- [x] Retirar un proveedor: `libredisk providers remove <nombre> --menos-seguridad` o
+      `--menos-espacio`, simétrico a añadir. Si el que se va es **el último** y `k` no cambia,
+      no se mueve ni un fragmento: es publicar la cabecera y tirar lo que sobra. Si es uno de
+      en medio, todos los de detrás cambian de índice —y el índice es donde vive el
+      fragmento—, así que va por reparto nuevo como `--mas-espacio`
+- [x] **Funciona aunque el proveedor ya no responda**, que es el caso que de verdad aprieta:
+      la cuenta suspendida. Si no está configurado se sustituye por uno vacío, que es
+      exactamente lo que el motor de RAID ya sabe tratar, y se avisa. Lo que **no** se hace es
+      fingir que se ha liberado su espacio: borrar contra el suplente «funcionaría» y contarlo
+      sería mentir sobre una cuenta a la que ya no llegamos
+- [x] Quedarse sin redundancia no puede pasar por descuido: retirar hasta `m = 0` se rechaza y
+      se explica que para eso hay que crear un volumen nuevo y copiar
 - [ ] Instantáneas y retención
 - [ ] macOS (FSKit o NFS loopback; macFUSE tiene problemas de licencia)
 

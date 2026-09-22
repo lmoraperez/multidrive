@@ -57,7 +57,7 @@ no se guarda en ninguna parte**. Ver [docs/SERVICIO.md](docs/SERVICIO.md).
 Requiere Rust estable (edición 2024).
 
 ```sh
-cargo test --workspace          # 207 tests
+cargo test --workspace          # 213 tests
 cargo run -- layout rs:4,2      # tolerancia y sobrecoste de una topología
 cargo run -- demo --layout rs:4,2 --kib 512
 cargo run -- check              # conformidad de los proveedores configurados
@@ -83,6 +83,7 @@ cargo run -- scrub                        # qué le falta a cada trozo, y dónde
 cargo run -- providers list               # proveedores del volumen y los configurados de más
 cargo run -- providers add --mas-seguridad   # una caída más de margen (barato)
 cargo run -- providers add --mas-espacio     # más capacidad (reescribe el volumen)
+cargo run -- providers remove fs2 --menos-seguridad   # sacar uno, aunque ya no responda
 cargo run -- rebuild                      # regenerar lo que falte
 
 cargo run -- header export ./cabecera.json   # respaldo: sin la sal no hay clave
@@ -150,7 +151,7 @@ completos, ninguno puede leerlos, y la caída de uno no te deja sin volumen.**
 | Tengo 15 GB aquí, 5 GB allá, 1 TB en otro lado | Un solo volumen agregado |
 | Si el proveedor me suspende la cuenta, lo pierdo todo | Paridad *k de n*: sobrevive a la pérdida de *m* proveedores |
 | El proveedor puede leer mis archivos | Cifrado en cliente (XChaCha20-Poly1305), nombres incluidos |
-| Vendor lock-in | Añade un proveedor y elige para qué: **más margen de caídas** sin reescribir nada, o **más espacio** reescribiendo el volumen sin dejar de poder leerlo |
+| Vendor lock-in | Añade o retira proveedores eligiendo qué priorizar, sin dejar de poder leer el volumen. **Retirar funciona aunque la cuenta ya no responda** |
 
 ## Qué **no** es
 

@@ -171,6 +171,23 @@ enum VolumeCmd {
 enum ProvidersCmd {
     /// Que proveedores tiene el volumen, y cuales hay configurados de mas.
     List,
+    /// Saca del volumen un proveedor.
+    ///
+    /// Funciona aunque el proveedor ya no responda, que es el caso que de verdad aprieta.
+    Remove {
+        /// Nombre del proveedor, tal y como lo lista `providers list`.
+        nombre: String,
+        /// Mismo espacio util, un margen de caida menos. `rs(k,m)` pasa a `rs(k,m-1)`.
+        ///
+        /// Si el que se retira es el ultimo, no se mueve ni un fragmento.
+        #[arg(long, conflicts_with = "menos_espacio")]
+        menos_seguridad: bool,
+        /// Mismo margen de caidas, menos espacio util. `rs(k,m)` pasa a `rs(k-1,m)`.
+        ///
+        /// Reescribe el volumen entero.
+        #[arg(long)]
+        menos_espacio: bool,
+    },
     /// Incorpora al volumen los proveedores configurados de mas.
     ///
     /// Hay que elegir para que: las dos cosas cuestan ordenes de magnitud distintos.
@@ -329,6 +346,25 @@ async fn main() -> Result<()> {
                 ),
             };
             volumen::providers_add(cambio).await
+        }
+        Command::Providers(ProvidersCmd::Remove {
+            nombre,
+            menos_seguridad,
+            menos_espacio,
+        }) => {
+            let sacrificio = match (menos_seguridad, menos_espacio) {
+                (true, _) => libredisk_core::rebalance::Sacrificio::Seguridad,
+                (_, true) => libredisk_core::rebalance::Sacrificio::Espacio,
+                // Igual que al anadir: la diferencia entre las dos es de minutos a dias, y
+                // ademas cambia lo que el volumen promete. No se adivina.
+                _ => anyhow::bail!(
+                    "hay que decir que se sacrifica al quitar el proveedor:\n\n  \
+                     --menos-seguridad   mismo espacio util, un margen de caida menos\n  \
+                     --menos-espacio     mismo margen, menos espacio (reescribe el volumen)\n\n\
+                     `libredisk providers list` ensena como esta ahora."
+                ),
+            };
+            volumen::providers_remove(&nombre, sacrificio).await
         }
     }
 }

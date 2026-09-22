@@ -415,6 +415,114 @@ impl ChunkStore {
     }
 }
 
+/// Que se sacrifica al retirar proveedores.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sacrificio {
+    /// Mismo espacio util, menos margen de caidas. `rs(k,m)` pasa a `rs(k,m-1)`.
+    Seguridad,
+    /// Mismo margen, menos espacio util. `rs(k,m)` pasa a `rs(k-1,m)`.
+    Espacio,
+}
+
+/// Que topologia queda al retirar `cuantos` proveedores de `antes`.
+pub fn planear_retirada(
+    antes: Layout,
+    cuantos: usize,
+    sacrificio: Sacrificio,
+) -> Result<Layout, CoreError> {
+    if cuantos == 0 {
+        return Err(CoreError::Rebalanceo(
+            "no se ha retirado ningun proveedor".into(),
+        ));
+    }
+    let destino = match (antes, sacrificio) {
+        (Layout::Mirror { n }, _) if n > cuantos => Layout::Mirror { n: n - cuantos },
+        (Layout::ReedSolomon { k, m }, Sacrificio::Seguridad) if m >= cuantos => {
+            // Sin paridad ninguna ya no es Reed-Solomon: un solo fragmento por trozo y
+            // repartido entre k proveedores es perder el volumen si cae cualquiera de ellos.
+            // Se dice en vez de dejarlo pasar.
+            if m - cuantos == 0 {
+                return Err(CoreError::Rebalanceo(format!(
+                    "quitar {cuantos} de {antes} dejaria el volumen **sin redundancia**: \
+                     cualquier caida lo perderia entero. Si es lo que quieres, crea un volumen \
+                     nuevo y copia el contenido, para que sea una decision y no un descuido."
+                )));
+            }
+            Layout::ReedSolomon { k, m: m - cuantos }
+        }
+        (Layout::ReedSolomon { k, m }, Sacrificio::Espacio) if k > cuantos => {
+            Layout::ReedSolomon { k: k - cuantos, m }
+        }
+        _ => {
+            return Err(CoreError::Rebalanceo(format!(
+                "no se pueden retirar {cuantos} proveedor(es) de {antes} sin quedarse sin \
+                 volumen"
+            )));
+        }
+    };
+    destino
+        .validate()
+        .map_err(|e| CoreError::Rebalanceo(e.to_string()))?;
+    Ok(destino)
+}
+
+/// Si retirar los **ultimos** proveedores deja lo demas exactamente donde esta.
+///
+/// Es el caso barato de verdad: no hay que leer ni escribir nada, solo publicar la cabecera y
+/// tirar lo que sobra. Vale porque los fragmentos de datos dependen solo de `k`, y los de
+/// paridad que quedan son los mismos que ya habia.
+///
+/// Retirar uno de en medio **no** vale: todos los que van detras cambian de indice, y el
+/// indice es donde vive el fragmento.
+pub fn basta_con_recortar(antes: Layout, despues: Layout) -> bool {
+    match (antes, despues) {
+        (Layout::Mirror { n }, Layout::Mirror { n: n2 }) => n2 < n && n2 >= 1,
+        (Layout::ReedSolomon { k, m }, Layout::ReedSolomon { k: k2, m: m2 }) => k2 == k && m2 < m,
+        _ => false,
+    }
+}
+
+impl ChunkStore {
+    /// Borra los fragmentos de los proveedores que se retiran.
+    ///
+    /// Va **despues** de publicar la cabecera, igual que [`ChunkStore::olvidar_reparto`]: hasta
+    /// ese momento son parte de la redundancia del volumen.
+    ///
+    /// Devuelve `(borrados, sin_borrar)`. Que no se puedan borrar no es un fallo: el caso
+    /// normal de retirar un proveedor es justamente que ya no responda. El volumen queda bien
+    /// igual; lo que queda es sitio ocupado en una cuenta ajena.
+    pub async fn olvidar_proveedores(
+        &self,
+        indices: &[usize],
+        retirados: &[Arc<dyn Backend>],
+        trozos: &[ChunkRef],
+    ) -> (usize, usize) {
+        let mut vistos = std::collections::BTreeSet::new();
+        let unicos: Vec<&ChunkRef> = trozos
+            .iter()
+            .filter(|c| vistos.insert(c.id.clone()))
+            .collect();
+
+        let (mut borrados, mut fallidos) = (0, 0);
+        for lote in unicos.chunks(A_LA_VEZ) {
+            let trabajos = lote.iter().flat_map(|c| {
+                indices.iter().zip(retirados).map(move |(i, b)| {
+                    let clave = c.id.shard_key(self.reparto(), *i);
+                    async move { b.delete(&clave).await.is_ok() }
+                })
+            });
+            for ok in join_all(trabajos).await {
+                if ok {
+                    borrados += 1;
+                } else {
+                    fallidos += 1;
+                }
+            }
+        }
+        (borrados, fallidos)
+    }
+}
+
 enum Ampliado {
     YaEstaba,
     Escritos { cuantos: usize, bytes: u64 },
@@ -807,5 +915,115 @@ mod tests_ampliar {
             }
         }
         out
+    }
+
+    /// Retirar el ultimo proveedor no mueve nada: es solo publicar la cabecera y tirar lo que
+    /// sobra. El volumen se sigue leyendo con los mismos fragmentos de siempre.
+    #[tokio::test]
+    async fn retirar_el_ultimo_no_mueve_ningun_fragmento() {
+        let antes = Layout::ReedSolomon { k: 2, m: 2 };
+        let datos: Vec<u8> = (0..20_000u32).map(|i| (i % 229) as u8).collect();
+        let (bs, v) = volumen_con(antes, &datos).await;
+        let (trozos, _) = v.walk().await;
+        let raiz = v.root().clone();
+
+        let antiguos = fragmentos(&bs, &trozos, 0, 3).await;
+
+        let destino = planear_retirada(antes, 1, Sacrificio::Seguridad).unwrap();
+        assert_eq!(destino, Layout::ReedSolomon { k: 2, m: 1 });
+        assert!(basta_con_recortar(antes, destino));
+
+        let (borrados, _) = v.store().olvidar_proveedores(&[3], &bs[3..], &trozos).await;
+        assert!(borrados > 0);
+
+        assert_eq!(
+            antiguos,
+            fragmentos(&bs, &trozos, 0, 3).await,
+            "se toco un fragmento de los que se quedan"
+        );
+
+        // Con los tres que quedan, el volumen se lee igual.
+        let quedan: Vec<Arc<dyn Backend>> = bs[..3].to_vec();
+        let v2 = Volume::at(store_sobre(&quedan, destino), raiz);
+        assert_eq!(v2.read_at("/dato.bin", 0, 100_000).await.unwrap(), datos);
+    }
+
+    /// Retirar uno de en medio **no** se puede recortar: los de detras cambian de indice, y el
+    /// indice es donde vive el fragmento.
+    #[test]
+    fn retirar_uno_de_en_medio_no_es_un_recorte() {
+        let antes = Layout::ReedSolomon { k: 2, m: 2 };
+        // La topologia resultante es la misma; lo que cambia es que hay que mover cosas, y eso
+        // no lo dice la topologia sino cual se va. Lo decide quien llama.
+        assert!(basta_con_recortar(
+            antes,
+            Layout::ReedSolomon { k: 2, m: 1 }
+        ));
+        assert!(!basta_con_recortar(
+            antes,
+            Layout::ReedSolomon { k: 1, m: 2 }
+        ));
+    }
+
+    /// Y se puede retirar un proveedor **que ya no responde**, que es el caso que de verdad
+    /// aprieta: la cuenta suspendida.
+    #[tokio::test]
+    async fn se_puede_retirar_uno_que_ya_no_responde() {
+        let antes = Layout::ReedSolomon { k: 2, m: 2 };
+        let datos: Vec<u8> = (0..20_000u32).map(|i| (i % 211) as u8).collect();
+        let (bs, v) = volumen_con(antes, &datos).await;
+        let (trozos, _) = v.walk().await;
+        let raiz = v.root().clone();
+
+        // El cuarto se sustituye por uno vacio: ni se lee ni se borra de el.
+        let muerto = proveedor("proveedor-3");
+        let (borrados, fallidos) = v
+            .store()
+            .olvidar_proveedores(&[3], std::slice::from_ref(&muerto), &trozos)
+            .await;
+        assert_eq!(borrados + fallidos, trozos_unicos(&trozos));
+
+        let quedan: Vec<Arc<dyn Backend>> = bs[..3].to_vec();
+        let v2 = Volume::at(
+            store_sobre(&quedan, Layout::ReedSolomon { k: 2, m: 1 }),
+            raiz,
+        );
+        assert_eq!(v2.read_at("/dato.bin", 0, 100_000).await.unwrap(), datos);
+    }
+
+    /// Quedarse sin redundancia tiene que ser una decision, no un descuido.
+    #[test]
+    fn retirar_hasta_quedarse_sin_paridad_se_rechaza() {
+        let e = planear_retirada(Layout::ReedSolomon { k: 3, m: 1 }, 1, Sacrificio::Seguridad)
+            .unwrap_err();
+        assert!(e.to_string().contains("sin redundancia"), "{e}");
+    }
+
+    #[test]
+    fn no_se_puede_retirar_mas_de_lo_que_hay() {
+        assert!(
+            planear_retirada(Layout::ReedSolomon { k: 2, m: 1 }, 3, Sacrificio::Seguridad).is_err()
+        );
+        assert!(planear_retirada(Layout::Mirror { n: 2 }, 2, Sacrificio::Seguridad).is_err());
+    }
+
+    /// Retirar sacrificando espacio en vez de seguridad: mismo margen, menos capacidad.
+    #[test]
+    fn retirar_sacrificando_espacio_mantiene_el_margen() {
+        let antes = Layout::ReedSolomon { k: 3, m: 2 };
+        let d = planear_retirada(antes, 1, Sacrificio::Espacio).unwrap();
+        assert_eq!(d, Layout::ReedSolomon { k: 2, m: 2 });
+        assert_eq!(
+            d.shard_count() - d.shards_needed(),
+            antes.shard_count() - antes.shards_needed(),
+            "el margen de caidas tiene que quedarse igual"
+        );
+        // Y eso no es un recorte: cambia k, asi que se mueve todo.
+        assert!(!basta_con_recortar(antes, d));
+    }
+
+    fn trozos_unicos(trozos: &[ChunkRef]) -> usize {
+        let mut v = std::collections::BTreeSet::new();
+        trozos.iter().filter(|c| v.insert(c.id.clone())).count()
     }
 }
