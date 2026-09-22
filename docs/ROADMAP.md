@@ -43,10 +43,19 @@ Pila elegida: **Rust + OpenDAL**.
       para no acumular millones de objetos en un mismo directorio, que es lo que degrada a los
       almacenes planos; en los jerárquicos el incentivo va justo al revés. Probablemente deba
       depender del proveedor, igual que el tamaño de trozo
-- [ ] Repetir las medidas de §5 y §6 desde la misma red que las de §7. El "4,7× más barato
-      por operación" de OneDrive no se reprodujo el 2026-09-21 (salió 1,6×), y la hipótesis
-      —que el coste de Drive depende de cuánto haya en la cuenta, porque OpenDAL resuelve
-      rutas buscando— está sin verificar
+- [x] Repetidas las medidas desde esta red (§8). La hipótesis —que el coste de Drive depende
+      de cuánto haya en la cuenta— **queda descartada por no ser comprobable con esta
+      medición**: entre dos tandas del mismo día, con la misma cuenta, la misma máquina y la
+      misma línea, el suelo de Drive se mueve un 29 %. El instrumento no tiene resolución para
+      el efecto. De paso cayó una conclusión que §7 daba por robusta: la proporción de ancho
+      de banda entre las dos nubes no solo cambia de tamaño, **cambia de sentido** (1,7×,
+      1,7×, 0,43×)
+- [x] Regla de método para lo que queda de proyecto: **medir proporciones dentro de un
+      proveedor, no entre proveedores**. Las de dentro se repiten con dos cifras a través de
+      tres tandas, dos redes y dos cuentas —en Drive, preguntar por lo que no existe cuesta
+      2,6 veces una operación normal; en OneDrive, 1,0— porque comparten tanda, cuenta y red,
+      así que todo lo demás se cancela al dividir. Ninguna proporción **entre** proveedores ha
+      sobrevivido a las tres tandas
 - [ ] Tamano de trozo por proveedor: 16 MiB se queda corto donde el coste es por operacion
 - [x] Trocear ficheros en trozos de 16 MiB. `ChunkStore::put_file` toma un `AsyncRead` y no un
       `&[u8]`, porque un fichero no tiene por qué caber en memoria; devuelve un `Manifest`
