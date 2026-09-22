@@ -270,7 +270,8 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       Python, con descriptores 0 y 4, mientras que un hijo no setuid sí hereda el socket. Es
       un LXC **sin privilegios** (`uid_map: 0 100000 65536`), que es la pista más probable.
       Como root no hace falta el ayudante: `fuser` hace el `mount(2)` directo. En una máquina
-      Linux normal esto no debería pasar, y hay que comprobarlo en una
+      Linux normal esto no debería pasar, y el job `fuse` de CI es justo donde se verá: los
+      runners de GitHub montan sin privilegios, así que ejercitan el camino que aquí falla
 - [ ] Rebalanceo al añadir/retirar un proveedor
 - [ ] Instantáneas y retención
 - [ ] macOS (FSKit o NFS loopback; macFUSE tiene problemas de licencia)
