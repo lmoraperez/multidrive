@@ -12,7 +12,7 @@ use libredisk_backend::{Backend, live};
 use libredisk_core::ChunkId;
 use libredisk_core::diskcache::DiskCache;
 use libredisk_core::header::{self, HEADER_KEY, HEADER_VERSION, Header};
-use libredisk_core::rebalance::{self, Cambio};
+use libredisk_core::rebalance::{self, Cambio, Sacrificio};
 use libredisk_core::rescue;
 use libredisk_core::tree::{self, Kind, Volume};
 use libredisk_core::writeback::{self, WriteQueue};
@@ -1271,4 +1271,190 @@ fn fallo_a_medias(fallidos: &[(ChunkId, String)]) -> anyhow::Error {
         "no se publica la topologia nueva con trozos sin terminar: la cabecera es la que \n         promete la redundancia.
 \n         Vuelve a ejecutarlo, que lo ya subido no se repite."
     )
+}
+
+/// Saca del volumen un proveedor.
+///
+/// Si sigue configurado se lee de el y se le borran los fragmentos al final. Si ya no esta
+/// --el caso que de verdad aprieta: la cuenta suspendida-- se sustituye por uno vacio y se
+/// avisa de que su sitio no se puede reclamar.
+pub async fn providers_remove(nombre: &str, sacrificio: Sacrificio) -> Result<()> {
+    let configurados = proveedores()?;
+    let header = header::read(&configurados)
+        .await?
+        .ok_or(CoreError::NoVolume)
+        .context("¿has ejecutado `libredisk volume create`?")?;
+    let antes: Layout = header.layout.parse()?;
+
+    let Some(posicion) = header.backends.iter().position(|b| b == nombre) else {
+        bail!(
+            "'{nombre}' no es uno de los proveedores del volumen.\n\
+             Los que hay: {}",
+            header.backends.join(", ")
+        );
+    };
+
+    // Los del volumen, en su orden, sustituyendo por uno vacio el que ya no este configurado.
+    // Sin esto no se podria retirar una cuenta muerta, que es justo cuando hace falta.
+    let mut ausentes = Vec::new();
+    let del_volumen: Vec<Arc<dyn Backend>> = header
+        .backends
+        .iter()
+        .map(|n| {
+            match configurados.iter().find(|b| b.name() == n) {
+                Some(b) => Ok(Arc::clone(b)),
+                None => {
+                    ausentes.push(n.clone());
+                    // Un proveedor vacio: todo lo que se le pida fallara, que es exactamente
+                    // lo que hace uno caido. El motor de RAID ya sabe convivir con eso.
+                    libredisk_backend::OpendalBackend::memory(n.clone())
+                        .map(|b| Arc::new(b) as Arc<dyn Backend>)
+                        .map_err(anyhow::Error::from)
+                }
+            }
+        })
+        .collect::<Result<_>>()?;
+
+    if !ausentes.is_empty() {
+        println!(
+            "AVISO: sin configurar, se tratan como caidos: {}",
+            ausentes.join(", ")
+        );
+        println!();
+    }
+
+    let destino = rebalance::planear_retirada(antes, 1, sacrificio)?;
+    let es_el_ultimo = posicion == header.backends.len() - 1;
+    let recorte = es_el_ultimo && rebalance::basta_con_recortar(antes, destino);
+
+    println!("retirando     {nombre}  (posicion {posicion})");
+    println!("topologia     {antes}  ->  {destino}");
+    println!(
+        "tolera perder {}  ->  {}",
+        antes.shard_count() - antes.shards_needed(),
+        destino.shard_count() - destino.shards_needed()
+    );
+    println!(
+        "sobrecoste    {:.2}x  ->  {:.2}x",
+        antes.shard_count() as f64 / antes.shards_needed() as f64,
+        destino.shard_count() as f64 / destino.shards_needed() as f64
+    );
+    println!(
+        "coste         {}",
+        if recorte {
+            "ninguno: no se mueve ni un fragmento"
+        } else {
+            "reescribe el volumen entero"
+        }
+    );
+    println!();
+
+    let store = almacen_con(&del_volumen, &header, CACHE_POR_DEFECTO).await?;
+    let volumen = Volume::open(store).await?;
+    let (trozos, ilegibles) = volumen.walk().await;
+    if !ilegibles.is_empty() {
+        println!("AVISO: {} ruta(s) ilegibles, se omiten:", ilegibles.len());
+        for (ruta, e) in ilegibles.iter().take(5) {
+            println!("  {ruta}: {e}");
+        }
+        println!();
+    }
+
+    // Los que se quedan, en el orden que tendran.
+    let quedan: Vec<Arc<dyn Backend>> = del_volumen
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != posicion)
+        .map(|(_, b)| Arc::clone(b))
+        .collect();
+
+    let reparto_nuevo = if recorte {
+        // Nada que mover: los que se quedan ya tienen sus fragmentos donde toca.
+        header.reparto
+    } else {
+        let nuevo = header.reparto + 1;
+        println!("reparto       {} -> {nuevo}", header.reparto);
+        println!(
+            "reescribiendo {} referencia(s) de trozo. Esto reescribe el volumen entero.",
+            trozos.len()
+        );
+        println!("Se puede interrumpir: lo subido no se repite y el volumen se sigue leyendo.");
+        println!();
+
+        let informe = volumen
+            .store()
+            .reescribir_reparto(destino, nuevo, &quedan, &trozos)
+            .await?;
+        println!("trozos        {}", informe.trozos);
+        println!("ya estaban    {}", informe.ya_estaban);
+        println!(
+            "subidos       {} fragmento(s), {}",
+            informe.fragmentos,
+            tamano(informe.bytes)
+        );
+        if !informe.completo() {
+            return Err(fallo_a_medias(&informe.fallidos));
+        }
+        nuevo
+    };
+
+    // El punto de compromiso.
+    let cabecera = Header {
+        version: header.version,
+        layout: destino.to_string(),
+        reparto: reparto_nuevo,
+        salt: header.salt.clone(),
+        backends: header
+            .backends
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != posicion)
+            .map(|(_, n)| n.clone())
+            .collect(),
+    };
+    header::write(&quedan, &cabecera).await?;
+    println!();
+    println!("hecho: el volumen es {destino} sin {nombre}");
+
+    // Y ahora lo que sobra. Borrar contra el suplente vacio "funcionaria" y contarlo seria
+    // mentir: el sitio sigue ocupado en una cuenta a la que ya no llegamos.
+    println!();
+    let fallidos = if ausentes.iter().any(|a| a == nombre) {
+        println!(
+            "no se libera lo que ocupaba {nombre}: no esta configurado, \
+             asi que no hay a donde pedirselo."
+        );
+        0
+    } else {
+        println!("liberando lo que ocupaba {nombre}...");
+        let retirado = std::slice::from_ref(&del_volumen[posicion]);
+        let (borrados, fallidos) = volumen
+            .store()
+            .olvidar_proveedores(&[posicion], retirado, &trozos)
+            .await;
+        println!("  {borrados} fragmento(s) borrados, {fallidos} que no se pudieron borrar");
+        fallidos
+    };
+
+    if reparto_nuevo != header.reparto {
+        println!();
+        println!(
+            "borrando el reparto {} de los que se quedan...",
+            header.reparto
+        );
+        let n = volumen
+            .store()
+            .olvidar_reparto(header.reparto, antes.shard_count(), &del_volumen, &trozos)
+            .await;
+        println!("  {n} fragmento(s) borrados");
+    }
+
+    if fallidos > 0 || ausentes.iter().any(|a| a == nombre) {
+        println!();
+        println!("Los fragmentos que quedan alli siguen ocupando sitio en esa cuenta.");
+        println!("No afectan al volumen: ya no forman parte de el. Borralos a mano si puedes.");
+    }
+    println!();
+    println!("Quita ahora {nombre} de tu configuracion.");
+    Ok(())
 }
