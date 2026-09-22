@@ -1,9 +1,13 @@
 /target
 **/*.rs.bk
-Cargo.lock
 .env
 *.db
 *.db-wal
 *.db-shm
 /cache
 .DS_Store
+
+# Cargo.lock NO se ignora, aunque sea la convencion de las bibliotecas: este workspace
+# produce un binario que se distribuye firmado. Sin el fichero fijado, dos compilaciones de
+# la misma etiqueta pueden traer versiones distintas de una dependencia transitiva, y en algo
+# que maneja claves eso es un agujero de cadena de suministro, no una molestia.

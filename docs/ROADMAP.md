@@ -156,7 +156,24 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       nubes, y ningún programa espera eso. **Y es lento**, por la misma razón: cada operación
       va a la nube. Sirve para demostrar que funciona, no para usarlo
 - [x] CI multiplataforma (GitHub Actions: linux + windows)
-- [ ] Instalador MSI, servicio de Windows, certificado de firma de código
+- [x] Instalador MSI. `packaging/windows/libredisk.wxs` más un guión que compila, firma y
+      empaqueta. Instala en Archivos de programa y añade la carpeta al PATH de la máquina.
+      **Se niega a instalarse sin WinFsp**, con el enlace: una herramienta que se instala y
+      luego no puede montar nada es peor que una que avisa. Probado entero en esta máquina:
+      instalar, ejecutar, desinstalar sin dejar rastro y reinstalar. Lo construye también CI
+      en cada cambio, porque un instalador que solo se compila el día de la publicación es un
+      instalador que se descubre roto ese día
+- [x] WiX fijado a la 5.0.2. De la 6 en adelante hay que aceptar la licencia de la Open
+      Source Maintenance Fee, que es de pago para uso comercial; la 5 es la última bajo MS-RL
+      sin esa condición. Subir de versión es una decisión de licencia, no de empaquetado
+- [ ] Certificado de firma de código. Es lo único de v0.2 que no se resuelve escribiendo
+      código: hay que comprar o solicitar un certificado. Las tres vías, lo que bloquea cada
+      una y por qué **no hace falta un EV** están en [FIRMA.md](FIRMA.md). El guión ya firma
+      binario y MSI en cuanto haya con qué; mientras tanto publica el SHA-256
+- [ ] Servicio de Windows. El lanzador de WinFsp ya resuelve la parte difícil —pasa la frase
+      de paso por la entrada estándar, sin que toque el registro ni la lista de procesos—,
+      pero antes hace falta que las credenciales de los proveedores salgan de un fichero de
+      configuración y no del entorno: un servicio no tiene el `.env` de nadie
 - [x] Caché de lectura en memoria, acotada por bytes y con desalojo del menos usado. **No
       necesita invalidación**, y no por simplificar: los trozos son inmutables y su nombre es
       su contenido, así que una entrada cacheada no puede quedar obsoleta. Lo único mutable
