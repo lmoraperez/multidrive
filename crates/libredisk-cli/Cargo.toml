@@ -19,3 +19,6 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winfsp = "0.13"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56.0"

@@ -21,7 +21,23 @@ use libredisk_raid::Layout;
 
 const FRASE: &str = "LIBREDISK_PASSPHRASE";
 
+/// La frase que trajo el lanzador de WinFsp, si vino por ahi.
+///
+/// Un servicio no tiene entorno que exportar: la frase llega por la entrada estandar y hay
+/// que guardarla en algun sitio hasta que se derive la clave. Se guarda aqui y no en una
+/// variable de entorno **a proposito**: el entorno de un proceso lo puede leer cualquiera que
+/// pueda abrirlo, y esto no.
+static FRASE_DEL_LANZADOR: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Fija la frase para el resto del proceso. Solo la usa el arranque desde el lanzador.
+pub fn fijar_frase(f: String) {
+    let _ = FRASE_DEL_LANZADOR.set(f);
+}
+
 fn frase() -> Result<String> {
+    if let Some(f) = FRASE_DEL_LANZADOR.get() {
+        return Ok(f.clone());
+    }
     match std::env::var(FRASE) {
         Ok(f) if !f.trim().is_empty() => Ok(f),
         _ => bail!(
@@ -32,7 +48,7 @@ fn frase() -> Result<String> {
 }
 
 fn proveedores() -> Result<Vec<Arc<dyn Backend>>> {
-    let configurados = live::desde_entorno()
+    let configurados = live::configurados()
         .with_context(|| format!("configuracion de proveedores invalida\n\n{}", live::AYUDA))?;
     if configurados.is_empty() {
         bail!("no hay ningun proveedor configurado.\n\n{}", live::AYUDA);
@@ -632,27 +648,63 @@ pub async fn header_import(origen: &str) -> Result<()> {
 }
 
 /// Monta el volumen como una unidad del sistema.
+///
+/// Con `desde_lanzador`, la salida estandar **no es una consola**: es una tuberia por la que
+/// el lanzador de WinFsp espera exactamente `OK` y que cierra justo despues. Escribir ahi mas
+/// tarde acaba en una tuberia rota, y `println!` entra en panico cuando eso pasa, asi que el
+/// montaje se moriria por el delito de contar como va. Todo lo informativo se desvia a la
+/// salida de error, que el lanzador si redirige a un fichero.
 pub async fn mount(
     punto: &str,
     cache_mb: usize,
     disco_mb: usize,
     escritura: bool,
     sync_cada: u64,
+    desde_lanzador: bool,
 ) -> Result<()> {
+    macro_rules! di {
+        ($($t:tt)*) => {
+            if desde_lanzador { eprintln!($($t)*) } else { println!($($t)*) }
+        };
+    }
+
     // Montar en escritura difiere siempre: cada `write` del sistema no puede ser una subida
     // sincrona a varias nubes. Lo pendiente lo sube el sincronizador de fondo.
     let store = almacen_todo(cache_mb * 1024 * 1024, disco_mb * 1024 * 1024, escritura).await?;
     // Una copia del almacen para el sincronizador: comparte cola y caches con el volumen,
     // pero no pasa por su cerrojo, asi que subir no bloquea las escrituras.
     let para_sync = store.clone();
-    let volumen = Arc::new(std::sync::RwLock::new(Volume::open(store).await?));
+    // Se traduce el error igual que en `abrir_completo`: una frase equivocada no da un fallo
+    // de descifrado, da un puntero de raiz que no se abre. Bajo el lanzador esto importa mas
+    // que en ningun otro sitio, porque el registro de errores es la unica pista que queda.
+    let v = match Volume::open(store).await {
+        Ok(v) => v,
+        Err(CoreError::NoRoot) => bail!(
+            "hay una cabecera de volumen pero no se pudo leer ninguna raiz.
+\n             Lo mas probable es que la frase de paso no sea la que se uso al crearlo."
+        ),
+        Err(e) => return Err(e.into()),
+    };
+    let volumen = Arc::new(std::sync::RwLock::new(v));
     let montaje = libredisk_mount::montar(Arc::clone(&volumen), punto, !escritura)?;
 
-    let sincronizador = escritura
-        .then(|| Sincronizador::arrancar(para_sync, std::time::Duration::from_secs(sync_cada)));
+    // El `OK` va despues de montar, no despues de abrir el volumen. La frase podria ser
+    // buena y la letra de unidad estar ocupada: decir que si y morirse a continuacion le
+    // dejaria a Windows una unidad que no existe.
+    if desde_lanzador {
+        crate::servicio::confirmar_al_lanzador()?;
+    }
 
-    println!("montado en {punto}");
-    println!(
+    let sincronizador = escritura.then(|| {
+        Sincronizador::arrancar(
+            para_sync,
+            std::time::Duration::from_secs(sync_cada),
+            desde_lanzador,
+        )
+    });
+
+    di!("montado en {punto}");
+    di!(
         "modo          {}",
         if escritura {
             "lectura y escritura (diferida)"
@@ -660,25 +712,25 @@ pub async fn mount(
             "solo lectura"
         }
     );
-    println!("cache memoria {cache_mb} MiB");
+    di!("cache memoria {cache_mb} MiB");
     if disco_mb > 0 {
-        println!("cache disco   {disco_mb} MiB (cifrada, sobrevive al reinicio)");
+        di!("cache disco   {disco_mb} MiB (cifrada, sobrevive al reinicio)");
     }
-    println!();
+    di!();
     if escritura {
-        println!("Lo que escribas queda SOLO EN ESTA MAQUINA hasta que suba, cada {sync_cada} s.");
-        println!("Al desmontar se sube lo que quede antes de salir.");
+        di!("Lo que escribas queda SOLO EN ESTA MAQUINA hasta que suba, cada {sync_cada} s.");
+        di!("Al desmontar se sube lo que quede antes de salir.");
     } else {
-        println!("La primera lectura de cada trozo va a la nube; las siguientes no.");
+        di!("La primera lectura de cada trozo va a la nube; las siguientes no.");
     }
-    println!("Ctrl-C para desmontar.");
+    di!("Ctrl-C para desmontar.");
 
     tokio::signal::ctrl_c().await?;
     drop(montaje);
     drop(sincronizador);
 
-    println!();
-    println!("desmontado");
+    di!();
+    di!("desmontado");
 
     // Una ultima subida antes de salir: dejar cosas a medias justo al desmontar seria la
     // peor forma de perderlas, porque el usuario cree que ha terminado.
@@ -689,8 +741,8 @@ pub async fn mount(
             .store()
             .pendiente();
         if !queda.a_salvo() {
-            println!();
-            println!(
+            di!();
+            di!(
                 "subiendo lo que queda: {} trozo(s), {}...",
                 queda.trozos,
                 tamano(queda.bytes)
@@ -701,12 +753,12 @@ pub async fn mount(
                 .store()
                 .clone();
             match store.sync().await {
-                Ok(i) if i.todo_arriba() => println!("todo a salvo en los proveedores"),
-                Ok(i) => println!(
+                Ok(i) if i.todo_arriba() => di!("todo a salvo en los proveedores"),
+                Ok(i) => di!(
                     "AVISO: quedan {} trozo(s) sin subir. Ejecuta `libredisk sync`.",
                     i.fallidos.len()
                 ),
-                Err(e) => println!("AVISO: no se pudo subir: {e}. Ejecuta `libredisk sync`."),
+                Err(e) => di!("AVISO: no se pudo subir: {e}. Ejecuta `libredisk sync`."),
             }
         }
     }
@@ -716,12 +768,13 @@ pub async fn mount(
             .tasa_de_acierto()
             .map(|t| format!("{:.0}%", t * 100.0))
             .unwrap_or_else(|| "-".into());
-        println!();
-        println!(
+        di!();
+        di!(
             "cache: {} aciertos, {} fallos ({tasa})",
-            s.aciertos, s.fallos
+            s.aciertos,
+            s.fallos
         );
-        println!(
+        di!(
             "       {} trozos, {}, {} desalojos",
             s.entradas,
             tamano(s.bytes as u64),
@@ -729,7 +782,7 @@ pub async fn mount(
         );
     }
     if let Some(s) = volumen.store().disk_stats() {
-        println!(
+        di!(
             "disco: {} aciertos, {} fallos, {} trozos, {}",
             s.aciertos,
             s.fallos,
@@ -737,7 +790,7 @@ pub async fn mount(
             tamano(s.bytes as u64)
         );
         if s.corruptos > 0 {
-            println!(
+            di!(
                 "       {} entradas descartadas por no cuadrar con su hash",
                 s.corruptos
             );
@@ -745,8 +798,8 @@ pub async fn mount(
     }
     let p = volumen.store().pendiente();
     if !p.a_salvo() {
-        println!();
-        println!(
+        di!();
+        di!(
             "PENDIENTE: {} trozo(s), {} SOLO EN ESTA MAQUINA. Ejecuta `libredisk sync`.",
             p.trozos,
             tamano(p.bytes)
@@ -854,8 +907,16 @@ struct Sincronizador {
 }
 
 impl Sincronizador {
-    fn arrancar(store: ChunkStore, cada: std::time::Duration) -> Self {
+    /// `a_stderr` va donde va el resto de la salida del montaje: bajo el lanzador de WinFsp
+    /// la salida estandar es una tuberia cerrada, y escribir ahi mataria el hilo de subida.
+    fn arrancar(store: ChunkStore, cada: std::time::Duration, a_stderr: bool) -> Self {
         use std::sync::atomic::{AtomicBool, Ordering};
+
+        macro_rules! di {
+            ($($t:tt)*) => {
+                if a_stderr { eprintln!($($t)*) } else { println!($($t)*) }
+            };
+        }
 
         let parar = Arc::new(AtomicBool::new(false));
         let rt = tokio::runtime::Handle::current();
@@ -882,7 +943,7 @@ impl Sincronizador {
                     }
                     match rt.block_on(store.sync()) {
                         Ok(i) if i.subidos > 0 || i.descartados > 0 => {
-                            println!(
+                            di!(
                                 "  [sync] {} subidos ({}), {} descartados{}",
                                 i.subidos,
                                 tamano(i.bytes),
@@ -897,7 +958,7 @@ impl Sincronizador {
                         Ok(_) => {}
                         // Un fallo no para el montaje: lo pendiente sigue en disco y el
                         // siguiente intento lo recoge. Callarselo si seria grave.
-                        Err(e) => println!("  [sync] fallo, se reintentara: {e}"),
+                        Err(e) => di!("  [sync] fallo, se reintentara: {e}"),
                     }
                 }
             }

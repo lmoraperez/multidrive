@@ -1,10 +1,13 @@
 //! Binario `libredisk`.
 //!
-//! Todavia no monta nada: el montaje FUSE es el siguiente hito. Por ahora expone el
-//! almacen de trozos para poder comprobar a mano que el nucleo hace lo que promete.
+//! Monta el volumen como una unidad en Windows (WinFsp) y expone el almacen de trozos para
+//! poder comprobar a mano que el nucleo hace lo que promete. En Linux el montaje FUSE sigue
+//! pendiente; todo lo demas funciona igual.
 
 use std::sync::Arc;
 
+mod configuracion;
+mod servicio;
 mod volumen;
 
 use anyhow::{Context, Result};
@@ -120,6 +123,13 @@ enum Command {
         /// Cada cuantos segundos sube lo pendiente, con `--escritura`.
         #[arg(long, default_value_t = 30)]
         sync_cada: u64,
+        /// Uso interno: lo arranco el lanzador de WinFsp.
+        ///
+        /// La frase de paso llega por la entrada estandar y hay que responderle `OK`. No
+        /// tiene sentido a mano: sin nadie al otro lado, se queda esperando una frase que
+        /// no va a llegar.
+        #[arg(long, hide = true)]
+        desde_lanzador: bool,
     },
     /// Reconstruye el volumen a partir de lo que quede en los proveedores.
     ///
@@ -134,6 +144,12 @@ enum Command {
     /// Respalda o restaura la cabecera del volumen, que lleva la sal.
     #[command(subcommand)]
     Header(HeaderCmd),
+    /// De donde salen las credenciales de los proveedores.
+    #[command(subcommand)]
+    Config(ConfigCmd),
+    /// Registra el volumen en el lanzador de WinFsp para montarlo como unidad de red.
+    #[command(subcommand)]
+    Servicio(ServicioCmd),
 }
 
 #[derive(Subcommand)]
@@ -146,6 +162,49 @@ enum VolumeCmd {
     },
     /// Topologia, proveedores y generacion actual.
     Status,
+}
+
+#[derive(Subcommand)]
+enum ServicioCmd {
+    /// Declara LibreDisk ante el lanzador de WinFsp. Necesita administrador.
+    ///
+    /// A partir de ahi el volumen se monta desde el Explorador como una unidad de red, y
+    /// **Windows pide la frase de paso**: no se guarda en ningun sitio.
+    Registrar {
+        /// Nombre de la clase. Es lo que aparece en `\<nombre>volumen`.
+        #[arg(long, default_value = servicio::NOMBRE)]
+        nombre: String,
+        /// Tamano de la cache de lectura en memoria, en MiB.
+        #[arg(long, default_value_t = 512)]
+        cache_mb: usize,
+        /// Tamano de la cache en disco, en MiB. Con 0, no se usa.
+        #[arg(long, default_value_t = 4096)]
+        disco_mb: usize,
+        /// Montar en lectura y escritura.
+        #[arg(long)]
+        escritura: bool,
+        /// Cada cuantos segundos sube lo pendiente, con `--escritura`.
+        #[arg(long, default_value_t = 30)]
+        sync_cada: u64,
+    },
+    /// Quita el registro. No toca el volumen ni sus datos.
+    Quitar {
+        #[arg(long, default_value = servicio::NOMBRE)]
+        nombre: String,
+    },
+    /// Que hay registrado, y si la configuracion esta donde un servicio pueda verla.
+    Estado {
+        #[arg(long, default_value = servicio::NOMBRE)]
+        nombre: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ConfigCmd {
+    /// Ficheros donde se busca la configuracion, y cual de ellos existe.
+    Ruta,
+    /// Que claves hay y de donde vienen. **No imprime ningun valor.**
+    Ver,
 }
 
 #[derive(Subcommand)]
@@ -193,15 +252,42 @@ async fn main() -> Result<()> {
             disco_mb,
             escritura,
             sync_cada,
-        } => volumen::mount(&punto, cache_mb, disco_mb, escritura, sync_cada).await,
+            desde_lanzador,
+        } => {
+            // La frase tiene que estar antes de tocar los proveedores: es lo que deriva la
+            // clave con la que se abre la cabecera.
+            if desde_lanzador {
+                volumen::fijar_frase(servicio::frase_del_lanzador()?);
+            }
+            volumen::mount(
+                &punto,
+                cache_mb,
+                disco_mb,
+                escritura,
+                sync_cada,
+                desde_lanzador,
+            )
+            .await
+        }
         Command::Rescue { adoptar } => volumen::rescue(adoptar.as_deref()).await,
         Command::Header(HeaderCmd::Export { fichero }) => volumen::header_export(&fichero).await,
         Command::Header(HeaderCmd::Import { fichero }) => volumen::header_import(&fichero).await,
+        Command::Config(ConfigCmd::Ruta) => configuracion::ruta(),
+        Command::Config(ConfigCmd::Ver) => configuracion::ver(),
+        Command::Servicio(ServicioCmd::Registrar {
+            nombre,
+            cache_mb,
+            disco_mb,
+            escritura,
+            sync_cada,
+        }) => servicio::registrar(&nombre, cache_mb, disco_mb, escritura, sync_cada),
+        Command::Servicio(ServicioCmd::Quitar { nombre }) => servicio::quitar(&nombre),
+        Command::Servicio(ServicioCmd::Estado { nombre }) => servicio::estado(&nombre),
     }
 }
 
 async fn check(pasadas: usize) -> Result<()> {
-    let proveedores = live::desde_entorno()
+    let proveedores = live::configurados()
         .with_context(|| format!("configuracion de proveedores invalida\n\n{}", live::AYUDA))?;
 
     if proveedores.is_empty() {

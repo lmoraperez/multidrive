@@ -1,16 +1,25 @@
-//! Construccion de proveedores reales a partir del entorno.
+//! Construccion de proveedores reales a partir de la configuracion.
 //!
-//! Las credenciales no se guardan en el repositorio ni en un fichero de configuracion de
-//! pruebas: se leen del entorno, para que ejecutar la suite contra una cuenta de verdad sea
-//! una decision explicita de quien la lanza.
+//! Las credenciales no se guardan en el repositorio. Salen del entorno del proceso o de un
+//! fichero de configuracion (ver [`crate::config`]), y el entorno gana: quien exporta una
+//! variable esta diciendo algo sobre **esta** ejecucion.
+//!
+//! El fichero existe porque un servicio no tiene consola: arranca como LocalSystem y ahi no
+//! hay ningun `.env` que nadie haya exportado.
 //!
 //! Un proveedor "no configurado" se omite en silencio, pero uno **a medio configurar** es un
 //! error ruidoso. Esa distincion importa: la forma clasica de tener pruebas que no prueban
 //! nada es que un tipo tomado por el usuario se salte todo por una variable mal escrita.
 
+use crate::config::Config;
 use crate::{BackendError, OauthCreds, OpendalBackend};
 
-const PREFIJO: &str = "LIBREDISK_TEST_";
+const PREFIJO: &str = "LIBREDISK_";
+
+/// El prefijo con el que nacio esto, cuando solo configuraba la suite de conformidad. Se
+/// sigue aceptando: quien ya tenia un `.env` escrito no deberia tener que reescribirlo
+/// porque el proyecto haya crecido. El nuevo gana si estan los dos.
+const PREFIJO_VIEJO: &str = "LIBREDISK_TEST_";
 
 /// Carpeta por defecto dentro de la cuenta. Dedicada a proposito: la suite escribe blobs
 /// opacos y borra lo que crea, y no debe compartir carpeta con archivos del usuario.
@@ -18,7 +27,8 @@ const RAIZ_POR_DEFECTO: &str = "/libredisk-pruebas";
 
 /// Las variables que reconoce, para poder decirselo al usuario cuando no hay ninguna.
 pub const AYUDA: &str = "\
-Proveedores y variables de entorno reconocidas (prefijo LIBREDISK_TEST_):
+Proveedores y claves reconocidas (prefijo LIBREDISK_; tambien se acepta el antiguo
+LIBREDISK_TEST_). Se leen del entorno o del fichero de configuracion; el entorno gana.
 
   Directorio    FS_ROOT
                 No prueba ninguna nube: sirve para comprobar que el arnes funciona
@@ -38,21 +48,29 @@ Proveedores y variables de entorno reconocidas (prefijo LIBREDISK_TEST_):
   WebDAV        WEBDAV_ENDPOINT
                 opcional: WEBDAV_USERNAME + WEBDAV_PASSWORD, WEBDAV_ROOT
 
-Ver docs/PRUEBAS-PROVEEDORES.md para obtener los tokens de OneDrive y Google Drive.";
+Ver `libredisk config ruta` para saber donde se busca el fichero, y
+docs/PRUEBAS-PROVEEDORES.md para obtener los tokens de OneDrive y Google Drive.";
 
-/// Proveedores configurados en el entorno del proceso.
-pub fn desde_entorno() -> Result<Vec<OpendalBackend>, BackendError> {
-    construir(&|clave| std::env::var(clave).ok())
+/// Proveedores configurados, vengan de donde vengan.
+///
+/// El entorno gana al fichero. Quien exporta una variable esta diciendo algo sobre **esta**
+/// ejecucion, y eso es mas especifico que lo que dejo escrito en disco hace un mes.
+pub fn configurados() -> Result<Vec<OpendalBackend>, BackendError> {
+    let config = Config::cargar()?;
+    construir(&|clave| std::env::var(clave).ok().or_else(|| config.get(clave)))
 }
 
-/// Igual que [`desde_entorno`], pero leyendo de donde se le diga. Existe para poder probar
+/// Igual que [`configurados`], pero leyendo de donde se le diga. Existe para poder probar
 /// la logica de configuracion sin tocar el entorno del proceso, que es global y compartido
 /// entre los hilos de los tests.
 fn construir(leer: &dyn Fn(&str) -> Option<String>) -> Result<Vec<OpendalBackend>, BackendError> {
+    // Se prueban los dos prefijos por orden: el nuevo manda.
     let campo = |proveedor: &str, nombre: &str| -> Option<String> {
-        leer(&format!("{PREFIJO}{proveedor}_{nombre}"))
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty())
+        [PREFIJO, PREFIJO_VIEJO].into_iter().find_map(|p| {
+            leer(&format!("{p}{proveedor}_{nombre}"))
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+        })
     };
     let raiz =
         |proveedor: &str| campo(proveedor, "ROOT").unwrap_or_else(|| RAIZ_POR_DEFECTO.to_string());
@@ -209,6 +227,55 @@ mod tests {
             .map(|(k, v)| (format!("{PREFIJO}{k}"), v.to_string()))
             .collect();
         move |clave: &str| mapa.get(clave).cloned()
+    }
+
+    /// Lee con el prefijo que se le diga, para poder mezclarlos.
+    fn entorno_crudo(pares: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> + use<> {
+        let mapa: HashMap<String, String> = pares
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |clave: &str| mapa.get(clave).cloned()
+    }
+
+    /// El `.env` que ya existia sigue funcionando. Romperlo obligaria a reescribir la
+    /// configuracion de todo el mundo por un cambio de nombre.
+    #[test]
+    fn el_prefijo_antiguo_se_sigue_aceptando() {
+        let b = construir(&entorno_crudo(&[(
+            "LIBREDISK_TEST_FS_ROOT",
+            "/tmp/libredisk-viejo",
+        )]))
+        .unwrap();
+        assert_eq!(b.len(), 1);
+    }
+
+    #[test]
+    fn el_prefijo_nuevo_gana_al_antiguo() {
+        let b = construir(&entorno_crudo(&[
+            ("LIBREDISK_GDRIVE_ACCESS_TOKEN", "nuevo"),
+            ("LIBREDISK_TEST_GDRIVE_ACCESS_TOKEN", "viejo"),
+            ("LIBREDISK_GDRIVE_ROOT", "/nueva"),
+            ("LIBREDISK_TEST_GDRIVE_ROOT", "/vieja"),
+        ]))
+        .unwrap();
+        assert_eq!(
+            b.len(),
+            1,
+            "no puede construir dos veces el mismo proveedor"
+        );
+    }
+
+    /// Un valor en blanco con el prefijo nuevo no debe tapar uno bueno con el antiguo: la
+    /// forma tipica de tener eso es una linea a medio escribir en el fichero.
+    #[test]
+    fn un_valor_vacio_no_tapa_al_del_otro_prefijo() {
+        let b = construir(&entorno_crudo(&[
+            ("LIBREDISK_FS_ROOT", "   "),
+            ("LIBREDISK_TEST_FS_ROOT", "/tmp/libredisk-bueno"),
+        ]))
+        .unwrap();
+        assert_eq!(b.len(), 1, "el vacio se ignora y se cae al antiguo");
     }
 
     #[test]

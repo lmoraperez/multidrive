@@ -57,6 +57,13 @@ const STATUS_DIRECTORY_NOT_EMPTY: i32 = 0xC000_0101u32 as i32;
 /// Nombre del sistema de ficheros, tal y como lo vera Windows en las propiedades.
 const NOMBRE_FS: &str = "LibreDisk";
 
+/// La biblioteca de WinFsp para esta arquitectura.
+const NOMBRE_DLL: &str = if cfg!(target_arch = "aarch64") {
+    "winfsp-a64.dll"
+} else {
+    "winfsp-x64.dll"
+};
+
 /// Cuanto puede cachear Windows la informacion de un fichero, en milisegundos.
 ///
 /// Sin cachear nada, abrir una carpeta en el Explorador dispara decenas de consultas, y cada
@@ -675,14 +682,74 @@ impl Drop for Montaje {
     }
 }
 
+/// Carga `winfsp-x64.dll` buscandola donde diga el registro.
+///
+/// `winfsp_init` hace un `LoadLibrary` del nombre a secas, asi que solo la encuentra si la
+/// carpeta `bin` de WinFsp esta en el PATH. **Su instalador no la pone ahi**, y un servicio no
+/// tiene el PATH de ningun usuario: el montaje funcionaba en la consola de quien se lo habia
+/// anadido a mano y fallaba en cuanto salia de ahi, con un error que culpaba al PATH del
+/// usuario en vez de a esto.
+///
+/// Cargarla antes por su ruta completa deja el modulo en el proceso, y el `LoadLibrary` por
+/// nombre de `winfsp_init` se encuentra con que ya esta. Es lo mismo que hace la opcion
+/// `system` de la biblioteca, que no se puede activar porque exige regenerar los enlaces
+/// desde las cabeceras de desarrollo de WinFsp, que no vienen en la instalacion normal.
+///
+/// Si no se encuentra nada, no falla aqui: se deja que `winfsp_init` lo intente por su cuenta
+/// y de el error, que para eso lo tiene.
+fn precargar_winfsp() {
+    use std::os::windows::ffi::OsStrExt;
+
+    use windows_sys::Win32::System::LibraryLoader::LoadLibraryW;
+    use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
+
+    fn utf16(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    // WinFsp deja su clave en la vista de 32 bits aunque el paquete sea de 64. La de 64 la
+    // usan las instalaciones nativas de ARM.
+    for clave in [r"SOFTWARE\WOW6432Node\WinFsp", r"SOFTWARE\WinFsp"] {
+        let mut buf = [0u16; 512];
+        let mut bytes = std::mem::size_of_val(&buf) as u32;
+        let ok = unsafe {
+            RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                utf16(clave).as_ptr(),
+                utf16("InstallDir").as_ptr(),
+                RRF_RT_REG_SZ,
+                std::ptr::null_mut(),
+                buf.as_mut_ptr().cast(),
+                &mut bytes,
+            )
+        };
+        if ok != 0 {
+            continue;
+        }
+        let largo = (bytes as usize / 2).saturating_sub(1);
+        let dir = String::from_utf16_lossy(&buf[..largo]);
+        let dll = std::path::Path::new(dir.trim_end_matches('\\'))
+            .join("bin")
+            .join(NOMBRE_DLL);
+        let ruta: Vec<u16> = dll
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        if !unsafe { LoadLibraryW(ruta.as_ptr()) }.is_null() {
+            return;
+        }
+    }
+}
+
 /// Monta el volumen en un punto de montaje: una letra (`Z:`) o un directorio vacio.
 pub fn montar(volumen: Arc<RwLock<Volume>>, punto: &str, solo_lectura: bool) -> Result<Montaje> {
+    precargar_winfsp();
     winfsp::winfsp_init()
         .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context(
-            "no se pudo inicializar WinFsp.\n\
-             Comprueba que esta instalado y que su carpeta 'bin' esta en el PATH:\n\
-               C:\\Program Files (x86)\\WinFsp\\bin",
+            "no se pudo inicializar WinFsp: no se encuentra su biblioteca.\n\
+             Instalalo desde https://winfsp.dev; es quien pone el controlador que monta la unidad.",
         )?;
 
     let mut params = VolumeParams::new();
