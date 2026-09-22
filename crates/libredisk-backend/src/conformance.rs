@@ -602,6 +602,64 @@ async fn limpiar(b: &dyn Backend, esc: &Escenario) -> Result<(), BackendError> {
     }
 }
 
+/// Comprobacion minima para decidir si un proveedor recien tecleado sirve.
+///
+/// No es la suite: son cuatro operaciones y unos pocos segundos, porque esto se ejecuta con
+/// alguien mirando un formulario. La suite completa —once comprobaciones, minutos contra una
+/// nube— sigue estando en `libredisk check`, y es la que hay que pasar antes de fiarle datos
+/// de verdad a un proveedor nuevo.
+///
+/// Lo que se comprueba aqui es lo que descarta los fallos que importan al configurar:
+/// credenciales malas, carpeta inexistente, permisos de solo lectura y, sobre todo, **que lo
+/// leido sea lo escrito**. Un proveedor que acepta escrituras y devuelve otra cosa es peor
+/// que uno que falla, porque el fallo aparece mucho mas tarde y lejos.
+///
+/// Limpia lo que escribe. Si no pudiera borrarlo, lo dice: dejar restos en la cuenta de
+/// alguien sin avisar no esta bien, y ademas indica que el proveedor no sirve para un
+/// volumen, donde borrar es parte del funcionamiento normal.
+pub async fn prueba_rapida(b: &dyn Backend) -> Result<String, String> {
+    let clave = format!(
+        "libredisk-prueba/{}-{}.tmp",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default()
+    );
+    let contenido = b"LibreDisk comprobando el proveedor".to_vec();
+
+    b.put(&clave, contenido.clone())
+        .await
+        .map_err(|e| format!("no se pudo escribir: {e}"))?;
+
+    let leido = match b.get(&clave).await {
+        Ok(v) => v,
+        Err(e) => {
+            b.delete(&clave).await.ok();
+            return Err(format!("se escribio, pero no se pudo leer de vuelta: {e}"));
+        }
+    };
+    if leido != contenido {
+        b.delete(&clave).await.ok();
+        return Err(format!(
+            "lo leido no es lo escrito ({} bytes escritos, {} leidos). Este proveedor no \
+             sirve para guardar datos: el fallo aparecería mucho después y lejos",
+            contenido.len(),
+            leido.len()
+        ));
+    }
+
+    b.delete(&clave)
+        .await
+        .map_err(|e| format!("se escribio y se leyo, pero no se pudo borrar: {e}"))?;
+
+    Ok(format!(
+        "escribe, lee lo mismo que escribio y borra. Comprobado con {} bytes.\n\
+         Esto descarta credenciales malas y permisos, no que el proveedor cumpla el contrato \
+         entero: para eso está `libredisk check`.",
+        contenido.len()
+    ))
+}
 #[cfg(test)]
 mod tests {
     use super::*;

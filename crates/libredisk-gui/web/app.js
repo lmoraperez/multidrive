@@ -481,3 +481,145 @@ function pintarProveedor(p) {
   }
   return bloque;
 }
+
+// ---------------------------------------------------------------------------------------
+// Añadir proveedores
+// ---------------------------------------------------------------------------------------
+
+/**
+ * Lo tecleado, por clave de campo. Vive fuera del DOM para que cambiar de tipo y volver no
+ * borre lo que ya se había escrito: quien pega un token de refresco de 200 caracteres y
+ * luego mira otra pestaña no debería tener que pegarlo otra vez.
+ */
+const tecleado = new Map();
+let tipos = [];
+
+async function prepararAlta() {
+  try {
+    tipos = await invoke("tipos_de_proveedor");
+  } catch (err) {
+    $("alta-cuerpo").replaceChildren(nota(String(err)));
+    return;
+  }
+  const sel = $("tipo-proveedor");
+  sel.replaceChildren();
+  for (const t of tipos) {
+    const op = document.createElement("option");
+    op.value = t.clave;
+    op.textContent = t.etiqueta;
+    sel.append(op);
+  }
+  pintarFormularioProveedor();
+}
+
+function tipoElegido() {
+  return tipos.find((t) => t.clave === $("tipo-proveedor").value);
+}
+
+function pintarFormularioProveedor() {
+  const t = tipoElegido();
+  const caja = $("campos-proveedor");
+  if (!t) return;
+
+  tecleado.clear();
+  const partes = [nota(t.explicacion)];
+
+  if (t.hueco) {
+    // El nombre con el que el volumen lo va a conocer para siempre. Ver `gdrive2` es lo que
+    // le dice a alguien que su primera cuenta de Drive sigue ahí y no se va a pisar.
+    partes.push(nota(`Se guardará con el nombre «${t.hueco}».`));
+  } else {
+    partes.push(nota("No quedan ranuras libres de este tipo."));
+  }
+
+  for (const c of t.campos) {
+    const etiqueta = document.createElement("label");
+    etiqueta.htmlFor = `campo-${c.clave}`;
+    etiqueta.textContent = c.etiqueta + (c.obligatorio ? "" : " (opcional)");
+
+    const campo = document.createElement("input");
+    campo.id = `campo-${c.clave}`;
+    // Un secreto sin tapar acaba en una captura de pantalla. La marca viene del catálogo,
+    // que es también quien decide qué se imprime y qué no en la línea de órdenes.
+    campo.type = c.secreto ? "password" : "text";
+    campo.autocomplete = "off";
+    campo.spellcheck = false;
+    campo.placeholder = c.ejemplo;
+    campo.addEventListener("input", () => {
+      tecleado.set(c.clave, campo.value);
+      $("resultado-proveedor").hidden = true;
+    });
+
+    partes.push(etiqueta, campo);
+    if (c.ayuda) partes.push(nota(c.ayuda));
+  }
+
+  caja.replaceChildren(...partes);
+  $("resultado-proveedor").hidden = true;
+}
+
+function campos() {
+  const out = {};
+  for (const [k, v] of tecleado) if (v.trim()) out[k] = v;
+  return out;
+}
+
+function resultado(texto, mal = false) {
+  const caja = $("resultado-proveedor");
+  caja.className = mal ? "aviso mal" : "nota";
+  caja.textContent = texto;
+  caja.hidden = false;
+}
+
+$("tipo-proveedor").addEventListener("change", pintarFormularioProveedor);
+
+$("probar-proveedor").addEventListener("click", async () => {
+  const boton = $("probar-proveedor");
+  boton.disabled = true;
+  resultado("Probando: escribe, lee y borra un objeto pequeño…");
+  try {
+    resultado(await invoke("probar_proveedor", { tipo: $("tipo-proveedor").value, campos: campos() }));
+  } catch (err) {
+    resultado(String(err), true);
+  } finally {
+    boton.disabled = false;
+  }
+});
+
+$("guardar-proveedor").addEventListener("click", async () => {
+  const boton = $("guardar-proveedor");
+  boton.disabled = true;
+  resultado("Probando antes de guardar…");
+  try {
+    const g = await invoke("guardar_proveedor", {
+      tipo: $("tipo-proveedor").value,
+      campos: campos(),
+    });
+    let texto = `Guardado como «${g.nombre}» en ${g.fichero}.`;
+    if (g.hay_volumen) {
+      // Configurar no es meterlo en el volumen, y son cosas de coste muy distinto. Decir
+      // aquí que ya está dentro sería la mentira más cara de esta pantalla.
+      texto +=
+        "\n\nOJO: ya hay un volumen, y esto NO lo mete dentro. Para eso hay que mover " +
+        "fragmentos, y hay que elegir para qué:\n" +
+        "  libredisk providers add --mas-seguridad   (aguanta una caída más; barato)\n" +
+        "  libredisk providers add --mas-espacio     (más capacidad; reescribe el volumen entero)";
+    }
+    resultado(texto);
+    tecleado.clear();
+    await arrancar();
+  } catch (err) {
+    resultado(String(err), true);
+  } finally {
+    boton.disabled = false;
+  }
+});
+
+$("plegar-alta").addEventListener("click", async () => {
+  const cuerpo = $("alta-cuerpo");
+  cuerpo.hidden = !cuerpo.hidden;
+  $("plegar-alta").textContent = cuerpo.hidden ? "Mostrar" : "Ocultar";
+  // Se prepara al abrirlo y no al arrancar: consultar qué ranura queda libre lee la
+  // configuración, y no hay por qué pagarlo si nadie va a añadir nada.
+  if (!cuerpo.hidden) await prepararAlta();
+});

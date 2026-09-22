@@ -74,6 +74,63 @@ No es `rs(k,0)` porque eso no existe —Reed-Solomon necesita al menos un fragme
 paridad—, y tenerlo como topología propia hace que «sin redundancia» se lea en el nombre en
 vez de esconderse en un cero.
 
+### Configurar proveedores
+
+Un proveedor se describe con variables `LIBREDISK_<RANURA>_<CAMPO>`, que se leen del entorno
+o de un fichero de configuración; el entorno gana, porque quien exporta una variable está
+diciendo algo sobre *esta* ejecución.
+
+**De cada tipo caben varios.** La ranura lleva un número detrás: `GDRIVE_*` es una cuenta de
+Drive y `GDRIVE2_*` es otra distinta. No es un adorno: sin ello caben cuatro nubes como
+mucho, una por servicio, y un `rs(4,2)` pide seis. La promesa de repartir entre cuentas —e
+idealmente entre empresas— distintas no se puede cumplir con una sola cuenta por servicio.
+
+Numeradas y no separadas por comas porque una ruta de Windows lleva `:` y puede llevar `,`,
+así que cualquier separador sería ambiguo; y porque el nombre va pegado a la variable, que es
+lo que evita el fallo silencioso de reordenar una lista y que cada fragmento se lea del sitio
+equivocado.
+
+**El orden de los proveedores es el índice de cada fragmento.** Lo fija el catálogo, y dentro
+de cada tipo va la ranura sin número antes que las numeradas. Añadir un proveedor mueve a los
+que vienen detrás, y eso no corrompe nada: `Header::check_backends` se niega a abrir un
+volumen cuyos proveedores no casen con los de su cabecera. Lo que arregla el desajuste es
+`libredisk providers add`, que reescribe la cabecera moviendo los fragmentos que haga falta.
+
+#### Un solo catálogo
+
+Qué tipos hay y qué campos pide cada uno vive en un sitio: `libredisk-backend::catalogo`. De
+ahí salen los formularios de la ventana, la ayuda de `libredisk config ver` y la validación
+al guardar. Antes eran tres copias de la misma lista, y una copia de una lista es una lista
+que acaba discrepando: al numerar todos los tipos, el texto de ayuda habría seguido diciendo
+que solo se numeran las carpetas locales.
+
+Lo que el catálogo deliberadamente **no** ofrece es el token de acceso suelto. `live` lo
+sigue aceptando para no romper a quien ya lo tenga escrito, pero caduca en una hora: un
+volumen configurado con él deja de abrirse esa misma tarde. Ofrecerlo en un formulario sería
+ofrecer una trampa.
+
+#### Se prueba antes de guardar
+
+Añadir un proveedor escribe, lee, compara y borra un objeto pequeño, y solo si eso sale bien
+escribe la configuración. Comprueba lo que descarta los fallos de configurar —credenciales
+malas, carpeta inexistente, permisos de solo lectura— y sobre todo **que lo leído sea lo
+escrito**: un proveedor que acepta escrituras y devuelve otra cosa es peor que uno que falla,
+porque el fallo aparece mucho más tarde y lejos. No sustituye a `libredisk check`, que son
+once comprobaciones y minutos contra una nube.
+
+#### Dónde van las credenciales
+
+En el fichero del **usuario** (`%APPDATA%\LibreDisk`, `~/.config/libredisk`), nunca en el de
+la máquina. `ProgramData` y `/etc` los lee cualquier usuario del equipo, y lo que se guarda
+aquí son tokens de refresco y claves secretas, o sea acceso permanente a las cuentas. En Unix
+el fichero nace con permisos `0600`, desde que nace y no después: entre crearlo y un `chmod`
+posterior hay una ventana en la que es legible por todo el mundo.
+
+Un servicio sí necesita el fichero de máquina, porque arranca como LocalSystem y no ve el
+perfil de nadie. Esa es una decisión que hay que tomar a sabiendas y a mano; nada de lo que
+LibreDisk escribe solo va allí.
+
+
 ### Cuánto espacio queda
 
 Son **tres cifras distintas** y el sistema no las mezcla, porque mezclarlas sería inventarse

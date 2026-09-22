@@ -13,13 +13,16 @@ use libredisk_backend::{conformance, live};
 async fn los_proveedores_configurados_cumplen_el_contrato() {
     let proveedores = match live::configurados() {
         Ok(p) => p,
-        Err(e) => panic!("configuracion de entorno invalida: {e}\n\n{}", live::AYUDA),
+        Err(e) => panic!(
+            "configuracion de entorno invalida: {e}\n\n{}",
+            live::ayuda()
+        ),
     };
 
     if proveedores.is_empty() {
         eprintln!(
             "sin proveedores configurados; no se probo nada real.\n\n{}",
-            live::AYUDA
+            live::ayuda()
         );
         return;
     }
