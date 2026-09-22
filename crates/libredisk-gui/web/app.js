@@ -290,6 +290,7 @@ async function ofrecerCreacion(proveedores) {
     op.dataset.tolera = String(o.tolera);
     op.dataset.sobrecoste = o.sobrecoste.toFixed(2);
     op.dataset.aprovechado = Math.round(o.aprovechado * 100);
+    op.dataset.sinRed = o.sin_red ? "1" : "";
     sel.append(op);
   }
   // La primera de la lista es la que más aguanta. Que el valor por defecto sea el prudente
@@ -301,7 +302,21 @@ async function ofrecerCreacion(proveedores) {
 function mostrarPrecio() {
   const op = $("topologia").selectedOptions[0];
   if (!op) return;
-  $("precio").textContent =
+  const caja = $("precio");
+
+  if (op.dataset.sinRed) {
+    // Sin redundancia, el aviso no es un matiz del precio: es lo único que hay que saber
+    // antes de elegirlo. Va en rojo y con todas las letras.
+    caja.className = "aviso mal";
+    caja.textContent =
+      "NO aguanta ninguna caída: si un proveedor falla o te cierra la cuenta, pierdes el " +
+      "volumen ENTERO, no una parte. A cambio aprovechas el 100 % del espacio y repartes " +
+      "la lectura y la escritura entre todos.";
+    return;
+  }
+
+  caja.className = "nota";
+  caja.textContent =
     `Aguanta perder ${op.dataset.tolera} proveedor(es). ` +
     `Aprovechas el ${op.dataset.aprovechado}% del espacio: guardar 1 TB ocupa ` +
     `${op.dataset.sobrecoste} TB repartidos.`;

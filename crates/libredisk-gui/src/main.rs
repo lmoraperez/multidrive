@@ -148,15 +148,19 @@ struct Opcion {
     sobrecoste: f64,
     /// Fraccion del espacio contratado que queda utilizable.
     aprovechado: f64,
+    /// No aguanta ninguna caida. La ventana lo pinta en rojo y lo dice con todas las letras:
+    /// elegir esto sin enterarse es perder el volumen entero el dia que caiga un proveedor.
+    sin_red: bool,
 }
 
 /// Que topologias tienen sentido con `n` proveedores.
 fn opciones(n: usize) -> Vec<Opcion> {
     let describir = |l: Layout| Opcion {
         spec: l.to_string(),
-        tolera: l.shard_count() - l.shards_needed(),
-        sobrecoste: l.shard_count() as f64 / l.shards_needed() as f64,
+        tolera: l.tolerated_failures(),
+        sobrecoste: l.storage_overhead(),
         aprovechado: l.shards_needed() as f64 / l.shard_count() as f64,
+        sin_red: l.tolerated_failures() == 0,
     };
 
     let mut out = Vec::new();
@@ -168,15 +172,29 @@ fn opciones(n: usize) -> Vec<Opcion> {
     if n > 1 {
         out.push(describir(Layout::Mirror { n }));
     }
-    // Reed-Solomon con toda la paridad posible, de mas segura a mas aprovechada. Se deja
-    // fuera m = 0, que no es redundancia ninguna: con ella, perder un proveedor es perder el
-    // volumen, y eso no deberia poder elegirse sin querer en una lista.
+    // Reed-Solomon, de mas segura a mas aprovechada.
+    //
+    // `k = 1` se queda fuera porque **es un espejo**, no algo parecido: con un solo fragmento
+    // de datos, cada fragmento de paridad acaba siendo una copia entera. Mismo margen, mismo
+    // sobrecoste y misma capacidad que `mirror`, pero calculado con aritmetica de cuerpo
+    // finito y sin la propiedad util del espejo —que cualquier copia suelta es el dato—.
+    // Ofrecer las dos es ofrecer la misma opcion dos veces con nombres distintos.
     for m in (1..n).rev() {
-        out.push(describir(Layout::ReedSolomon { k: n - m, m }));
+        let k = n - m;
+        if k < 2 {
+            continue;
+        }
+        out.push(describir(Layout::ReedSolomon { k, m }));
     }
-    if n == 1 {
-        out.push(describir(Layout::Concat));
-    }
+
+    // Y al final del todo, sin redundancia ninguna: toda la capacidad sumada a cambio de que
+    // perder un proveedor pierda el volumen entero. Va la ultima porque la lista se lee de mas
+    // segura a mas aprovechada, y porque nadie deberia toparsela antes que las demas.
+    out.push(describir(if n > 1 {
+        Layout::Stripe { n }
+    } else {
+        Layout::Concat
+    }));
     out
 }
 
@@ -514,6 +532,81 @@ mod tests {
             present: presentes.to_vec(),
             missing: ausentes.to_vec(),
             remaining_tolerance: 0,
+        }
+    }
+
+    /// Dos opciones que aguantan lo mismo y cuestan lo mismo **son la misma opcion**, aunque
+    /// se llamen distinto. Con tres proveedores pasaba: salian `mirror:3` y `rs:1,2`.
+    ///
+    /// Se comprueba por la propiedad y no por los nombres, para que cace tambien el duplicado
+    /// que aparezca al anadir una topologia nueva.
+    #[test]
+    fn ninguna_opcion_se_repite_con_otro_nombre() {
+        for n in 1..=8 {
+            let mut vistas: Vec<(usize, usize)> = Vec::new();
+            for o in opciones(n) {
+                let l: Layout = o.spec.parse().unwrap();
+                let clave = (l.shard_count(), l.shards_needed());
+                assert!(
+                    !vistas.contains(&clave),
+                    "con {n} proveedores, '{}' aguanta y cuesta lo mismo que otra de la lista",
+                    o.spec
+                );
+                vistas.push(clave);
+            }
+        }
+    }
+
+    /// Con tres, tres opciones de verdad: espejo, paridad y reparto puro.
+    #[test]
+    fn con_tres_proveedores_hay_tres_opciones() {
+        let specs: Vec<String> = opciones(3).into_iter().map(|o| o.spec).collect();
+        assert_eq!(specs, vec!["mirror:3", "rs:2,1", "stripe:3"]);
+    }
+
+    /// Con dos no cabe la paridad: `rs:1,1` seria el mismo espejo con otro nombre.
+    #[test]
+    fn con_dos_proveedores_solo_espejo_y_reparto() {
+        let specs: Vec<String> = opciones(2).into_iter().map(|o| o.spec).collect();
+        assert_eq!(specs, vec!["mirror:2", "stripe:2"]);
+    }
+
+    /// La sin redundancia va **la ultima**, y es la unica marcada como tal.
+    ///
+    /// El orden no es estetico: la primera es el valor por defecto, y quien no sepa elegir se
+    /// queda con ella. La que puede perderlo todo tiene que estar lo mas lejos posible de ahi.
+    #[test]
+    fn la_que_no_aguanta_nada_va_la_ultima_y_va_marcada() {
+        for n in 2..=8 {
+            let ops = opciones(n);
+            let marcadas: Vec<&Opcion> = ops.iter().filter(|o| o.sin_red).collect();
+            assert_eq!(marcadas.len(), 1, "con {n} proveedores");
+            assert_eq!(
+                marcadas[0].spec,
+                ops.last().unwrap().spec,
+                "con {n} proveedores, la que no aguanta nada no es la ultima"
+            );
+            assert_eq!(marcadas[0].tolera, 0);
+            assert_eq!(
+                marcadas[0].sobrecoste, 1.0,
+                "no ocupa de mas: es su razon de ser"
+            );
+        }
+    }
+
+    /// Y la lista va de mas segura a mas aprovechada, de principio a fin.
+    #[test]
+    fn la_lista_va_de_mas_segura_a_mas_aprovechada() {
+        for n in 2..=8 {
+            let ops = opciones(n);
+            for par in ops.windows(2) {
+                assert!(
+                    par[0].tolera > par[1].tolera,
+                    "con {n}: '{}' va antes que '{}' y no aguanta mas",
+                    par[0].spec,
+                    par[1].spec
+                );
+            }
         }
     }
 

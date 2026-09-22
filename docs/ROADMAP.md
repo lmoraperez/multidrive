@@ -228,6 +228,22 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       quita el arreglo**
 
 ## v0.3 — "¿Lo puede usar alguien que no sea yo?"
+- [x] Topología `stripe:n`, que es RAID 0: todo el espacio sumado y el ancho de banda
+      repartido, a cambio de que **perder un solo proveedor pierda el volumen entero**. No es
+      `rs(k,0)` porque eso no existe —Reed-Solomon necesita al menos un fragmento de
+      paridad—, y tenerla aparte hace que «sin redundancia» se lea en el nombre en vez de
+      esconderse en un cero
+- [x] En la ventana va **la última** de la lista y su precio sale en rojo diciendo que puede
+      perderse todo. El orden no es estético: la primera es el valor por defecto, y quien no
+      sepa elegir se queda con ella
+- [x] Arreglado que con tres proveedores se ofrecieran `mirror:3` y `rs:1,2`, que **son la
+      misma opción**: con un único fragmento de datos, cada fragmento de paridad acaba siendo
+      una copia entera. Lo cubre un test que compara por lo que aguanta y lo que cuesta, no
+      por el nombre, para que cace también el duplicado que traiga la próxima topología
+- [x] Arreglado que un `get` fallido dejara fichero. Creaba el destino antes de leer, así que
+      una bajada rota dejaba un fichero a medias con pinta de resultado y, si el destino ya
+      existía, **destruía una copia buena por intentar bajar otra**. Ahora va a un temporal y
+      se renombra al terminar, igual que el diario de escritura
 - [x] GUI de escritorio en Tauri, **sin Node**. El frontend es HTML, CSS y JavaScript a mano:
       Tauri no obliga a usar un empaquetador, y meter npm traería un segundo ecosistema de
       dependencias a un proyecto que acaba de fijar `Cargo.lock` precisamente para no tenerlas

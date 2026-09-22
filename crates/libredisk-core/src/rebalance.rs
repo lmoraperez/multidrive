@@ -73,11 +73,11 @@ pub fn planear(antes: Layout, nuevos: usize, cambio: Cambio) -> Result<Layout, C
             Layout::ReedSolomon { k: k + nuevos, m }
         }
 
-        // Sin redundancia no hay nada que ampliar, y convertir un `concat` en otra cosa es
-        // reescribir el volumen entero: no es esta operacion.
-        (Layout::Concat, _) => {
+        // Sin redundancia no hay nada que ampliar, y convertir un volumen sin ella en uno con
+        // ella es reescribirlo entero: no es esta operacion.
+        (Layout::Concat | Layout::Stripe { .. }, _) => {
             return Err(CoreError::Rebalanceo(
-                "un volumen `concat` no tiene redundancia que ampliar. Crea uno nuevo con la \
+                "un volumen sin redundancia no tiene nada que ampliar. Crea uno nuevo con la \
                  topologia que quieras y copia el contenido."
                     .into(),
             ));
@@ -559,10 +559,17 @@ mod tests {
         );
     }
 
+    /// Ni `concat` ni `stripe` tienen redundancia que ampliar, y por el mismo motivo: no la
+    /// tienen. Dársela es reescribir el volumen entero, que no es esta operacion.
     #[test]
-    fn concat_no_tiene_redundancia_que_ampliar() {
-        let e = planear(Layout::Concat, 1, Cambio::MasSeguridad).unwrap_err();
-        assert!(e.to_string().contains("concat"), "{e}");
+    fn lo_que_no_tiene_redundancia_no_se_puede_ampliar() {
+        for antes in [Layout::Concat, Layout::Stripe { n: 3 }] {
+            let e = planear(antes, 1, Cambio::MasSeguridad).unwrap_err();
+            assert!(
+                e.to_string().contains("sin redundancia"),
+                "con {antes}: {e}"
+            );
+        }
     }
 
     #[test]

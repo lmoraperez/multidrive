@@ -37,6 +37,16 @@ pub enum Layout {
     /// Reed-Solomon: `k` fragmentos de datos y `m` de paridad, repartidos en `k + m`
     /// proveedores. Sobrevive a la perdida de `m` cualesquiera.
     ReedSolomon { k: usize, m: usize },
+    /// Reparto puro entre `n` proveedores, **sin ninguna redundancia**: lo que en un disco se
+    /// llama RAID 0.
+    ///
+    /// Da toda la capacidad sumada y reparte el ancho de banda, y a cambio **perder uno solo
+    /// pierde el volumen entero**.
+    ///
+    /// No es Reed-Solomon con `m = 0` porque eso no existe: Reed-Solomon necesita al menos un
+    /// fragmento de paridad. Es su propia topologia, y tenerla aparte tiene la ventaja de que
+    /// «sin redundancia» se lee en el nombre en vez de esconderse en un cero.
+    Stripe { n: usize },
 }
 
 impl Layout {
@@ -44,6 +54,11 @@ impl Layout {
         match *self {
             Layout::Concat => Ok(()),
             Layout::Mirror { n } if n >= 1 => Ok(()),
+            // Con uno solo no es un reparto, es `concat` con otro nombre.
+            Layout::Stripe { n } if (2..=256).contains(&n) => Ok(()),
+            Layout::Stripe { n } => Err(RaidError::InvalidLayout(format!(
+                "stripe necesita 2 <= n <= 256, se dio {n}"
+            ))),
             Layout::Mirror { n } => Err(RaidError::InvalidLayout(format!(
                 "mirror necesita n >= 1, se dio {n}"
             ))),
@@ -60,6 +75,7 @@ impl Layout {
             Layout::Concat => 1,
             Layout::Mirror { n } => n,
             Layout::ReedSolomon { k, m } => k + m,
+            Layout::Stripe { n } => n,
         }
     }
 
@@ -69,6 +85,8 @@ impl Layout {
             Layout::Concat => 1,
             Layout::Mirror { .. } => 1,
             Layout::ReedSolomon { k, .. } => k,
+            // Todos: sin paridad no hay nada que reconstruir.
+            Layout::Stripe { n } => n,
         }
     }
 
@@ -89,6 +107,7 @@ impl std::fmt::Display for Layout {
             Layout::Concat => write!(f, "concat"),
             Layout::Mirror { n } => write!(f, "mirror:{n}"),
             Layout::ReedSolomon { k, m } => write!(f, "rs:{k},{m}"),
+            Layout::Stripe { n } => write!(f, "stripe:{n}"),
         }
     }
 }
@@ -96,10 +115,14 @@ impl std::fmt::Display for Layout {
 impl std::str::FromStr for Layout {
     type Err = RaidError;
 
-    /// Acepta `concat`, `mirror:3` y `rs:4,2`.
+    /// Acepta `concat`, `mirror:3`, `stripe:3` y `rs:4,2`.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let layout = match s.split_once(':') {
             None if s == "concat" => Layout::Concat,
+            Some(("stripe", n)) => Layout::Stripe {
+                n: n.parse()
+                    .map_err(|_| RaidError::InvalidLayout(format!("n invalido: {n}")))?,
+            },
             Some(("mirror", n)) => Layout::Mirror {
                 n: n.parse()
                     .map_err(|_| RaidError::InvalidLayout(format!("n invalido: {n}")))?,
@@ -122,27 +145,36 @@ impl std::str::FromStr for Layout {
     }
 }
 
-/// Reparte `data` en los fragmentos que exige la topologia.
+/// Parte `data` en `k` trozos iguales, rellenando el ultimo con ceros.
 ///
-/// En Reed-Solomon los datos se rellenan con ceros hasta un multiplo de `k`, porque el
-/// codigo exige fragmentos del mismo tamano. El relleno se descarta en [`join`], que para
-/// eso recibe la longitud original.
+/// Todos del mismo tamano porque el codigo de borrado lo exige, y porque un `join` que tuviera
+/// que adivinar donde acaba cada uno no podria distinguir un fragmento corto de uno truncado.
+/// El relleno se descarta en [`join`], que para eso recibe la longitud original.
+fn trocear(data: &[u8], k: usize) -> Vec<Vec<u8>> {
+    let shard_len = data.len().div_ceil(k).max(1);
+    (0..k)
+        .map(|i| {
+            let start = (i * shard_len).min(data.len());
+            let end = ((i + 1) * shard_len).min(data.len());
+            let mut shard = vec![0u8; shard_len];
+            shard[..end - start].copy_from_slice(&data[start..end]);
+            shard
+        })
+        .collect()
+}
+
+/// Reparte `data` en los fragmentos que exige la topologia.
 pub fn split(layout: Layout, data: &[u8]) -> Result<Vec<Vec<u8>>, RaidError> {
     layout.validate()?;
     match layout {
         Layout::Concat => Ok(vec![data.to_vec()]),
         Layout::Mirror { n } => Ok(vec![data.to_vec(); n]),
+        // Los mismos fragmentos de datos que haria Reed-Solomon con `k = n`, y ninguno mas.
+        Layout::Stripe { n } => Ok(trocear(data, n)),
         Layout::ReedSolomon { k, m } => {
-            let shard_len = data.len().div_ceil(k).max(1);
-
-            let mut shards: Vec<Vec<u8>> = Vec::with_capacity(k + m);
-            for i in 0..k {
-                let start = (i * shard_len).min(data.len());
-                let end = ((i + 1) * shard_len).min(data.len());
-                let mut shard = vec![0u8; shard_len];
-                shard[..end - start].copy_from_slice(&data[start..end]);
-                shards.push(shard);
-            }
+            let mut shards = trocear(data, k);
+            let shard_len = shards[0].len();
+            shards.reserve(m);
             shards.extend(std::iter::repeat_n(vec![0u8; shard_len], m));
 
             ReedSolomon::<Field>::new(k, m)?.encode(&mut shards)?;
@@ -186,6 +218,17 @@ pub fn join(
                 .flatten()
                 .next()
                 .expect("ya comprobado que hay uno");
+            data.truncate(original_len);
+            Ok(data)
+        }
+        // Sin paridad no hay nada que reconstruir: o estan todos, o no hay trozo. Que hayan
+        // llegado todos ya lo comprobo la cuenta de arriba, porque aqui `shards_needed` es
+        // `n`.
+        Layout::Stripe { .. } => {
+            let mut data = Vec::with_capacity(original_len);
+            for shard in shards {
+                data.extend_from_slice(&shard.expect("con stripe hacen falta todos"));
+            }
             data.truncate(original_len);
             Ok(data)
         }
@@ -411,5 +454,79 @@ mod tests {
             antes[0], despues[0],
             "con otro k, hasta el primer fragmento es distinto"
         );
+    }
+
+    /// Reparto puro: va y vuelve entero mientras esten todos los fragmentos.
+    #[test]
+    fn stripe_reparte_y_reensambla() {
+        let datos: Vec<u8> = (0..10_000u32).map(|i| (i % 251) as u8).collect();
+        let l = Layout::Stripe { n: 3 };
+
+        let fragmentos = split(l, &datos).unwrap();
+        assert_eq!(fragmentos.len(), 3);
+        // Sin paridad, lo repartido ocupa lo mismo que el original (salvo el relleno).
+        assert!(fragmentos.iter().map(|f| f.len()).sum::<usize>() < datos.len() + 3);
+
+        let vuelta = join(l, fragmentos.into_iter().map(Some).collect(), datos.len()).unwrap();
+        assert_eq!(vuelta, datos);
+    }
+
+    /// Y la propiedad que lo define: **perder uno lo pierde todo**.
+    ///
+    /// Es lo que separa esta topologia de todas las demas, y por eso se comprueba en vez de
+    /// darlo por supuesto: si algun dia dejara de cumplirse, seria porque se ha colado
+    /// redundancia donde se prometio que no habia.
+    #[test]
+    fn stripe_no_sobrevive_a_ninguna_caida() {
+        let datos: Vec<u8> = (0..5_000u32).map(|i| (i % 97) as u8).collect();
+        let l = Layout::Stripe { n: 4 };
+        assert_eq!(l.tolerated_failures(), 0);
+
+        let fragmentos = split(l, &datos).unwrap();
+        for perdido in 0..4 {
+            let mutilados: Vec<Option<Vec<u8>>> = fragmentos
+                .iter()
+                .enumerate()
+                .map(|(i, f)| if i == perdido { None } else { Some(f.clone()) })
+                .collect();
+            assert!(
+                join(l, mutilados, datos.len()).is_err(),
+                "sin el fragmento {perdido} no deberia poder reensamblarse"
+            );
+        }
+    }
+
+    /// No ocupa mas que los datos: es la razon de existir de esta topologia.
+    #[test]
+    fn stripe_no_tiene_sobrecoste() {
+        assert_eq!(Layout::Stripe { n: 5 }.storage_overhead(), 1.0);
+        assert_eq!(Layout::Stripe { n: 2 }.storage_overhead(), 1.0);
+    }
+
+    /// Con un solo proveedor no es un reparto: es `concat` con otro nombre.
+    #[test]
+    fn stripe_de_uno_no_es_una_topologia() {
+        assert!(Layout::Stripe { n: 1 }.validate().is_err());
+        assert!(Layout::Stripe { n: 0 }.validate().is_err());
+        assert!("stripe:1".parse::<Layout>().is_err());
+    }
+
+    #[test]
+    fn stripe_va_y_vuelve_por_su_nombre() {
+        let l: Layout = "stripe:6".parse().unwrap();
+        assert_eq!(l, Layout::Stripe { n: 6 });
+        assert_eq!(l.to_string(), "stripe:6");
+    }
+
+    /// Los fragmentos de datos son los mismos que haria Reed-Solomon con `k = n`.
+    ///
+    /// De eso depende que el rescate sepa deducir la longitud sellada con la misma cuenta
+    /// para las dos topologias.
+    #[test]
+    fn stripe_trocea_igual_que_reed_solomon() {
+        let datos: Vec<u8> = (0..7_777u32).map(|i| (i % 211) as u8).collect();
+        let a = split(Layout::Stripe { n: 3 }, &datos).unwrap();
+        let b = split(Layout::ReedSolomon { k: 3, m: 2 }, &datos).unwrap();
+        assert_eq!(a, b[..3]);
     }
 }

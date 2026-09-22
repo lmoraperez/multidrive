@@ -242,10 +242,25 @@ pub async fn get(remoto: &str, local: Option<&str>) -> Result<()> {
         None => remoto.rsplit('/').next().unwrap_or(remoto).to_string(),
     };
 
-    let mut fichero = tokio::fs::File::create(&destino)
+    // A un temporal y luego renombrar, igual que hace el diario de escritura y por lo mismo:
+    // crear el destino directamente lo trunca **antes** de leer nada. Si la bajada falla a
+    // medias --o falla del todo, como con un volumen sin redundancia al que le falta un
+    // proveedor-- quedaria un fichero a medias con pinta de resultado, y si el destino ya
+    // existia se habria destruido una copia buena por intentar bajar otra.
+    let temporal = format!("{destino}.libredisk-parcial");
+    let mut fichero = tokio::fs::File::create(&temporal)
         .await
-        .with_context(|| format!("no se pudo crear '{destino}'"))?;
-    volumen.read_file(remoto, &mut fichero).await?;
+        .with_context(|| format!("no se pudo crear '{temporal}'"))?;
+
+    if let Err(e) = volumen.read_file(remoto, &mut fichero).await {
+        drop(fichero);
+        let _ = tokio::fs::remove_file(&temporal).await;
+        return Err(e.into());
+    }
+    drop(fichero);
+    tokio::fs::rename(&temporal, &destino)
+        .await
+        .with_context(|| format!("no se pudo dejar el resultado en '{destino}'"))?;
 
     println!("bajado {remoto} -> {destino}");
     Ok(())
