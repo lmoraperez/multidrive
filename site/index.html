@@ -58,7 +58,7 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 <div class="wrap">
 
 <header>
-  <div class="badge">Pre-alfa · el núcleo funciona</div>
+  <div class="badge">Pre-alfa · ya se monta</div>
   <h1>Libre<span>Disk</span></h1>
   <p class="tag">Una sola unidad. Muchas nubes.</p>
 </header>
@@ -67,8 +67,8 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
   <p class="lead">LibreDisk agrega varios servicios de almacenamiento en la nube
   —S3, Backblaze B2, Cloudflare R2, Storj, Nextcloud/WebDAV, Google Drive, OneDrive—
   en <strong>un único volumen</strong> con semántica tipo RAID y cifrado de conocimiento cero.
-  El objetivo es que se monte como una unidad más del sistema en Windows y Linux;
-  <strong>todavía no lo hace</strong>, y abajo se explica exactamente por dónde va.</p>
+  El objetivo es que se monte como una unidad más del sistema en Windows y Linux, y
+  <strong>ya lo hace</strong>: abajo se explica exactamente qué está probado y qué no.</p>
   <p>Si RAID convirtió varios discos poco fiables en un volumen fiable, LibreDisk hace lo
   mismo con varias cuentas de nube: <strong>ningún proveedor tiene tus datos completos,
   ninguno puede leerlos, y la caída de uno no te deja sin volumen.</strong></p>
@@ -82,19 +82,28 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
       <ul>
         <li><b>Cifrado por trozo.</b> XChaCha20-Poly1305 con clave Argon2id, nombres de fichero incluidos</li>
         <li><b>Erasure coding.</b> Reed-Solomon <code>k+m</code>, espejo y concatenación</li>
-        <li><b>Troceado y lectura por rango.</b> Leer 4 KiB no baja el fichero entero</li>
-        <li><b>Árbol de metadatos copy-on-write.</b> Una raíz antigua sigue siendo legible: instantáneas gratis</li>
-        <li><b>Línea de órdenes.</b> Crear volumen, subir, listar, leer, <code>scrub</code> y <code>rebuild</code></li>
+        <li><b>Se monta como una unidad.</b> WinFsp en Windows y FUSE en Linux, en lectura y
+        escritura: el Explorador lista carpetas y cualquier programa abre ficheros</li>
+        <li><b>Escritura diferida con diario.</b> Escribir vuelve enseguida y un hilo de fondo
+        sube; nunca se publica una raíz que apunte a trozos que no están arriba todavía</li>
+        <li><b>Caché en memoria y en disco.</b> La de disco guarda los trozos <b>cifrados</b> y
+        sobrevive al reinicio. Releer 7,6 MiB pasa de 2 718 ms a 23 ms</li>
+        <li><b>Instalador para Windows</b> que trae WinFsp, y servicio: la unidad se conecta
+        desde el Explorador y <b>Windows pide la frase de paso</b>, que no se guarda</li>
+        <li><b>Rescate.</b> Si se pierde el puntero de raíz, el volumen se reconstruye
+        enumerando y descifrando lo que quede en los proveedores</li>
         <li><b>Google Drive y OneDrive</b> pasan la suite de conformidad contra cuentas reales</li>
       </ul>
     </div>
     <div class="no2">
       <h3>Todavía no</h3>
       <ul>
-        <li><b>No se monta como unidad.</b> Es el siguiente hito: WinFsp en Windows, FUSE en Linux</li>
-        <li><b>No hay índice local.</b> Cada operación paga una petición por nivel del árbol</li>
-        <li><b>No hay caché ni escritura diferida.</b> Subir es síncrono y lento</li>
+        <li><b>No hay versión publicada.</b> El formato en disco puede cambiar sin aviso</li>
+        <li><b>Los instaladores no van firmados.</b> Windows los anuncia como de editor
+        desconocido hasta que haya un certificado</li>
         <li><b>No hay interfaz gráfica</b></li>
+        <li><b>No hay rebalanceo</b> al añadir o retirar un proveedor</li>
+        <li><b>No hay índice local.</b> Recorrer el árbol paga una petición por nivel</li>
         <li><b>Un solo escritor.</b> Varias máquinas escribiendo a la vez está fuera de alcance</li>
       </ul>
     </div>
@@ -103,20 +112,27 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 <section>
   <h2>Medido, no prometido</h2>
-  <p>El proyecto se apoya en medidas contra cuentas reales, no en estimaciones. Dos ejemplos
-  que cambiaron el diseño:</p>
-  <table class="tbl">
-    <tr>
-      <td>Preguntar a Google Drive por un objeto que no existe cuesta <strong>~6,5 s</strong></td>
-      <td>Revisar un volumen de 1 TB objeto a objeto serían semanas. Por eso la revisión
-      <em>enumera</em> en vez de preguntar, y baja a minutos</td>
-    </tr>
-    <tr>
-      <td>Enumerar cuesta una petición <strong>por directorio</strong>, no una en total</td>
-      <td>Drive y OneDrive son jerárquicos. El reparto de los trozos en carpetas tiene un
-      precio que hay que medir antes de fijarlo</td>
-    </tr>
-  </table>
+  <p>El proyecto se apoya en medidas contra cuentas reales, no en estimaciones. Y también en
+lo que <em>no</em> se reprodujo al repetirlas:</p>
+<table class="tbl">
+<tr>
+<td>En Google Drive, preguntar por un objeto que no existe cuesta <strong>2,6 veces</strong>
+una operación normal</td>
+<td>Es su peor caso, y es justo lo que hace revisar un volumen. Por eso la revisión
+<em>enumera</em> en vez de preguntar, y pasa de semanas a minutos</td>
+</tr>
+<tr>
+<td>Enumerar cuesta una petición <strong>por directorio</strong>, no una en total</td>
+<td>Drive y OneDrive son jerárquicos. El reparto de los trozos en carpetas tiene un
+precio que hay que medir antes de fijarlo</td>
+</tr>
+<tr>
+<td>Ninguna proporción <strong>entre</strong> las dos nubes ha sobrevivido a tres tandas
+de medidas</td>
+<td>Una salió 4,7×, 1,6× y 2,5×; otra cambió de sentido. Se miden proporciones dentro de
+un proveedor, que sí se repiten, y se desconfía de las que comparan dos</td>
+</tr>
+</table>
   <p class="nota">La prueba que importa, hecha contra cuentas reales: un volumen
   <code>rs(2,1)</code> repartido entre Google Drive, OneDrive y un disco local. Se sube un
   fichero, <strong>se destruye un proveedor entero</strong>, el fichero se sigue leyendo byte
@@ -140,7 +156,7 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
     <div class="card"><h3>Trozos inmutables</h3><p>Cada archivo se corta en trozos de 16 MiB, direccionados por su hash BLAKE3. Copy-on-write: nada se sobrescribe jamás.</p></div>
     <div class="card"><h3>Erasure coding</h3><p>Reed-Solomon <code>k+m</code>. Con <code>rs(4,2)</code> sobre 6 proveedores sobrevives a 2 caídas con 1,5× de sobrecoste.</p></div>
     <div class="card"><h3>Cifrado en cliente</h3><p>XChaCha20-Poly1305 por trozo, clave derivada con Argon2id. El proveedor ve blobs opacos.</p></div>
-    <div class="card"><h3>Montaje nativo <em>(pendiente)</em></h3><p>WinFsp en Windows, FUSE en Linux. Es el siguiente hito; hoy se usa desde la línea de órdenes.</p></div>
+    <div class="card"><h3>Montaje nativo</h3><p>WinFsp en Windows, FUSE en Linux. En lectura y escritura, con caché y subida en segundo plano.</p></div>
   </div>
 </section>
 
@@ -163,14 +179,14 @@ rs(k,m)       k de k+m     m caídas        (k+m)/k ×</code></pre>
     desaconsejan este patrón de uso; los proveedores de primera clase son los compatibles
     con S3 y los autoalojados.</li>
     <li><b>No es software terminado.</b> No hay versión publicada, el formato en disco puede
-    cambiar sin aviso, y no debes confiarle todavía datos que no tengas en otro sitio.</li>
+    cambiar sin aviso, y no debes confiarle todavía el único ejemplar de nada.</li>
   </ul>
 </section>
 
 <footer>
   <div class="wrap" style="padding:0">
-    LibreDisk · AGPL-3.0 · pre-alfa: el núcleo funciona y está cubierto por pruebas,
-    pero no hay versión utilizable para usuarios finales.
+    LibreDisk · AGPL-3.0 · pre-alfa: se monta, se usa y está cubierto por pruebas, pero no
+    hay versión publicada y el formato en disco todavía puede cambiar.
   </div>
 </footer>
 
