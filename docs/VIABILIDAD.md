@@ -225,6 +225,10 @@ de Drive. **Las nueve comprobaciones pasan en las cinco**: OneDrive cumple el co
 
 ### El suelo es 4,7 veces más barato que el de Drive
 
+> **Esta cifra no se reproduce.** En tres tandas ha salido 4,7×, 1,6× y 2,5× (§8). Lo único
+> constante es el signo: una operación contra OneDrive sale más barata que contra Drive. El
+> resto de esta sección se deja tal y como se midió el 18.
+
 Las dos comprobaciones de una sola operación coinciden dentro del ruido —**515 ms** el
 `delete` de lo inexistente, **518 ms** el `get` que falla— y las dos son estables (6 % y
 20 % de dispersión). Ese suelo es sólido, y está muy por debajo de los 2 443 ms de Drive.
@@ -335,8 +339,10 @@ prefijo con tres directorios debajo: del orden de **3 a 4 s por directorio**.
 debajo. **1 133 ms en OneDrive y 1 137 ms en Drive.**
 
 Que dos proveedores que difieren en todo lo demás coincidan en cuatro milisegundos es lo
-bastante llamativo como para no darlo por bueno sin repetirlo desde otra red. Si se sostiene,
-dice que el coste de enumerar lo pone el número de directorios y no el proveedor.
+bastante llamativo como para no darlo por bueno sin repetirlo.
+
+> **Repetido en §8, y no se sostiene:** 593 ms en OneDrive y 1 522 ms en Drive. Era una
+> coincidencia. El coste de enumerar sí lo pone el proveedor.
 
 ### Enumerar un proveedor entero
 
@@ -362,23 +368,27 @@ trozo, y probablemente la misma respuesta: **que dependa del proveedor.**
 
 Dos cosas opuestas, y conviene separarlas.
 
-**La relación de ancho de banda aguanta.** Con el método de §6 —`fragmento_de_4_mib` menos
-`integridad_binaria`, que son 8 MiB movidos:
+**La relación de ancho de banda parecía aguantar, y no aguanta.** Con el método de §6
+—`fragmento_de_4_mib` menos `integridad_binaria`, que son 8 MiB movidos:
 
-| | 2026-09-18 | 2026-09-21 |
+| | 2026-09-18 | 2026-09-21, mañana |
 |---|---:|---:|
 | Drive | ~3,2 MB/s | ~1,4 MB/s |
 | OneDrive | ~1,9 MB/s | ~0,85 MB/s |
 | **Drive / OneDrive** | **1,7×** | **1,7×** |
 
 Esta red es unas 2,3 veces más lenta en absoluto, pero la proporción se reproduce con dos
-decimales. La conclusión de §6 sobre bytes —Drive mueve datos ~1,7 veces más rápido— es
-robusta frente al cambio de red.
+decimales.
+
+> **Corregido en §8.** Una tercera tanda da 0,43×: la proporción no solo cambia de tamaño,
+> cambia de sentido. Dos muestras que coinciden no son una constante. Lo que ocupaba este
+> hueco —que la conclusión de §6 sobre bytes era «robusta frente al cambio de red»— estaba
+> apoyado en n = 2 y era un error.
 
 **El suelo por operación no aguanta.** Y esa es la cifra sobre la que §6 apoya su conclusión
 más fuerte:
 
-| `borrar_inexistente` (1 op) | 2026-09-18 | 2026-09-21 |
+| `borrar_inexistente` (1 op) | 2026-09-18 | 2026-09-21, mañana |
 |---|---:|---:|
 | Drive | 2 443 ms | 1 267 ms |
 | OneDrive | 515 ms | 774 ms |
@@ -387,6 +397,10 @@ más fuerte:
 Drive mejoró y OneDrive empeoró. El "**4,7 veces más barato por operación**" de §6 **no se
 reproduce**. En el peor caso de Drive, el `get` que falla, la ventaja pasa de 12,9× a 4,0×:
 sigue existiendo, pero es otra magnitud.
+
+> **Zanjado en §8**, aunque no como se esperaba: repetida la medida desde esta misma red y
+> con esta misma cuenta, el suelo de Drive se mueve un 29 % entre dos tandas del mismo día.
+> El instrumento no tiene resolución para el efecto que la hipótesis proponía.
 
 La hipótesis más plausible está en el propio §5: OpenDAL resuelve cada ruta de Drive
 **buscándola**, así que el coste depende de lo que haya en la cuenta. La cuenta de Drive del
@@ -402,7 +416,130 @@ distintas de las de entonces. Lo único que aquí se puede dar por cerrado es lo
 las once comprobaciones pasan, enumerar cuesta una petición por directorio, y `list` convierte
 el `scrub` de inviable en caro. Los milisegundos concretos son de esta tarde y de esta línea.
 
-## 8. Honestidad sobre el rendimiento
+## 8. Tercera tanda: qué se reproduce y qué no
+
+Cinco pasadas más, la noche del **2026-09-21**, misma máquina, misma red y **las mismas
+cuentas** que las de §7, nueve horas después. Las once comprobaciones vuelven a pasar en las
+cinco, en las dos nubes.
+
+Esta tanda existe por una razón concreta: §7 dejó abierta una hipótesis y dio por cerrada una
+conclusión. Se cumple lo contrario de lo que se esperaba en las dos.
+
+| Comprobación | OneDrive | Drive |
+|---|---:|---:|
+| `ida_y_vuelta` (64 KiB) | 2 006 ms (disp. 265 %) | 5 741 ms (disp. 45 %) |
+| `sobrescritura` | 2 640 ms (38 %) | 5 391 ms (12 %) |
+| `not_found_distinguible` | 639 ms (32 %) | 4 292 ms (10 %) |
+| `borrar_inexistente` | 667 ms (36 %) | 1 634 ms (42 %) |
+| `exists_refleja_el_borrado` | 3 011 ms (31 %) | 6 021 ms (11 %) |
+| `integridad_binaria` (4 KiB) | 1 813 ms (29 %) | 3 662 ms (31 %) |
+| `clave_con_forma_de_fragmento` | 1 549 ms (109 %) | 5 828 ms (16 %) |
+| `fragmento_de_4_mib` | 4 755 ms (79 %) | 10 563 ms (18 %) |
+| `seis_escrituras_en_paralelo` | 1 492 ms (82 %) | 3 326 ms (21 %) |
+| `listado_enumera_lo_escrito` | 6 563 ms (33 %) | 15 535 ms (10 %) |
+| `listado_de_prefijo_vacio` | 593 ms (32 %) | 1 522 ms (21 %) |
+
+### El ruido de fondo se come la hipótesis
+
+§7 se preguntaba por qué el suelo por operación de Drive había caído de 2 443 ms a 1 267 ms,
+y proponía que dependiera de cuánto hubiera en la cuenta, porque OpenDAL resuelve cada ruta
+de Drive buscándola. Para comprobarlo hacía falta medir otra vez desde la misma red.
+
+| `borrar_inexistente` (1 operación, 0 bytes) | 09-18, servidor | 09-21 mañana | 09-21 noche |
+|---|---:|---:|---:|
+| Drive | 2 443 ms | 1 267 ms | 1 634 ms |
+| OneDrive | 515 ms | 774 ms | 667 ms |
+| **Drive / OneDrive** | **4,7×** | **1,6×** | **2,5×** |
+
+Las dos últimas columnas son **la misma cuenta, la misma máquina y la misma línea**, con nueve
+horas de diferencia. Y aun así el suelo de Drive se mueve un **29 %**.
+
+Ese es el resultado, y no es el que se buscaba: **el instrumento no tiene resolución para la
+pregunta.** Una mediana de cinco pasadas varía casi un tercio entre dos tandas idénticas en
+todo lo controlable, así que atribuir a «lo que hay en la cuenta» una diferencia de 1,9× entre
+dos días distintos es contar una historia sobre ruido. La hipótesis no queda refutada: queda
+**descartada por no ser comprobable con esta medición**. Comprobarla exigiría un experimento
+de verdad —la misma cuenta poblada y vacía, alternando, muchas repeticiones— y eso mide una
+propiedad de Google, no de LibreDisk.
+
+Lo que sí se puede cerrar es la cifra: **el «4,7 veces más barato por operación» de §6 no se
+sostiene y no debe citarse.** En tres tandas ha salido 4,7×, 1,6× y 2,5×. Lo único constante
+es el signo: una operación contra OneDrive es más barata que contra Drive.
+
+### Y de paso se cae una conclusión que §7 daba por robusta
+
+§7 comparó el ancho de banda de las dos nubes en dos tandas, vio la misma proporción y
+escribió que era «robusta frente al cambio de red». Con una tercera tanda:
+
+| MB/s reales (`fragmento_de_4_mib` − `integridad_binaria`, 8 MiB) | 09-18 | 09-21 mañana | 09-21 noche |
+|---|---:|---:|---:|
+| Drive | 3,3 | ~1,4 | **1,22** |
+| OneDrive | 2,0 | ~0,85 | **2,85** |
+| **Drive / OneDrive** | 1,7× | 1,7× | **0,43×** |
+
+No es que la proporción cambie de tamaño: **cambia de sentido.** Esta noche OneDrive mueve
+datos más del doble de rápido que Drive, después de dos tandas moviéndolos casi la mitad de
+rápido.
+
+Dos muestras que coinciden no son una constante, son dos muestras que coinciden. Escribir
+«robusta» con n = 2 fue un error de quien esto escribe, y la frase queda corregida en §7.
+
+### Lo que sí se reproduce: las proporciones **dentro** de un proveedor
+
+Comparar dos nubes entre sí no funciona. Comparar dos operaciones de la misma nube sí, y
+mucho:
+
+| `not_found_distinguible` / `borrar_inexistente` | 09-18 | 09-21 noche |
+|---|---:|---:|
+| Drive | 2,73× | **2,63×** |
+| OneDrive | 1,01× | **0,96×** |
+
+Con tres días, dos redes, dos máquinas y dos cuentas de por medio, estos dos números se
+repiten con dos cifras. Y tiene sentido: las dos comprobaciones de una misma nube se miden
+en la misma tanda, contra la misma cuenta y con la misma red debajo, así que todo lo que se
+mueve entre tandas se cancela al dividir. Entre proveedores no se cancela nada.
+
+De ahí sale la regla de método para el resto del proyecto: **medir proporciones dentro de un
+proveedor, no entre proveedores.** Y las dos que se sostienen son justo las que sostienen el
+diseño:
+
+- **En Drive, preguntar por algo que no existe cuesta 2,6 veces una operación normal.** Es el
+  peor caso, es estable, y es exactamente lo que hacen `scrub` y `repair`.
+- **En OneDrive cuesta lo mismo que cualquier otra cosa.** Graph direcciona por ruta; Drive
+  busca.
+
+### La coincidencia de §7 era una coincidencia
+
+§7 encontró que enumerar un prefijo vacío costaba 1 133 ms en OneDrive y 1 137 ms en Drive
+—cuatro milisegundos de diferencia— y tuvo el buen criterio de no creérselo sin repetirlo.
+Hizo bien:
+
+| `listado_de_prefijo_vacio` | 09-21 mañana | 09-21 noche |
+|---|---:|---:|
+| OneDrive | 1 133 ms | **593 ms** |
+| Drive | 1 137 ms | **1 522 ms** |
+
+De coincidir en cuatro milisegundos a diferir en 2,6 veces. **El coste de enumerar sí lo pone
+el proveedor**, y la frase de §7 que sugería lo contrario queda anulada.
+
+En cambio `listado_enumera_lo_escrito` en Drive pasa de 15 148 ms a 15 535 ms: un 2,6 % en
+nueve horas. Drive fue el proveedor estable de esta tanda y OneDrive el que se movió, que es
+lo contrario de lo que sugería la dispersión de cada uno. Otra razón para no fiarse de una
+sola tanda.
+
+### Qué se da por cerrado y qué no
+
+**Cerrado:** el suelo por operación es de **cientos de milisegundos a segundos** en las dos
+nubes, en las tres tandas, en dos redes. Un `scrub` fragmento a fragmento de 1 TB no cabe en
+ningún presupuesto de tiempo, `list` es necesario, y preguntar por lo que falta es el caso
+caro en Drive y no en OneDrive. Todo lo que el diseño apoya en órdenes de magnitud sigue en
+pie.
+
+**No cerrado, y probablemente no cerrable así:** cualquier cifra que compare las dos nubes
+entre sí. No hay ninguna proporción entre proveedores en este documento que haya sobrevivido
+a tres tandas. **Las que quedan escritas son de la tanda en que se midieron, y nada más.**
+
+## 9. Honestidad sobre el rendimiento
 
 Posicionarlo correctamente desde el README evita el 90% de las malas reseñas:
 
