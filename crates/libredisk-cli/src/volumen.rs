@@ -12,6 +12,7 @@ use libredisk_backend::{Backend, live};
 use libredisk_core::ChunkId;
 use libredisk_core::diskcache::DiskCache;
 use libredisk_core::header::{self, HEADER_KEY, HEADER_VERSION, Header};
+use libredisk_core::rebalance::{self, Cambio};
 use libredisk_core::rescue;
 use libredisk_core::tree::{self, Kind, Volume};
 use libredisk_core::writeback::{self, WriteQueue};
@@ -99,6 +100,27 @@ async fn almacen(cache_bytes: usize) -> Result<ChunkStore> {
 /// Igual, anadiendo la cache en disco si se pide.
 async fn almacen_completo(cache_bytes: usize, disco_bytes: usize) -> Result<ChunkStore> {
     almacen_todo(cache_bytes, disco_bytes, false).await
+}
+
+/// Un almacen sobre unos proveedores concretos, sin volver a leer la configuracion.
+///
+/// El rebalanceo lo necesita: tiene que leer con **los proveedores que el volumen ya tenia**,
+/// no con todos los que hay configurados, porque los nuevos todavia no forman parte de la
+/// topologia y `check_backends` los rechazaria con razon.
+async fn almacen_con(
+    backends: &[Arc<dyn Backend>],
+    header: &Header,
+    cache_bytes: usize,
+) -> Result<ChunkStore> {
+    header.check_backends(backends)?;
+    let layout: Layout = header.layout.parse().with_context(|| {
+        format!(
+            "la cabecera declara una topologia invalida: {}",
+            header.layout
+        )
+    })?;
+    let key = MasterKey::derive(&frase()?, &header.salt)?;
+    Ok(ChunkStore::new(layout, backends.to_vec(), key)?.with_cache(cache_bytes))
 }
 
 /// Igual, pudiendo activar la escritura diferida.
@@ -985,4 +1007,196 @@ impl Drop for Sincronizador {
             let _ = h.join();
         }
     }
+}
+
+/// Los proveedores del volumen frente a los que hay configurados.
+///
+/// Separarlos importa porque el orden es parte del formato: los que ya estan tienen que seguir
+/// exactamente donde estaban, y los nuevos solo pueden ir detras.
+struct Reparto {
+    /// Los que la cabecera declara, en su orden.
+    del_volumen: Vec<Arc<dyn Backend>>,
+    /// Los configurados que la cabecera no menciona, en el orden en que se configuraron.
+    nuevos: Vec<Arc<dyn Backend>>,
+}
+
+fn repartir(header: &Header, configurados: Vec<Arc<dyn Backend>>) -> Result<Reparto> {
+    let nombres: Vec<&str> = configurados.iter().map(|b| b.name()).collect();
+
+    // Los del volumen tienen que estar, y en la misma posicion. Si alguien reordena su
+    // configuracion, cada fragmento se leeria del sitio equivocado.
+    for (i, esperado) in header.backends.iter().enumerate() {
+        match nombres.get(i) {
+            Some(actual) if actual == esperado => {}
+            Some(actual) => bail!(
+                "en la posicion {i} el volumen tiene '{esperado}' y ahora hay '{actual}'.\n\
+                 El orden es parte del formato: los proveedores que ya estaban no se pueden \
+                 mover ni quitar, solo se pueden anadir otros detras."
+            ),
+            None => bail!(
+                "falta el proveedor '{esperado}', que es el numero {i} del volumen.\n\
+                 Para anadir hace falta tener configurados todos los que ya habia."
+            ),
+        }
+    }
+
+    let (del_volumen, nuevos) = configurados.split_at(header.backends.len());
+    Ok(Reparto {
+        del_volumen: del_volumen.to_vec(),
+        nuevos: nuevos.to_vec(),
+    })
+}
+
+/// Que proveedores tiene el volumen, y cuales hay configurados de mas.
+pub async fn providers_list() -> Result<()> {
+    let configurados = proveedores()?;
+    let header = header::read(&configurados)
+        .await?
+        .ok_or(CoreError::NoVolume)
+        .context("¿has ejecutado `libredisk volume create`?")?;
+    let layout: Layout = header.layout.parse()?;
+
+    println!("topologia     {layout}");
+    println!(
+        "tolera perder {} proveedor(es)",
+        layout.shard_count() - layout.shards_needed()
+    );
+    println!();
+    println!("Proveedores del volumen, en su orden:");
+    for (i, n) in header.backends.iter().enumerate() {
+        println!("  {i:>2}  {n}");
+    }
+
+    let extra: Vec<&str> = configurados
+        .iter()
+        .map(|b| b.name())
+        .filter(|n| !header.backends.iter().any(|h| h == n))
+        .collect();
+    println!();
+    if extra.is_empty() {
+        println!("No hay ningun proveedor configurado de mas.");
+        println!("Para anadir uno, configuralo y vuelve a ejecutar esto.");
+    } else {
+        println!("Configurados y todavia sin usar ({}):", extra.len());
+        for n in &extra {
+            println!("      {n}");
+        }
+        println!();
+        println!("  libredisk providers add --mas-seguridad   # mas margen de caidas");
+        println!("  libredisk providers add --mas-espacio     # mas capacidad (caro)");
+    }
+    Ok(())
+}
+
+/// Incorpora al volumen los proveedores configurados de mas.
+pub async fn providers_add(cambio: Cambio) -> Result<()> {
+    let configurados = proveedores()?;
+    let header = header::read(&configurados)
+        .await?
+        .ok_or(CoreError::NoVolume)
+        .context("¿has ejecutado `libredisk volume create`?")?;
+    let antes: Layout = header.layout.parse()?;
+    let reparto = repartir(&header, configurados)?;
+
+    if reparto.nuevos.is_empty() {
+        bail!(
+            "no hay ningun proveedor configurado que el volumen no tenga ya.\n\
+             Configura el nuevo y vuelve a intentarlo: `libredisk providers list`."
+        );
+    }
+    let destino = rebalance::planear(antes, reparto.nuevos.len(), cambio)?;
+
+    println!("topologia     {antes}  ->  {destino}");
+    println!(
+        "tolera perder {}  ->  {}",
+        antes.shard_count() - antes.shards_needed(),
+        destino.shard_count() - destino.shards_needed()
+    );
+    println!(
+        "sobrecoste    {:.2}x  ->  {:.2}x",
+        antes.shard_count() as f64 / antes.shards_needed() as f64,
+        destino.shard_count() as f64 / destino.shards_needed() as f64
+    );
+    println!("anadiendo     {}", reparto.nuevos.len());
+    for b in &reparto.nuevos {
+        println!("              {}", b.name());
+    }
+    println!();
+
+    if !rebalance::conserva_lo_escrito(antes, destino) {
+        bail!(
+            "pasar de {antes} a {destino} mueve todos los fragmentos de todos los trozos, asi \
+             que hay que releer y volver a subir el volumen entero.\n\
+             Eso todavia no esta implementado: hace falta un esquema de dos generaciones para \
+             poder escribir lo nuevo sin destruir lo viejo mientras el volumen se sigue \
+             leyendo.\n\n\
+             Por ahora, `--mas-seguridad` si funciona: no mueve nada de lo que ya hay."
+        );
+    }
+
+    // Se lee con la topologia vieja, que es la que describe lo que hay escrito.
+    let store = almacen_con(&reparto.del_volumen, &header, CACHE_POR_DEFECTO).await?;
+    let volumen = Volume::open(store).await?;
+
+    let (trozos, ilegibles) = volumen.walk().await;
+    if !ilegibles.is_empty() {
+        println!("AVISO: {} ruta(s) ilegibles, se omiten:", ilegibles.len());
+        for (ruta, e) in ilegibles.iter().take(5) {
+            println!("  {ruta}: {e}");
+        }
+        println!();
+    }
+    println!("ampliando {} referencia(s) de trozo...", trozos.len());
+
+    let informe = volumen
+        .store()
+        .ampliar_redundancia(destino, &reparto.nuevos, &trozos)
+        .await?;
+
+    println!();
+    println!("trozos        {}", informe.trozos);
+    println!("ya estaban    {}", informe.ya_estaban);
+    println!(
+        "subidos       {} fragmento(s), {}",
+        informe.fragmentos,
+        tamano(informe.bytes)
+    );
+
+    if !informe.completo() {
+        println!("fallidos      {}", informe.fallidos.len());
+        for (id, e) in informe.fallidos.iter().take(5) {
+            println!("  {id}: {e}");
+        }
+        println!();
+        bail!(
+            "no se publica la topologia nueva con trozos sin ampliar: la cabecera es la que \
+             promete la redundancia, y prometer una que no esta es peor que no ampliar.\n\
+             Vuelve a ejecutarlo: lo ya subido no se repite."
+        );
+    }
+
+    // El unico punto de compromiso. Hasta aqui el volumen se leia con la topologia vieja.
+    let nuevo = Header {
+        version: header.version,
+        layout: destino.to_string(),
+        salt: header.salt.clone(),
+        backends: reparto
+            .del_volumen
+            .iter()
+            .chain(&reparto.nuevos)
+            .map(|b| b.name().to_string())
+            .collect(),
+    };
+    let todos: Vec<Arc<dyn Backend>> = reparto
+        .del_volumen
+        .iter()
+        .chain(&reparto.nuevos)
+        .cloned()
+        .collect();
+    header::write(&todos, &nuevo).await?;
+
+    println!();
+    println!("hecho: el volumen es {destino}");
+    println!("Comprueba con `libredisk scrub` que todos los fragmentos estan donde toca.");
+    Ok(())
 }

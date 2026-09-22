@@ -26,6 +26,7 @@ pub mod cache;
 pub mod diskcache;
 pub mod file;
 pub mod header;
+pub mod rebalance;
 pub mod rescue;
 pub mod tree;
 pub mod writeback;
@@ -35,6 +36,8 @@ mod testutil;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
+    #[error("no se puede cambiar la topologia: {0}")]
+    Rebalanceo(String),
     #[error("la topologia {layout} necesita {needed} proveedores y se configuraron {given}")]
     BackendCount {
         layout: Layout,

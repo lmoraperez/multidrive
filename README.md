@@ -57,7 +57,7 @@ no se guarda en ninguna parte**. Ver [docs/SERVICIO.md](docs/SERVICIO.md).
 Requiere Rust estable (edición 2024).
 
 ```sh
-cargo test --workspace          # 187 tests
+cargo test --workspace          # 203 tests
 cargo run -- layout rs:4,2      # tolerancia y sobrecoste de una topología
 cargo run -- demo --layout rs:4,2 --kib 512
 cargo run -- check              # conformidad de los proveedores configurados
@@ -80,6 +80,8 @@ cargo run -- ls /medios
 cargo run -- cat /medios/pelicula.mkv --offset 1000000 --len 64   # solo baja el trozo que toca
 cargo run -- get /medios/pelicula.mkv ./vuelta.mkv
 cargo run -- scrub                        # qué le falta a cada trozo, y dónde
+cargo run -- providers list               # proveedores del volumen y los configurados de más
+cargo run -- providers add --mas-seguridad   # incorpora uno nuevo como paridad
 cargo run -- rebuild                      # regenerar lo que falte
 
 cargo run -- header export ./cabecera.json   # respaldo: sin la sal no hay clave
@@ -147,7 +149,7 @@ completos, ninguno puede leerlos, y la caída de uno no te deja sin volumen.**
 | Tengo 15 GB aquí, 5 GB allá, 1 TB en otro lado | Un solo volumen agregado |
 | Si el proveedor me suspende la cuenta, lo pierdo todo | Paridad *k de n*: sobrevive a la pérdida de *m* proveedores |
 | El proveedor puede leer mis archivos | Cifrado en cliente (XChaCha20-Poly1305), nombres incluidos |
-| Vendor lock-in | Añade o retira proveedores y el volumen se rebalancea |
+| Vendor lock-in | Añade un proveedor y el volumen **amplía su redundancia sin reescribirse**: `libredisk providers add --mas-seguridad` |
 
 ## Qué **no** es
 

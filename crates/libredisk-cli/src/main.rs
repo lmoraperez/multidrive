@@ -150,6 +150,9 @@ enum Command {
     /// Registra el volumen en el lanzador de WinFsp para montarlo como unidad de red.
     #[command(subcommand)]
     Servicio(ServicioCmd),
+    /// Proveedores del volumen: cuales tiene y como anadir otros.
+    #[command(subcommand)]
+    Providers(ProvidersCmd),
 }
 
 #[derive(Subcommand)]
@@ -162,6 +165,29 @@ enum VolumeCmd {
     },
     /// Topologia, proveedores y generacion actual.
     Status,
+}
+
+#[derive(Subcommand)]
+enum ProvidersCmd {
+    /// Que proveedores tiene el volumen, y cuales hay configurados de mas.
+    List,
+    /// Incorpora al volumen los proveedores configurados de mas.
+    ///
+    /// Hay que elegir para que: las dos cosas cuestan ordenes de magnitud distintos.
+    Add {
+        /// Mismo espacio util, una caida mas de margen.
+        ///
+        /// Barato: los fragmentos de datos no se mueven y el volumen se sigue leyendo
+        /// mientras tanto. Se puede interrumpir sin consecuencias.
+        #[arg(long, conflicts_with = "mas_espacio")]
+        mas_seguridad: bool,
+        /// Mas capacidad, el mismo margen.
+        ///
+        /// Caro: cambian las fronteras del reparto, asi que hay que releer y volver a subir
+        /// el volumen entero.
+        #[arg(long)]
+        mas_espacio: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -283,6 +309,27 @@ async fn main() -> Result<()> {
         }) => servicio::registrar(&nombre, cache_mb, disco_mb, escritura, sync_cada),
         Command::Servicio(ServicioCmd::Quitar { nombre }) => servicio::quitar(&nombre),
         Command::Servicio(ServicioCmd::Estado { nombre }) => servicio::estado(&nombre),
+        Command::Providers(ProvidersCmd::List) => volumen::providers_list().await,
+        Command::Providers(ProvidersCmd::Add {
+            mas_seguridad,
+            mas_espacio,
+        }) => {
+            let cambio = match (mas_seguridad, mas_espacio) {
+                (true, _) => libredisk_core::rebalance::Cambio::MasSeguridad,
+                (_, true) => libredisk_core::rebalance::Cambio::MasEspacio,
+                // Sin elegir no se hace nada: la diferencia entre las dos es de horas a
+                // dias, y adivinarla por el usuario seria caro de la peor manera.
+                _ => anyhow::bail!(
+                    "hay que decir para que se anade el proveedor:
+
+  \n                     --mas-seguridad   mismo espacio util, una caida mas de margen (barato)
+  \n                     --mas-espacio     mas capacidad, el mismo margen (reescribe el volumen)
+
+\n                     `libredisk providers list` ensena como esta ahora."
+                ),
+            };
+            volumen::providers_add(cambio).await
+        }
     }
 }
 

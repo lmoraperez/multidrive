@@ -25,14 +25,21 @@ const PREFIJO_VIEJO: &str = "LIBREDISK_TEST_";
 /// opacos y borra lo que crea, y no debe compartir carpeta con archivos del usuario.
 const RAIZ_POR_DEFECTO: &str = "/libredisk-pruebas";
 
+/// Cuantos directorios locales numerados se buscan.
+///
+/// El limite existe para no preguntar indefinidamente; treinta y dos son mas proveedores de
+/// los que tiene sentido repartir un volumen.
+const MAX_FS: usize = 32;
+
 /// Las variables que reconoce, para poder decirselo al usuario cuando no hay ninguna.
 pub const AYUDA: &str = "\
 Proveedores y claves reconocidas (prefijo LIBREDISK_; tambien se acepta el antiguo
 LIBREDISK_TEST_). Se leen del entorno o del fichero de configuracion; el entorno gana.
 
-  Directorio    FS_ROOT
-                No prueba ninguna nube: sirve para comprobar que el arnes funciona
-                antes de pelearse con OAuth.
+  Directorio    FS_ROOT, y ademas FS1_ROOT, FS2_ROOT... hasta FS32_ROOT
+                No prueban ninguna nube: sirven para comprobar que el arnes funciona
+                antes de pelearse con OAuth, y para montar un volumen con redundancia
+                sobre varios discos o puntos de montaje locales.
 
   OneDrive      ONEDRIVE_ACCESS_TOKEN
                 o bien ONEDRIVE_REFRESH_TOKEN + ONEDRIVE_CLIENT_ID + ONEDRIVE_CLIENT_SECRET
@@ -77,9 +84,20 @@ fn construir(leer: &dyn Fn(&str) -> Option<String>) -> Result<Vec<OpendalBackend
 
     let mut backends = Vec::new();
 
-    // Directorio local. No prueba ninguna nube, pero recorre el arnes entero.
+    // Directorios locales. No prueban ninguna nube, pero recorren el arnes entero.
+    //
+    // Numerados en vez de una lista separada por comas: una ruta de Windows lleva `:` y
+    // puede llevar `,`, asi que cualquier separador seria ambiguo. Y el nombre va pegado a
+    // la variable, que es lo que evita el fallo silencioso de reordenar la lista y que cada
+    // fragmento se lea del sitio equivocado.
     if let Some(raiz) = campo("FS", "ROOT") {
         backends.push(OpendalBackend::fs("fs", &raiz)?);
+    }
+    for i in 1..=MAX_FS {
+        let proveedor = format!("FS{i}");
+        if let Some(raiz) = campo(&proveedor, "ROOT") {
+            backends.push(OpendalBackend::fs(proveedor.to_lowercase(), &raiz)?);
+        }
     }
 
     for (proveedor, etiqueta) in [("ONEDRIVE", "onedrive"), ("GDRIVE", "gdrive")] {
@@ -276,6 +294,47 @@ mod tests {
         ]))
         .unwrap();
         assert_eq!(b.len(), 1, "el vacio se ignora y se cae al antiguo");
+    }
+
+    /// Varios directorios locales, para poder montar un volumen con redundancia sin nubes.
+    #[test]
+    fn varios_directorios_locales_numerados() {
+        let b = construir(&entorno(&[
+            ("FS1_ROOT", "/tmp/uno"),
+            ("FS2_ROOT", "/tmp/dos"),
+            ("FS3_ROOT", "/tmp/tres"),
+        ]))
+        .unwrap();
+        let nombres: Vec<&str> = b.iter().map(Backend::name).collect();
+        assert_eq!(nombres, vec!["fs1", "fs2", "fs3"]);
+    }
+
+    /// El nombre va pegado al numero de la variable, no a la posicion en que se lea.
+    ///
+    /// Es lo que impide el fallo silencioso: si el nombre dependiera del orden, quitar el
+    /// segundo de tres renombraria al tercero y cada fragmento se leeria del sitio
+    /// equivocado, sin que la cabecera se enterara.
+    #[test]
+    fn el_nombre_no_depende_de_cuales_falten() {
+        let b = construir(&entorno(&[
+            ("FS1_ROOT", "/tmp/uno"),
+            ("FS7_ROOT", "/tmp/siete"),
+        ]))
+        .unwrap();
+        let nombres: Vec<&str> = b.iter().map(Backend::name).collect();
+        assert_eq!(nombres, vec!["fs1", "fs7"]);
+    }
+
+    /// El de siempre sigue llamandose `fs` y conviviendo con los numerados.
+    #[test]
+    fn el_directorio_sin_numero_sigue_valiendo() {
+        let b = construir(&entorno(&[
+            ("FS_ROOT", "/tmp/viejo"),
+            ("FS1_ROOT", "/tmp/uno"),
+        ]))
+        .unwrap();
+        let nombres: Vec<&str> = b.iter().map(Backend::name).collect();
+        assert_eq!(nombres, vec!["fs", "fs1"]);
     }
 
     #[test]
