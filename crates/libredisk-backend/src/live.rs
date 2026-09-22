@@ -216,11 +216,11 @@ fn uno(
             OpendalBackend::fs(nombre, &dir)
         }
         "ONEDRIVE" => {
-            let creds = oauth(quien, ranura, campo)?;
+            let creds = oauth(quien, tipo.clave, ranura, campo)?;
             OpendalBackend::onedrive(nombre, &raiz(), &creds)
         }
         "GDRIVE" => {
-            let creds = oauth(quien, ranura, campo)?;
+            let creds = oauth(quien, tipo.clave, ranura, campo)?;
             OpendalBackend::gdrive(nombre, &raiz(), &creds)
         }
         "S3" => {
@@ -277,17 +277,26 @@ fn uno(
 /// [`crate::catalogo`].
 fn oauth(
     quien: &'static str,
+    tipo: &str,
     ranura: &str,
     campo: &dyn Fn(&str, &str) -> Option<String>,
 ) -> Result<OauthCreds, BackendError> {
     if let Some(token) = campo(ranura, "ACCESS_TOKEN") {
         return Ok(OauthCreds::Acceso(token));
     }
-    let (Some(refresh_token), Some(client_id), Some(client_secret)) = (
-        campo(ranura, "REFRESH_TOKEN"),
-        campo(ranura, "CLIENT_ID"),
-        campo(ranura, "CLIENT_SECRET"),
-    ) else {
+
+    // Lo que identifica a la aplicacion puede venir de tres sitios, y lo de esta ranura gana:
+    // quien escribe `GDRIVE2_CLIENT_ID` esta diciendo "para esta cuenta, mi aplicacion". Ver
+    // [`crate::aplicacion`].
+    let de_la_app = crate::aplicacion::configurada(tipo);
+    let client_id =
+        campo(ranura, "CLIENT_ID").or_else(|| de_la_app.as_ref().map(|a| a.client_id.clone()));
+    let client_secret = campo(ranura, "CLIENT_SECRET")
+        .or_else(|| de_la_app.as_ref().map(|a| a.client_secret.clone()));
+
+    let (Some(refresh_token), Some(client_id), Some(client_secret)) =
+        (campo(ranura, "REFRESH_TOKEN"), client_id, client_secret)
+    else {
         return Err(BackendError::EntornoIncompleto {
             proveedor: quien,
             falta: format!(

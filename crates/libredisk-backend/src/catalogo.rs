@@ -37,6 +37,12 @@ pub struct Campo {
     /// **quien lo pone**, y por tanto que la interfaz ensene un boton en vez de una caja de
     /// texto. Nadie deberia teclear un token de 200 caracteres.
     pub navegador: bool,
+    /// Identifica a **la aplicacion** y no al usuario.
+    ///
+    /// Son los mismos para todo el mundo y salen de registrar LibreDisk una vez, asi que
+    /// pueden venir dentro del programa. Cuando vienen, la interfaz no los pide: pedirle a
+    /// alguien el ID de una aplicacion que no es suya es pedirle un dato que no tiene.
+    pub aplicacion: bool,
     /// Campos que solo valen acompanados: o estan todos los del grupo o ninguno.
     ///
     /// Medio grupo es un error y no un descuido que se pueda ignorar: un `S3_ACCESS_KEY_ID`
@@ -54,6 +60,7 @@ impl Campo {
             ejemplo: "",
             secreto: false,
             obligatorio: true,
+            aplicacion: false,
             navegador: false,
             grupo: None,
         }
@@ -73,6 +80,11 @@ impl Campo {
     /// No se teclea: lo trae el flujo del navegador.
     const fn del_navegador(mut self) -> Self {
         self.navegador = true;
+        self
+    }
+    /// Identifica a LibreDisk, no al usuario: puede venir dentro del programa.
+    const fn de_la_aplicacion(mut self) -> Self {
+        self.aplicacion = true;
         self
     }
     const fn en_grupo(mut self, grupo: &'static str) -> Self {
@@ -163,16 +175,19 @@ const CAMPOS_OAUTH: &[Campo] = &[
     Campo::nuevo(
         "REFRESH_TOKEN",
         "Cuenta conectada",
-        "Lo consigue el boton de conectar: se abre el navegador, entras en tu cuenta y das \n         permiso. No se teclea nada.",
+        "Lo consigue el boton de conectar: se abre el navegador, entras en tu cuenta y das permiso. No se teclea nada.",
     )
     .secreto()
     .del_navegador(),
     Campo::nuevo(
         "CLIENT_ID",
         "ID de la aplicacion",
-        "De una aplicacion registrada en la consola del proveedor, no de tu cuenta. Hace \n         falta mientras LibreDisk no tenga la suya propia; el dia que la tenga, estos dos \n         campos desapareceran y solo quedara el boton de conectar.",
-    ),
-    Campo::nuevo("CLIENT_SECRET", "Secreto de la aplicacion", "De la misma aplicacion.").secreto(),
+        "De la aplicacion registrada en la consola del proveedor, no de tu cuenta. Solo hace falta si esta copia de LibreDisk no trae la suya dentro.",
+    )
+    .de_la_aplicacion(),
+    Campo::nuevo("CLIENT_SECRET", "Secreto de la aplicacion", "De la misma aplicacion.")
+        .secreto()
+        .de_la_aplicacion(),
     Campo::nuevo(
         "ROOT",
         "Carpeta dentro de la cuenta",
@@ -285,15 +300,36 @@ pub fn tipo(clave: &str) -> Option<&'static Tipo> {
 /// Devuelve **todos** los problemas, no el primero: rellenar un formulario de seis campos
 /// descubriendo los fallos de uno en uno es una forma tonta de gastarle el tiempo a alguien.
 pub fn validar(tipo: &Tipo, valor: &dyn Fn(&str) -> Option<String>) -> Result<(), Vec<String>> {
+    validar_con(
+        tipo,
+        valor,
+        crate::aplicacion::configurada(tipo.clave).is_some(),
+    )
+}
+
+/// Igual, diciendo por fuera si el programa trae aplicacion registrada.
+///
+/// Existe para poder probar las dos situaciones sin depender de con que credenciales se haya
+/// compilado el binario, que es justo lo que no se puede controlar desde un test.
+pub fn validar_con(
+    tipo: &Tipo,
+    valor: &dyn Fn(&str) -> Option<String>,
+    hay_aplicacion: bool,
+) -> Result<(), Vec<String>> {
     let puesto = |c: &Campo| valor(c.clave).is_some_and(|v| !v.trim().is_empty());
     let mut fallos = Vec::new();
 
     for campo in tipo.campos {
+        // Lo que identifica a la aplicacion no se le exige al usuario si el programa ya lo
+        // trae dentro: pedirle el ID de una aplicacion que no es suya es pedirle un dato que
+        // no tiene.
+        if campo.aplicacion && hay_aplicacion {
+            continue;
+        }
         if campo.obligatorio && !puesto(campo) {
             fallos.push(format!("falta «{}»", campo.etiqueta));
         }
     }
-
     for grupo in grupos(tipo) {
         let del_grupo: Vec<&Campo> = tipo
             .campos
@@ -350,6 +386,56 @@ mod tests {
     fn valida(clave: &str, pares: &[(&str, &str)]) -> Result<(), Vec<String>> {
         let m = con(pares);
         validar(tipo(clave).unwrap(), &|c| m.get(c).cloned())
+    }
+
+    /// Lo que de verdad cambia para quien prueba LibreDisk por primera vez.
+    ///
+    /// Con la aplicacion dentro del programa, conectar una cuenta de Drive no pide **nada**
+    /// mas que pulsar el boton: el token lo trae el navegador y el ID y el secreto los trae
+    /// el binario.
+    #[test]
+    fn con_aplicacion_propia_no_se_pide_nada_del_desarrollador() {
+        let m = con(&[("REFRESH_TOKEN", "lo-que-trajo-el-navegador")]);
+        let t = tipo("GDRIVE").unwrap();
+        assert!(
+            validar_con(t, &|c| m.get(c).cloned(), true).is_ok(),
+            "con aplicacion propia, el token del navegador tiene que bastar"
+        );
+    }
+
+    /// Y sin ella, se piden: es lo que pasa hoy, y el formulario lo dice.
+    #[test]
+    fn sin_aplicacion_propia_se_siguen_pidiendo() {
+        let m = con(&[("REFRESH_TOKEN", "lo-que-trajo-el-navegador")]);
+        let t = tipo("GDRIVE").unwrap();
+        let fallos = validar_con(t, &|c| m.get(c).cloned(), false).unwrap_err();
+        assert_eq!(fallos.len(), 2, "el ID y el secreto: {fallos:?}");
+    }
+
+    /// La cuenta sigue haciendo falta aunque el programa traiga aplicacion.
+    ///
+    /// Es la mitad que no se puede incorporar: la aplicacion es la misma para todos, la
+    /// cuenta es de cada uno.
+    #[test]
+    fn la_aplicacion_propia_no_sustituye_a_conectar_la_cuenta() {
+        let m = con(&[]);
+        let t = tipo("GDRIVE").unwrap();
+        let fallos = validar_con(t, &|c| m.get(c).cloned(), true).unwrap_err();
+        assert_eq!(fallos, ["falta «Cuenta conectada»"]);
+    }
+
+    /// Solo son de la aplicacion los dos que identifican a LibreDisk.
+    ///
+    /// Marcar de mas seria dejar de pedir algo que el programa no puede aportar, y el
+    /// proveedor lo rechazaria con un error de credenciales que no dice que falta.
+    #[test]
+    fn solo_el_id_y_el_secreto_son_de_la_aplicacion() {
+        for t in TIPOS {
+            for c in t.campos {
+                let deberia = c.clave == "CLIENT_ID" || c.clave == "CLIENT_SECRET";
+                assert_eq!(deberia, c.aplicacion, "{}_{}", t.clave, c.clave);
+            }
+        }
     }
 
     #[test]

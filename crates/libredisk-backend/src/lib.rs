@@ -12,6 +12,7 @@ use opendal::{Operator, services};
 
 use crate::cuota::{Medidor, Nube};
 
+pub mod aplicacion;
 pub mod catalogo;
 pub mod config;
 pub mod conformance;

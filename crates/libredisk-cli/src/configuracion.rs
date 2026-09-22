@@ -81,7 +81,24 @@ pub fn ver() -> Result<()> {
         }
     }
 
+    // Si esta copia trae aplicacion registrada. Es lo que decide si al usuario se le pide el
+    // ID y el secreto o solo se le pide pulsar un boton, asi que conviene poder verlo sin
+    // abrir la ventana.
     println!();
+    let con_app: Vec<&str> = catalogo::TIPOS
+        .iter()
+        .filter(|t| t.oauth.is_some())
+        .filter(|t| libredisk_backend::aplicacion::configurada(t.clave).is_some())
+        .map(|t| t.etiqueta)
+        .collect();
+    if con_app.is_empty() {
+        println!("Sin aplicacion registrada: para conectar una cuenta de nube hay que pegar");
+        println!("el ID y el secreto de una. Ver docs/APLICACION-OAUTH.md.");
+    } else {
+        println!("Trae aplicacion registrada para: {}", con_app.join(", "));
+        println!("Ahi solo hay que pulsar conectar y entrar en la cuenta.");
+    }
+
     match live::configurados() {
         Ok(b) if b.is_empty() => println!("No sale ningun proveedor de aqui.\n\n{}", live::ayuda()),
         Ok(b) => {

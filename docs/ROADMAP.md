@@ -246,11 +246,24 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       el Drive entero sería pedir permiso sobre las fotos del usuario para guardar en una
       carpeta, y además Google lo clasifica como ámbito restringido, que obliga a una
       evaluación de seguridad anual de terceros
-- [ ] Registrar una aplicación de LibreDisk en Google y en Azure, para que el ID y el secreto
-      vengan dentro del programa y el formulario quede solo con el botón. Mientras tanto hay
-      que pegarlos una vez, que sigue siendo un paso de desarrollador. Implica política de
-      privacidad publicada y, en Google, una revisión para quitar el aviso de aplicación sin
-      verificar y el límite de 100 usuarios
+- [x] **Las credenciales de la aplicación pueden venir dentro del programa**, y entonces la
+      ventana no las pide: conectar una cuenta es pulsar el botón y entrar. Son dos cosas
+      que se llaman igual y no lo son — el ID y el secreto identifican a *LibreDisk* y son
+      iguales para todo el mundo; el token identifica a *tu cuenta*. Pedirle a alguien el ID
+      de una aplicación que no es suya es pedirle un dato que no tiene
+- [x] Se leen del entorno al compilar, así que el repositorio no las lleva escritas, y un
+      `build.rs` hace que cambiarlas obligue a recompilar: sin eso, cambiar la variable y
+      reconstruir dejaría el binario con las de antes y nadie se enteraría hasta que un
+      usuario no pudiera conectar
+- [x] Y se pueden sustituir **sin recompilar**, que es la salida para quien choque con la
+      cuota compartida: un proyecto compartido lo es también para los límites del proveedor,
+      y si alguien abusa lo pagan todos los de esa versión
+- [x] `libredisk config ver` dice si esta copia trae aplicación registrada. Es lo que decide
+      si al usuario se le piden dos datos de desarrollador o solo se le pide pulsar un botón
+- [ ] Registrar la aplicación en Google Cloud y en Azure. Es lo único que falta para que otra
+      persona pueda probar LibreDisk sin tocar ninguna consola. Los pasos exactos, incluido
+      por qué el cliente tiene que ser de escritorio y no web, están en
+      [APLICACION-OAUTH.md](APLICACION-OAUTH.md)
 - [x] **Se pueden añadir proveedores desde la ventana.** Elegir tipo, rellenar los campos y
       «Probar y guardar»: escribe, lee, compara y borra contra el proveedor, y **solo si eso
       sale bien** escribe la configuración. Guardar primero y descubrir después que las
