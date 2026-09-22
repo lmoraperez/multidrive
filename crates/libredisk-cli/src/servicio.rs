@@ -46,23 +46,11 @@ use anyhow::{Context, Result, bail};
 /// Es lo que aparece en la ruta de red: `\\libredisk\<instancia>`.
 pub const NOMBRE: &str = "libredisk";
 
-/// Donde el lanzador busca los sistemas de ficheros registrados.
-///
-/// Va en la vista de **32 bits** del registro aunque todo sea de 64: lo puso asi el propio
-/// instalador de WinFsp, y su lanzador lee de ahi. Escribir en la vista de 64 dejaria una
-/// clave que nadie lee, que es peor que no escribir ninguna.
-const CLAVE: &str = r"SOFTWARE\WinFsp\Services";
-
-/// Quien puede arrancar, parar y consultar el sistema de ficheros.
-///
-/// `SY` es LocalSystem, `BA` los administradores e `IU` quien haya iniciado sesion de forma
-/// interactiva. Los ejemplos de WinFsp usan `WD` —todo el mundo—, que incluye tambien las
-/// sesiones de red y la cuenta anonima. Arrancar sin la frase no sirve de nada, pero
-/// **parar** si: con `WD`, cualquiera que llegue por la red podria desmontarle el volumen al
-/// que lo esta usando.
-const PERMISOS: &str = "D:P(A;;RPWPLC;;;SY)(A;;RPWPLC;;;BA)(A;;RPWPLC;;;IU)";
-
 /// Lo que se registra para una clase de sistema de ficheros.
+///
+/// Fuera de Windows nadie lee estos campos: el modulo entero existe para poder dar un error
+/// claro —«esto solo va en Windows»— en vez de no compilar.
+#[cfg_attr(not(windows), allow(dead_code))]
 struct Registro {
     ejecutable: PathBuf,
     ordenes: String,
@@ -77,7 +65,23 @@ mod registro {
         HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WRITE, REG_OPTION_NON_VOLATILE,
     };
 
-    use super::{CLAVE, PERMISOS, Registro};
+    use super::Registro;
+
+    /// Donde el lanzador busca los sistemas de ficheros registrados.
+    ///
+    /// Va en la vista de **32 bits** del registro aunque todo sea de 64: lo puso asi el propio
+    /// instalador de WinFsp, y su lanzador lee de ahi. Escribir en la vista de 64 dejaria una
+    /// clave que nadie lee, que es peor que no escribir ninguna.
+    const CLAVE: &str = r"SOFTWARE\WinFsp\Services";
+
+    /// Quien puede arrancar, parar y consultar el sistema de ficheros.
+    ///
+    /// `SY` es LocalSystem, `BA` los administradores e `IU` quien haya iniciado sesion de
+    /// forma interactiva. Los ejemplos de WinFsp usan `WD` —todo el mundo—, que incluye
+    /// tambien las sesiones de red y la cuenta anonima. Arrancar sin la frase no sirve de
+    /// nada, pero **parar** si: con `WD`, cualquiera que llegue por la red podria desmontarle
+    /// el volumen al que lo esta usando.
+    const PERMISOS: &str = "D:P(A;;RPWPLC;;;SY)(A;;RPWPLC;;;BA)(A;;RPWPLC;;;IU)";
 
     /// Traduce el «acceso denegado» a lo que de verdad hay que hacer.
     ///
