@@ -258,15 +258,19 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] Y **no hay que traducir mayúsculas**: en Linux el sistema distingue y el árbol también.
       Haber dejado esa traducción en la capa de montaje de Windows, y no más abajo, es lo que
       hace que el adaptador de FUSE no tenga que saber nada del asunto
-- [ ] **Montar de verdad, todavía sin conseguir.** En el contenedor de `libredisk.chambaya.net`
-      existe `/dev/fuse` y se abre en lectura y escritura, pero `fusermount3` —el ayudante
-      setuid que reparte el descriptor a los procesos sin privilegios— no ve el socket que se
-      le pasa: *«file descriptor N is not a socket»*. **No es del adaptador ni de la
-      biblioteca**: se reproduce con un programa de diez líneas y también desde Python, con
-      descriptores 0 y 4, y un hijo normal sí hereda el socket. Es un contenedor LXC **sin
-      privilegios** (`uid_map: 0 100000 65536`), que es la pista más probable. Queda por
-      probar el montaje como root, que evita `fusermount3` entero porque `fuser` intenta
-      primero el `mount(2)` directo
+- [x] **Montado de verdad**, contra el contenedor de `libredisk.chambaya.net`: lee un fichero
+      de 3 MB con el mismo SHA-256 que el original, lo escribe de vuelta igual, crea
+      directorios anidados, renombra una carpeta con contenido dentro sin que se pierda lo de
+      dentro, y `rmdir` sobre un directorio no vacío responde *Directory not empty*, que es lo
+      que hace que `rm -r` baje primero en vez de rendirse. El sincronizador subió solo y al
+      desmontar acabó lo que quedaba. Caché al 93 % de aciertos
+- [ ] En ese contenedor **hace falta root para montar**, y no por el adaptador: `fusermount3`
+      —el ayudante setuid que reparte el descriptor a los procesos sin privilegios— no ve el
+      socket que se le pasa. Se reproduce con un programa de diez líneas y también desde
+      Python, con descriptores 0 y 4, mientras que un hijo no setuid sí hereda el socket. Es
+      un LXC **sin privilegios** (`uid_map: 0 100000 65536`), que es la pista más probable.
+      Como root no hace falta el ayudante: `fuser` hace el `mount(2)` directo. En una máquina
+      Linux normal esto no debería pasar, y hay que comprobarlo en una
 - [ ] Rebalanceo al añadir/retirar un proveedor
 - [ ] Instantáneas y retención
 - [ ] macOS (FSKit o NFS loopback; macFUSE tiene problemas de licencia)

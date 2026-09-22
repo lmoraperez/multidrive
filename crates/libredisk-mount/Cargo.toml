@@ -24,6 +24,9 @@ winfsp = "0.13"
 fuser = { version = "0.18.0", default-features = false }
 libc = "0.2.189"
 
+[target."cfg(unix)".dev-dependencies]
+libc = "0.2.189"
+
 [dev-dependencies]
 libredisk-backend.workspace = true
 libredisk-crypto.workspace = true

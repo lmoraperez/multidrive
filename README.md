@@ -110,9 +110,13 @@ Hay además una **caché en disco** (`--disco-mb`, 4096 por defecto) que sobrevi
 así que montar de nuevo no vuelve a pagar la red. Guarda los trozos **cifrados**: los datos
 no quedan en claro en la máquina.
 
-En Linux el adaptador de FUSE está escrito y compila, pero **todavía no se ha conseguido
-montar** en la máquina de pruebas: su `fusermount3` no acepta el descriptor que se le pasa.
-El detalle está en [docs/ROADMAP.md](docs/ROADMAP.md).
+En Linux, `libredisk mount /ruta/vacia` hace lo mismo con FUSE, y está probado de punta a
+punta: leer y escribir con el contenido intacto, renombrar carpetas con cosas dentro, y los
+códigos de error que `rm -r` necesita para no rendirse.
+
+> En un contenedor **LXC sin privilegios** hace falta root para montar. No es cosa del
+> adaptador: su `fusermount3` no acepta el descriptor que se le pasa, y como root ese ayudante
+> no hace falta. El detalle está en [docs/ROADMAP.md](docs/ROADMAP.md).
 
 
 ## Estructura

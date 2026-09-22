@@ -69,3 +69,26 @@ jobs:
             target/msi/*.msi
             target/msi/*.exe
           if-no-files-found: error
+
+  # Monta de verdad con FUSE y usa el volumen como lo usaria un programa cualquiera.
+  #
+  # Va en un job aparte y no dentro de `test` porque necesita /dev/fuse, y un test que falla
+  # por el entorno y no por el codigo entrena a la gente a ignorar los fallos. Por eso los
+  # tests van marcados como ignorados y aqui se piden a mano.
+  #
+  # Los runners de GitHub permiten montar FUSE sin privilegios, asi que esto prueba tambien el
+  # camino que en un contenedor LXC sin privilegios no funciona: el del ayudante fusermount3.
+  fuse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: FUSE
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fuse3
+          ls -l /dev/fuse
+          fusermount3 --version
+      - name: Montar y usar
+        run: cargo test -p libredisk-mount --test montaje_fuse -- --ignored --nocapture --test-threads=1
