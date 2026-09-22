@@ -38,6 +38,17 @@ pub struct Header {
     pub layout: String,
     /// Sal de derivacion de la clave maestra.
     pub salt: Vec<u8>,
+    /// Que reparto de fragmentos es el bueno.
+    ///
+    /// Cambiar la topologia de forma que los fragmentos se muevan obliga a escribir los
+    /// nuevos sin destruir los viejos, porque el volumen se sigue leyendo mientras tanto. Un
+    /// reparto distinto son claves distintas, y **esta cabecera es la que decide cual vale**:
+    /// publicarla es lo que hace efectivo el cambio.
+    ///
+    /// Va con valor por defecto para que las cabeceras escritas antes de que esto existiera
+    /// se sigan leyendo, que son reparto 0.
+    #[serde(default)]
+    pub reparto: u32,
     /// Nombres de los proveedores, **en orden**.
     ///
     /// El orden es parte del formato, no una comodidad: el indice de un fragmento es la
@@ -130,6 +141,7 @@ mod tests {
         Header {
             version: HEADER_VERSION,
             layout: "rs:4,2".into(),
+            reparto: 0,
             salt: vec![7u8; 16],
             backends: (0..n).map(|i| format!("proveedor-{i}")).collect(),
         }
