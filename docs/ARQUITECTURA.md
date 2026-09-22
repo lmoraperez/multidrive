@@ -109,6 +109,35 @@ de la barra que corresponde a LibreDisk se recorta a lo que el proveedor dice qu
 ocupado. Sin ese recorte, un volumen recién escrito pintaría más del 100 % de una cuenta que
 está al 6 %. Detalle en [VIABILIDAD.md §9](VIABILIDAD.md#9-primer-volumen-real-sobre-dos-nubes-y-qué-dice-cada-una-de-su-espacio).
 
+
+#### El tamaño que ve el sistema operativo
+
+El Explorador y `df` solo tienen **dos** números donde aquí hay tres, así que declaran el de
+las cuentas: total y libre. Lo ocupado que enseña el Explorador es, por tanto, *lo ocupado en
+las cuentas* —fotos del usuario incluidas—, no lo que ocupa este volumen. El desglose de las
+tres cifras está en la ventana y en `libredisk espacio`.
+
+Un volumen no tiene tamaño propio: lo tiene prestado, y la topología decide cuánto de ese
+préstamo se aprovecha. La regla cabe en una línea: **manda el proveedor más apretado**, y lo
+que se saque de él se multiplica por `shards_needed`, que es 1 en `mirror` y en `concat`, `k`
+en `rs(k,m)` y `n` en `stripe(n)`. Es la misma función que usa el motor para leer: son la
+misma cantidad mirada desde los dos lados.
+
+Medido el 2026-09-22 sobre el volumen real `mirror:2` de OneDrive (15,0 GiB) y Google Drive
+(17,0 GiB): Windows enseña **15,00 GiB de tamaño y 3,46 GiB libres**, porque Drive está al
+79 %. Antes enseñaba 7,9 EB.
+
+Ese 7,9 EB era `u64::MAX / 2`, y estaba puesto con un comentario que decía que no había forma
+honesta de dar un tamaño. Lo era mientras no se supiera el cupo. Lo que impedía preguntarlo
+sigue siendo cierto —el Explorador pide esto en cada repintado y `df` en cada ejecución, y una
+petición por nube en cada uno dejaría la ventana pensando—, así que **la medida no se hace en
+el camino que atiende al sistema**: una tarea de fondo la refresca cada cinco minutos y deja
+el resultado en dos enteros atómicos que el sistema lee sin bloquear y sin red.
+
+Mientras no hay medida —los primeros segundos tras montar, o si ningún proveedor declara
+cupo— se vuelve al número enorme. Es deliberado: un tamaño claramente falso es mejor que uno
+de cero, porque cero significa «disco lleno» y ningún programa volvería a intentar escribir.
+
 ### Metadatos
 
 **La verdad vive en los proveedores, no en el disco local.** El árbol es una estructura

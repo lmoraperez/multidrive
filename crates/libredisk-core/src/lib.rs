@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod cache;
 pub mod diskcache;
+pub mod espacio;
 pub mod file;
 pub mod header;
 pub mod rebalance;
@@ -317,6 +318,21 @@ impl ChunkStore {
     }
 
     /// Que reparto de fragmentos usa este almacen.
+    /// Cuanto cabe en el volumen, preguntandoselo a cada proveedor.
+    ///
+    /// Cuesta **una peticion por proveedor**, en paralelo, no una enumeracion. Aun asi es
+    /// red: quien lo llame desde algo que se repinta solo —un `df`, el Explorador— tiene que
+    /// guardarse la respuesta, no pedirla cada vez.
+    pub async fn espacio(&self) -> espacio::Espacio {
+        let cuotas = join_all(
+            self.backends
+                .iter()
+                .map(|b| async move { b.cuota().await.map_err(|e| e.to_string()) }),
+        )
+        .await;
+        espacio::combinar(self.layout, &self.nombres(), &cuotas)
+    }
+
     /// Nombres de los proveedores, en el mismo orden en que se indexan los fragmentos.
     ///
     /// El orden **es** el que da sentido a los indices de `ScrubReport`: el fragmento `i` va
