@@ -263,6 +263,37 @@ impl SyncReport {
     }
 }
 
+/// Donde guarda esta maquina lo que todavia no ha subido, y la cache en disco.
+///
+/// Vive aqui y no en cada programa porque **tienen que coincidir**. Si la ventana mirara un
+/// directorio y la linea de ordenes otro, la ventana diria "nada pendiente" con la cola llena,
+/// que es la mentira mas cara que puede decir un volumen con escritura diferida.
+pub fn dir_base() -> PathBuf {
+    dir_base_con(&|c| std::env::var(c).ok())
+}
+
+/// Igual, leyendo de donde se le diga. Existe para poder probarlo sin tocar el entorno del
+/// proceso, que es global y compartido entre los hilos de los tests.
+fn dir_base_con(leer: &dyn Fn(&str) -> Option<String>) -> PathBuf {
+    // `LOCALAPPDATA` en Windows; en Linux, `XDG_STATE_HOME` o `~/.local/state`. No hay ningun
+    // `cfg` de sistema: cada uno encuentra el suyo y no ve el del otro.
+    let var = |c: &str| leer(c).filter(|v| !v.trim().is_empty());
+
+    if let Some(d) = var("LOCALAPPDATA") {
+        return PathBuf::from(d).join("libredisk");
+    }
+    if let Some(d) = var("XDG_STATE_HOME") {
+        return PathBuf::from(d).join("libredisk");
+    }
+    if let Some(d) = var("HOME") {
+        return PathBuf::from(d)
+            .join(".local")
+            .join("state")
+            .join("libredisk");
+    }
+    std::env::temp_dir().join("libredisk")
+}
+
 /// Como se nombra el directorio de preparacion de un volumen.
 ///
 /// Separado por volumen, igual que la cache en disco y por el mismo motivo: dos volumenes
@@ -277,6 +308,60 @@ mod tests {
 
     use super::*;
     use crate::ChunkRef;
+
+    fn entorno(pares: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> + use<> {
+        let mapa: std::collections::HashMap<String, String> = pares
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |c: &str| mapa.get(c).cloned()
+    }
+
+    /// Los dos programas tienen que mirar el **mismo** directorio.
+    ///
+    /// Si la ventana mirara uno y la linea de ordenes otro, la ventana diria "nada pendiente"
+    /// con la cola llena. Es la mentira mas cara que puede decir un volumen con escritura
+    /// diferida, y paso de verdad: la ventana abria sin cola y siempre respondia que todo
+    /// estaba a salvo.
+    #[test]
+    fn en_windows_manda_localappdata() {
+        let d = dir_base_con(&entorno(&[
+            ("LOCALAPPDATA", "C:/Users/x/AppData/Local"),
+            ("HOME", "/home/x"),
+        ]));
+        assert!(d.ends_with("libredisk"));
+        assert!(d.to_string_lossy().contains("AppData"));
+    }
+
+    #[test]
+    fn en_linux_manda_xdg_state_home() {
+        let d = dir_base_con(&entorno(&[("XDG_STATE_HOME", "/home/x/.local/state")]));
+        assert_eq!(d, PathBuf::from("/home/x/.local/state").join("libredisk"));
+    }
+
+    #[test]
+    fn sin_xdg_se_usa_el_sitio_que_manda_la_norma() {
+        let d = dir_base_con(&entorno(&[("HOME", "/home/x")]));
+        assert_eq!(
+            d,
+            PathBuf::from("/home/x/.local/state").join("libredisk"),
+            "XDG dice que el estado va en ~/.local/state"
+        );
+    }
+
+    /// Una variable vacia no es una variable puesta: caer en ella dejaria el directorio en la
+    /// raiz del disco.
+    #[test]
+    fn una_variable_vacia_no_cuenta() {
+        let d = dir_base_con(&entorno(&[("LOCALAPPDATA", "   "), ("HOME", "/home/x")]));
+        assert_eq!(d, PathBuf::from("/home/x/.local/state").join("libredisk"));
+    }
+
+    #[test]
+    fn sin_nada_se_cae_al_temporal() {
+        let d = dir_base_con(&entorno(&[]));
+        assert_eq!(d, std::env::temp_dir().join("libredisk"));
+    }
 
     fn dir(nombre: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(

@@ -47,9 +47,16 @@ async function arrancar() {
   definiciones($("previo"), pares);
 
   if (a.problema) {
-    aviso(a.problema, !a.hay_volumen);
-    // Sin volumen no hay nada que abrir: pedir la frase seria pedir algo inutil.
+    // Sin volumen no hay nada que abrir: pedir la frase seria pedir algo inutil. Pero si hay
+    // proveedores configurados, si hay algo que hacer: crearlo.
+    const creable = !a.hay_volumen && a.proveedores.length > 0;
     $("formulario").hidden = !a.hay_volumen;
+    if (creable) {
+      $("cabecera").textContent = "No hay ningún volumen todavía.";
+      await ofrecerCreacion(a.proveedores);
+    } else {
+      aviso(a.problema, !a.hay_volumen);
+    }
   }
 }
 
@@ -73,6 +80,9 @@ $("formulario").addEventListener("submit", async (e) => {
 });
 
 $("cerrar").addEventListener("click", async () => {
+  // Cerrar con algo montado dejaria una unidad sirviendo un volumen que la ventana dice
+  // haber cerrado. Se desmonta primero.
+  await invoke("desmontar");
   await invoke("cerrar");
   $("panel").hidden = true;
   $("salud").replaceChildren(nota("Sin revisar todavía."));
@@ -94,6 +104,7 @@ async function mostrarPanel(ya) {
   // Al arrancar con el volumen ya abierto no hay resumen a mano: se pide.
   const r = ya ?? (await invoke("resumen"));
   rellenarResumen(r);
+  await refrescarMontaje();
   await refrescarPendiente();
 }
 
@@ -182,6 +193,149 @@ async function refrescarPendiente() {
     // Sin volumen abierto no hay cola que consultar; no es un fallo que anunciar.
   }
 }
+
+
+
+// ---------------------------------------------------------------------------------------
+// Montar y desmontar
+// ---------------------------------------------------------------------------------------
+
+async function refrescarMontaje() {
+  const m = await invoke("montaje");
+  const caja = $("montaje");
+
+  if (m.montado) {
+    const boton = document.createElement("button");
+    boton.className = "secundario";
+    boton.textContent = "Desmontar";
+    boton.addEventListener("click", async () => {
+      boton.disabled = true;
+      try {
+        await invoke("desmontar");
+        await refrescarMontaje();
+        await refrescarPendiente();
+      } finally {
+        boton.disabled = false;
+      }
+    });
+    const fila = document.createElement("div");
+    fila.className = "enlinea";
+    fila.append(boton);
+    caja.replaceChildren(
+      nota(`Montado en ${m.punto}, en ${m.escritura ? "lectura y escritura" : "solo lectura"}.`),
+      fila,
+    );
+    return;
+  }
+
+  const campo = document.createElement("input");
+  campo.type = "text";
+  campo.id = "punto";
+  campo.value = m.ejemplo;
+  campo.spellcheck = false;
+
+  const boton = document.createElement("button");
+  boton.textContent = "Montar";
+
+  const fila = document.createElement("div");
+  fila.className = "enlinea";
+  fila.append(campo, boton);
+
+  const marca = document.createElement("input");
+  marca.type = "checkbox";
+  marca.id = "con-escritura";
+  const etiqueta = document.createElement("label");
+  etiqueta.htmlFor = "con-escritura";
+  etiqueta.style.margin = "12px 0 0";
+  etiqueta.append(marca, document.createTextNode(" Permitir escribir"));
+
+  const error = nota("");
+  error.hidden = true;
+
+  boton.addEventListener("click", async () => {
+    boton.disabled = true;
+    error.hidden = true;
+    try {
+      await invoke("montar", { punto: campo.value, escritura: marca.checked });
+      await refrescarMontaje();
+      await refrescarPendiente();
+    } catch (err) {
+      error.textContent = String(err);
+      error.hidden = false;
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  caja.replaceChildren(fila, etiqueta, error);
+}
+
+// ---------------------------------------------------------------------------------------
+// Crear un volumen
+// ---------------------------------------------------------------------------------------
+
+async function ofrecerCreacion(proveedores) {
+  $("creacion").hidden = false;
+  $("sobre-proveedores").textContent =
+    `Se creará sobre los ${proveedores.length} proveedores configurados: ` +
+    `${proveedores.join(", ")}. Para usar otros, cámbialos en la configuración y reinicia.`;
+
+  const opciones = await invoke("topologias", { proveedores: proveedores.length });
+  const sel = $("topologia");
+  sel.replaceChildren();
+  for (const o of opciones) {
+    const op = document.createElement("option");
+    op.value = o.spec;
+    op.textContent = o.spec;
+    op.dataset.tolera = String(o.tolera);
+    op.dataset.sobrecoste = o.sobrecoste.toFixed(2);
+    op.dataset.aprovechado = Math.round(o.aprovechado * 100);
+    sel.append(op);
+  }
+  // La primera de la lista es la que más aguanta. Que el valor por defecto sea el prudente
+  // importa: quien no sepa elegir se queda con el que menos sorpresas da.
+  sel.selectedIndex = 0;
+  mostrarPrecio();
+}
+
+function mostrarPrecio() {
+  const op = $("topologia").selectedOptions[0];
+  if (!op) return;
+  $("precio").textContent =
+    `Aguanta perder ${op.dataset.tolera} proveedor(es). ` +
+    `Aprovechas el ${op.dataset.aprovechado}% del espacio: guardar 1 TB ocupa ` +
+    `${op.dataset.sobrecoste} TB repartidos.`;
+}
+
+$("topologia").addEventListener("change", mostrarPrecio);
+
+$("form-crear").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const a = $("frase-nueva");
+  const b = $("frase-otra");
+  if (a.value !== b.value) {
+    // Sin recuperación posible, una errata al teclear la frase es un volumen perdido antes
+    // de empezar. Por eso se pide dos veces.
+    aviso("Las dos frases no coinciden.", true);
+    b.select();
+    return;
+  }
+  if (!a.value) return;
+
+  $("boton-crear").disabled = true;
+  aviso("");
+  try {
+    const r = await invoke("crear", { spec: $("topologia").value, frase: a.value });
+    a.value = "";
+    b.value = "";
+    $("creacion").hidden = true;
+    await mostrarPanel(r);
+  } catch (err) {
+    aviso(String(err), true);
+  } finally {
+    $("boton-crear").disabled = false;
+  }
+});
 
 // Si esto falla no puede quedarse en "Comprobando...": un panel que no dice nada es peor que
 // uno que dice que algo va mal.

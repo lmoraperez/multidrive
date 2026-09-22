@@ -28,6 +28,7 @@ pub mod file;
 pub mod header;
 pub mod rebalance;
 pub mod rescue;
+pub mod sincronizador;
 pub mod tree;
 pub mod writeback;
 
@@ -36,6 +37,8 @@ mod testutil;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
+    #[error("ya hay un volumen en estos proveedores")]
+    YaHayVolumen,
     #[error("no se puede cambiar la topologia: {0}")]
     Rebalanceo(String),
     #[error("la topologia {layout} necesita {needed} proveedores y se configuraron {given}")]

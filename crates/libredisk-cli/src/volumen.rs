@@ -11,9 +11,10 @@ use anyhow::{Context, Result, bail};
 use libredisk_backend::{Backend, live};
 use libredisk_core::ChunkId;
 use libredisk_core::diskcache::DiskCache;
-use libredisk_core::header::{self, HEADER_KEY, HEADER_VERSION, Header};
+use libredisk_core::header::{self, HEADER_KEY, Header};
 use libredisk_core::rebalance::{self, Cambio, Sacrificio};
 use libredisk_core::rescue;
+use libredisk_core::sincronizador::{Resultado, Sincronizador};
 use libredisk_core::tree::{self, Kind, Volume};
 use libredisk_core::writeback::{self, WriteQueue};
 use libredisk_core::{ChunkStore, CoreError};
@@ -74,15 +75,8 @@ const CACHE_POR_DEFECTO: usize = 64 * 1024 * 1024;
 /// identificador —mismo contenido en claro— pero sellado con claves distintas. Si
 /// compartieran directorio, cada uno veria el fichero del otro como corrupto y lo borraria,
 /// turnandose para invalidarse mutuamente.
-fn dir_base() -> PathBuf {
-    std::env::var("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir())
-        .join("libredisk")
-}
-
 fn dir_cache(salt: &[u8]) -> PathBuf {
-    let base = dir_base();
+    let base = writeback::dir_base();
     let etiqueta = &blake3_hex(salt)[..16];
     base.join("cache").join(etiqueta)
 }
@@ -138,8 +132,7 @@ async fn almacen_todo(
     }
 
     if diferido {
-        let base = dir_base();
-        let dir = writeback::dir_de_volumen(&base, &header.salt);
+        let dir = writeback::dir_de_volumen(writeback::dir_base(), &header.salt);
         let cola = WriteQueue::open(&dir)
             .await
             .with_context(|| format!("no se pudo abrir la cola en '{}'", dir.display()))?;
@@ -179,40 +172,16 @@ pub async fn create(spec: &str) -> Result<()> {
         .parse()
         .with_context(|| format!("topologia invalida: {spec}"))?;
 
-    if backends.len() != layout.shard_count() {
-        bail!(
-            "la topologia {layout} necesita {} proveedores y hay {} configurados",
-            layout.shard_count(),
-            backends.len()
-        );
-    }
-
-    // No se sobrescribe jamas una cabecera. Si una creacion quedo a medias, borrar el objeto
-    // a mano es una decision del usuario: generar una sal nueva encima dejaria inalcanzable
-    // todo lo que hubiera escrito antes.
-    if header::read(&backends).await?.is_some() {
-        bail!(
-            "ya hay un volumen en estos proveedores.\n\
-             Si una creacion anterior quedo a medias, borra '{HEADER_KEY}' de cada proveedor \
-             a mano antes de reintentar."
-        );
-    }
-
-    let salt = libredisk_crypto::generate_salt();
-    let header = Header {
-        version: HEADER_VERSION,
-        layout: spec.to_string(),
-        reparto: 0,
-        salt: salt.to_vec(),
-        backends: backends.iter().map(|b| b.name().to_string()).collect(),
-    };
-
-    // La cabecera va primero: sin ella, una raiz publicada seria ilegible para siempre,
-    // porque nadie podria volver a derivar la clave.
-    header::write(&backends, &header).await?;
-
-    let key = MasterKey::derive(&frase()?, &salt)?;
-    let store = ChunkStore::new(layout, backends, key)?;
+    let store = header::crear(backends, layout, &frase()?)
+        .await
+        .map_err(|e| match e {
+            CoreError::YaHayVolumen => anyhow::anyhow!(
+                "ya hay un volumen en estos proveedores.\n\
+                 Si una creacion anterior quedo a medias, borra '{HEADER_KEY}' de cada \
+                 proveedor a mano antes de reintentar."
+            ),
+            otro => otro.into(),
+        })?;
     let (volumen, degraded) = Volume::create(store).await?;
 
     println!("volumen creado");
@@ -320,7 +289,7 @@ pub async fn status() -> Result<()> {
     println!("formato       version {}", header.version);
 
     // Lo pendiente no depende de poder abrir el arbol: se lee del diario local.
-    let base = dir_base();
+    let base = writeback::dir_base();
     let dir = writeback::dir_de_volumen(&base, &header.salt);
     if let Ok(cola) = WriteQueue::open(&dir).await {
         let p = cola.pendiente();
@@ -705,7 +674,22 @@ pub async fn mount(
         Sincronizador::arrancar(
             para_sync,
             std::time::Duration::from_secs(sync_cada),
-            desde_lanzador,
+            // Donde escribir lo sabe quien monta, no el nucleo: bajo el lanzador de WinFsp la
+            // salida estandar es una tuberia cerrada y escribir ahi mataria el hilo de subida.
+            Box::new(move |r| match r {
+                Resultado::Hecho(i) => di!(
+                    "  [sync] {} subidos ({}), {} descartados{}",
+                    i.subidos,
+                    tamano(i.bytes),
+                    i.descartados,
+                    if i.raiz_publicada {
+                        ", raiz publicada"
+                    } else {
+                        ""
+                    }
+                ),
+                Resultado::Fallo(e) => di!("  [sync] fallo, se reintentara: {e}"),
+            }),
         )
     });
 
@@ -903,94 +887,6 @@ pub async fn sync() -> Result<()> {
         println!("Todo a salvo en los proveedores.");
     }
     Ok(())
-}
-
-/// Sincronizador de fondo para el montaje en escritura.
-///
-/// Trabaja sobre una **copia del almacen**, no sobre el volumen. Eso no es un rodeo: subir
-/// puede tardar minutos, y si sostuviera el cerrojo del volumen durante ese rato bloquearia
-/// todas las escrituras del sistema de ficheros. La copia comparte caches y cola con el
-/// original, asi que ve lo mismo sin estorbar.
-///
-/// Corre en un hilo propio, fuera del runtime, por el mismo motivo que los metodos de WinFsp:
-/// bloquea sobre el, y hacerlo desde un hilo del runtime seria un panico.
-struct Sincronizador {
-    parar: Arc<std::sync::atomic::AtomicBool>,
-    hilo: Option<std::thread::JoinHandle<()>>,
-}
-
-impl Sincronizador {
-    /// `a_stderr` va donde va el resto de la salida del montaje: bajo el lanzador de WinFsp
-    /// la salida estandar es una tuberia cerrada, y escribir ahi mataria el hilo de subida.
-    fn arrancar(store: ChunkStore, cada: std::time::Duration, a_stderr: bool) -> Self {
-        use std::sync::atomic::{AtomicBool, Ordering};
-
-        macro_rules! di {
-            ($($t:tt)*) => {
-                if a_stderr { eprintln!($($t)*) } else { println!($($t)*) }
-            };
-        }
-
-        let parar = Arc::new(AtomicBool::new(false));
-        let rt = tokio::runtime::Handle::current();
-
-        let hilo = std::thread::spawn({
-            let parar = Arc::clone(&parar);
-            move || {
-                while !parar.load(Ordering::Relaxed) {
-                    // Se duerme a trocitos para poder parar enseguida al desmontar, en vez
-                    // de tener que esperar a que se cumpla el intervalo entero.
-                    let mut queda = cada;
-                    let paso = std::time::Duration::from_millis(200);
-                    while queda > std::time::Duration::ZERO && !parar.load(Ordering::Relaxed) {
-                        let dormir = paso.min(queda);
-                        std::thread::sleep(dormir);
-                        queda -= dormir;
-                    }
-                    if parar.load(Ordering::Relaxed) {
-                        return;
-                    }
-
-                    if store.pendiente().a_salvo() {
-                        continue;
-                    }
-                    match rt.block_on(store.sync()) {
-                        Ok(i) if i.subidos > 0 || i.descartados > 0 => {
-                            di!(
-                                "  [sync] {} subidos ({}), {} descartados{}",
-                                i.subidos,
-                                tamano(i.bytes),
-                                i.descartados,
-                                if i.raiz_publicada {
-                                    ", raiz publicada"
-                                } else {
-                                    ""
-                                }
-                            );
-                        }
-                        Ok(_) => {}
-                        // Un fallo no para el montaje: lo pendiente sigue en disco y el
-                        // siguiente intento lo recoge. Callarselo si seria grave.
-                        Err(e) => di!("  [sync] fallo, se reintentara: {e}"),
-                    }
-                }
-            }
-        });
-
-        Self {
-            parar,
-            hilo: Some(hilo),
-        }
-    }
-}
-
-impl Drop for Sincronizador {
-    fn drop(&mut self) {
-        self.parar.store(true, std::sync::atomic::Ordering::Relaxed);
-        if let Some(h) = self.hilo.take() {
-            let _ = h.join();
-        }
-    }
 }
 
 /// Los proveedores del volumen frente a los que hay configurados.

@@ -29,6 +29,31 @@
   </form>
 </section>
 
+
+<!-- Sin volumen: crearlo sobre los proveedores que ya estén configurados. -->
+<section id="creacion" hidden>
+  <h2>Crear un volumen</h2>
+  <p class="nota" id="sobre-proveedores"></p>
+
+  <form id="form-crear">
+    <label for="topologia">Cómo repartirlo</label>
+    <select id="topologia"></select>
+    <p class="nota" id="precio"></p>
+
+    <label for="frase-nueva">Frase de paso</label>
+    <input type="password" id="frase-nueva" autocomplete="off" spellcheck="false" required>
+    <label for="frase-otra">Repítela</label>
+    <input type="password" id="frase-otra" autocomplete="off" spellcheck="false" required>
+
+    <div class="aviso">
+      <b>No hay recuperación.</b> La frase no se guarda en ninguna parte y sin ella el
+      volumen es ilegible para siempre, también para ti. Apúntala donde apuntes las cosas
+      que no puedes perder, y no en esta máquina.
+    </div>
+
+    <button type="submit" id="boton-crear">Crear volumen</button>
+  </form>
+</section>
 <!-- Abierto: estado, salud y lo que todavía no ha subido. -->
 <section id="panel" hidden>
   <div class="fila">
@@ -42,6 +67,9 @@
     <button id="revisar">Revisar</button>
   </div>
   <div id="salud"><p class="nota">Sin revisar todavía.</p></div>
+
+  <h2>Montaje</h2>
+  <div id="montaje"></div>
 
   <h2>Pendiente de subir</h2>
   <div id="pendiente"><p class="nota">Consultando…</p></div>

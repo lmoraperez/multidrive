@@ -59,7 +59,7 @@ en Windows ya viene (WebView2), y en Linux hacen falta sus cabeceras
 —`libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev pkg-config` en Debian y derivados—.
 
 ```sh
-cargo test --workspace          # 218 tests
+cargo test --workspace          # 223 tests
 cargo run -- layout rs:4,2      # tolerancia y sobrecoste de una topología
 cargo run -- demo --layout rs:4,2 --kib 512
 cargo run -- check              # conformidad de los proveedores configurados
@@ -138,7 +138,7 @@ montando de verdad.
 | `libredisk-backend` | `trait Backend` + adaptador OpenDAL (~40 proveedores) |
 | `libredisk-core` | Almacén de trozos: id por BLAKE3, `put`/`get`/`scrub`/`repair` |
 | `libredisk-mount` | Montaje como unidad del sistema: WinFsp en Windows, FUSE en Linux |
-| `libredisk-gui` | Ventana de escritorio (Tauri, sin Node): estado, salud y cola de subida |
+| `libredisk-gui` | Ventana de escritorio (Tauri, sin Node): crear, montar, salud y cola de subida |
 | `libredisk-cli` | Binario `libredisk` |
 
 ---

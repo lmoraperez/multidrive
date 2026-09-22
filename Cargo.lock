@@ -2432,12 +2432,14 @@ dependencies = [
  "libredisk-backend",
  "libredisk-core",
  "libredisk-crypto",
+ "libredisk-mount",
  "libredisk-raid",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tokio",
+ "winfsp",
 ]
 
 [[package]]
