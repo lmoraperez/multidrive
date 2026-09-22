@@ -60,12 +60,19 @@ stores (que no tienen escritura en sitio ni `rename` atómico).
 
 | Modo | Fórmula | Sobrevive a | Sobrecoste |
 |---|---|---|---|
-| `concat` (JBOD) | 1 de 1 | nada | 1,0× |
+| `concat` | 1 de 1 | nada | 1,0× |
+| `stripe(n)` | n de n | **nada** | 1,0× |
 | `mirror` | 1 de n | n−1 caídas | n× |
 | `rs(k,m)` | k de k+m | m caídas | (k+m)/k × |
 
 Ejemplo práctico: `rs(4,2)` con 6 proveedores → sobrevive a que 2 te suspendan la cuenta,
 con 1,5× de sobrecoste de espacio.
+
+`stripe` es lo que en un disco se llama RAID 0: toda la capacidad sumada y el ancho de banda
+repartido entre los proveedores, a cambio de que **perder uno solo pierda el volumen entero**.
+No es `rs(k,0)` porque eso no existe —Reed-Solomon necesita al menos un fragmento de
+paridad—, y tenerlo como topología propia hace que «sin redundancia» se lea en el nombre en
+vez de esconderse en un cero.
 
 ### Metadatos
 
