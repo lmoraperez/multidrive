@@ -10,6 +10,7 @@
 use async_trait::async_trait;
 use opendal::{Operator, services};
 
+pub mod config;
 pub mod conformance;
 pub mod live;
 
@@ -22,6 +23,8 @@ pub enum BackendError {
         name: String,
         source: Box<opendal::Error>,
     },
+    #[error("no se pudo leer el fichero de configuracion {fichero}: {detalle}")]
+    FicheroDeConfig { fichero: String, detalle: String },
     #[error("configuracion incompleta de '{proveedor}': falta {falta}")]
     EntornoIncompleto {
         proveedor: &'static str,

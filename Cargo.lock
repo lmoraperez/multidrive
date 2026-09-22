@@ -1249,6 +1249,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "winfsp",
+ "winreg",
 ]
 
 [[package]]
@@ -1300,6 +1301,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "widestring",
+ "windows-sys 0.61.2",
  "winfsp",
 ]
 
@@ -3074,6 +3076,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d42acc30c105f8d33507f556398237c738b681271c775a3b94eefd29d2b8c77e"
 dependencies = [
  "bindgen",
+]
+
+[[package]]
+name = "winreg"
+version = "0.56.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
+dependencies = [
+ "cfg-if",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

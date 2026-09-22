@@ -11,7 +11,7 @@ use libredisk_backend::{conformance, live};
 
 #[tokio::test]
 async fn los_proveedores_configurados_cumplen_el_contrato() {
-    let proveedores = match live::desde_entorno() {
+    let proveedores = match live::configurados() {
         Ok(p) => p,
         Err(e) => panic!("configuracion de entorno invalida: {e}\n\n{}", live::AYUDA),
     };

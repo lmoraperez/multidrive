@@ -36,6 +36,10 @@ dotnet tool install --global wix --version 5.0.2
 .\packaging\windows\construir-msi.ps1
 ```
 
+Para que el volumen esté disponible sin tener una consola abierta, se registra en el lanzador
+de WinFsp y se conecta como una unidad de red: **Windows pide la frase de paso al conectar y
+no se guarda en ninguna parte**. Ver [docs/SERVICIO.md](docs/SERVICIO.md).
+
 ## Probarlo
 
 Requiere Rust estable (edición 2024).
@@ -136,6 +140,8 @@ completos, ninguno puede leerlos, y la caída de uno no te deja sin volumen.**
 - [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) — diseño técnico
 - [docs/ROADMAP.md](docs/ROADMAP.md) — hoja de ruta por versiones
 - [docs/PRUEBAS-PROVEEDORES.md](docs/PRUEBAS-PROVEEDORES.md) — probar contra cuentas reales (OneDrive, Google Drive, S3, WebDAV)
+- [docs/SERVICIO.md](docs/SERVICIO.md) — montar como unidad de red sin tener una consola abierta
+- [docs/FIRMA.md](docs/FIRMA.md) — por qué el instalador todavía no va firmado, y qué haría falta
 
 ## Licencia
 

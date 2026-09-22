@@ -170,10 +170,28 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       código: hay que comprar o solicitar un certificado. Las tres vías, lo que bloquea cada
       una y por qué **no hace falta un EV** están en [FIRMA.md](FIRMA.md). El guión ya firma
       binario y MSI en cuanto haya con qué; mientras tanto publica el SHA-256
-- [ ] Servicio de Windows. El lanzador de WinFsp ya resuelve la parte difícil —pasa la frase
-      de paso por la entrada estándar, sin que toque el registro ni la lista de procesos—,
-      pero antes hace falta que las credenciales de los proveedores salgan de un fichero de
-      configuración y no del entorno: un servicio no tiene el `.env` de nadie
+- [x] Servicio de Windows, a través del lanzador de WinFsp en vez de escribiendo uno propio:
+      ya arranca con la máquina, corre como LocalSystem y está instalado y firmado. `libredisk
+      servicio registrar` y el volumen se conecta desde el Explorador como unidad de red.
+      **La frase de paso no se guarda en ninguna parte**: Windows la pide al conectar y el
+      lanzador la entrega por la entrada estándar, no por la línea de órdenes ni por el
+      registro ni por el entorno. Probado entero: frase equivocada rechazada sin montar nada,
+      frase correcta montando, leyendo, escribiendo y subiendo desde LocalSystem. Ver
+      [SERVICIO.md](SERVICIO.md)
+- [x] Fichero de configuración. Las credenciales salían solo del entorno, que es correcto para
+      una persona en una consola e imposible para un servicio: LocalSystem no ve el `.env` de
+      nadie. Mismas claves que las variables, para poder copiar el `.env` sin traducirlo. El
+      entorno sigue ganando al fichero, y `libredisk config ver` dice qué claves está tapando
+- [x] `LIBREDISK_` como prefijo, en vez de `LIBREDISK_TEST_`. Nació cuando esto solo
+      configuraba la suite de conformidad; ahora es como se configura el producto. El antiguo
+      se sigue aceptando: nadie debería reescribir su configuración porque el proyecto crezca
+- [x] Arreglado que el montaje solo funcionara si la carpeta `bin` de WinFsp estaba en el
+      PATH. `winfsp_init` hace un `LoadLibrary` del nombre a secas, el instalador de WinFsp no
+      toca el PATH, y un servicio no tiene el de ningún usuario: funcionaba en la consola de
+      quien se lo había añadido a mano y fallaba en cuanto salía de ahí. Ahora la DLL se
+      localiza por el registro, como hacen las propias herramientas de WinFsp. **El mensaje de
+      error anterior culpaba al PATH del usuario**, que es como este fallo sobrevivió hasta
+      que lo destapó la prueba del servicio
 - [x] Caché de lectura en memoria, acotada por bytes y con desalojo del menos usado. **No
       necesita invalidación**, y no por simplificar: los trozos son inmutables y su nombre es
       su contenido, así que una entrada cacheada no puede quedar obsoleta. Lo único mutable
