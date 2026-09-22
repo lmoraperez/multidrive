@@ -148,3 +148,13 @@ select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 }
 .leyenda .nuestro { color: var(--accent); }
 .leyenda .libre { color: var(--line); }
+
+/* ---------------------------------------------------------------------------------------
+   Alta de proveedores
+   --------------------------------------------------------------------------------------- */
+#campos-proveedor { margin-top: 4px; }
+#campos-proveedor label { margin-top: 14px; }
+/* La ayuda de cada campo va pegada a su campo, no flotando entre dos. */
+#campos-proveedor .nota { margin-top: 4px; }
+#resultado-proveedor { white-space: pre-wrap; }
+#alta { margin-top: 30px; }

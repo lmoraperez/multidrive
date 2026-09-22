@@ -228,6 +228,34 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       quita el arreglo**
 
 ## v0.3 — "¿Lo puede usar alguien que no sea yo?"
+- [x] **Se pueden añadir proveedores desde la ventana.** Elegir tipo, rellenar los campos y
+      «Probar y guardar»: escribe, lee, compara y borra contra el proveedor, y **solo si eso
+      sale bien** escribe la configuración. Guardar primero y descubrir después que las
+      credenciales estaban mal deja un proveedor que no responde, y a partir de ahí todo lo
+      que el programa enumere o mida sale con un hueco que hay que ir a explicar
+- [x] Lo mismo sin ventana: `libredisk config add FS` toma los valores **por la entrada
+      estándar**, no por argumentos. Aquí dentro hay tokens y claves secretas, y lo que se
+      escribe en la línea de órdenes acaba en el historial del intérprete y en la lista de
+      procesos. Es la misma regla que sigue la frase de paso
+- [x] **Todos los tipos numerados, no solo las carpetas locales.** Antes cabía *una* cuenta
+      de cada servicio, o sea cuatro nubes como mucho: ni siquiera daban para un `rs(4,2)`,
+      que pide seis. La promesa del proyecto es repartir entre cuentas distintas, y con una
+      sola cuenta por servicio no se podía cumplir. Ahora `GDRIVE2_*` es otra cuenta de Drive
+- [x] Un catálogo único de tipos y campos, del que salen los formularios de la ventana, la
+      ayuda de la línea de órdenes y la validación. Antes eran tres copias de la misma lista,
+      y una copia de una lista es una lista que acaba discrepando: al numerar todos los tipos,
+      el texto de ayuda habría seguido diciendo que solo se numeran las carpetas
+- [x] La configuración se escribe en el perfil del usuario y **nunca** en el fichero de
+      máquina. `ProgramData` y `/etc` los lee cualquier usuario del equipo, y ahí dentro hay
+      acceso permanente a las cuentas. En Unix nace con permisos `0600`. Un servicio sí
+      necesita ese fichero, pero eso se decide a mano y a sabiendas
+- [x] Escribir la configuración conserva comentarios y orden, reconoce la clave escrita como
+      la escribe la gente (`export`, espacios alrededor del `=`) para no dejar dos líneas
+      para la misma clave, y va por temporal y renombrado como el resto del proyecto
+- [x] La ventana dice con todas las letras que configurar un proveedor **no** lo mete en un
+      volumen que ya exista, y cuál de las dos órdenes de `providers add` hace falta. Son
+      cosas de coste muy distinto, y decir que ya está dentro sería la mentira más cara de
+      esa pantalla
 - [x] **La unidad montada ya no dice 7,9 EB.** Windows y `df` recibían un número fijo y
       enorme, con un comentario que decía que no había forma honesta de dar un tamaño: la
       había dejado de haber en cuanto se supo el cupo de cada proveedor. Ahora declara el del

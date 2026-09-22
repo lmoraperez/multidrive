@@ -28,7 +28,9 @@
 
 use std::sync::Arc;
 
-use libredisk_backend::{Backend, live};
+use std::collections::HashMap;
+
+use libredisk_backend::{Backend, catalogo, config, live};
 use libredisk_core::ChunkHealth;
 use libredisk_core::header::{self, Header};
 use libredisk_core::sincronizador::Sincronizador;
@@ -602,6 +604,149 @@ async fn pendiente(estado: tauri::State<'_, Estado>) -> Result<Pendiente, String
     })
 }
 
+// ---------------------------------------------------------------------------------------
+// Anadir proveedores
+// ---------------------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct CampoJson {
+    clave: String,
+    etiqueta: String,
+    ayuda: String,
+    ejemplo: String,
+    secreto: bool,
+    obligatorio: bool,
+    /// Los de un mismo grupo van todos o ninguno. La ventana lo dice antes de enviar.
+    grupo: Option<String>,
+}
+
+#[derive(Serialize)]
+struct TipoJson {
+    clave: String,
+    etiqueta: String,
+    explicacion: String,
+    campos: Vec<CampoJson>,
+    /// La ranura que le tocaria si se anadiera ahora: `gdrive`, `gdrive2`...
+    ///
+    /// Se ensena antes de guardar porque **ese es el nombre con el que el volumen lo va a
+    /// conocer para siempre**, y porque ver `gdrive2` es lo que le dice a alguien que su
+    /// primera cuenta de Drive sigue ahi y no la va a pisar.
+    hueco: Option<String>,
+}
+
+/// Que clases de proveedor se pueden anadir y que pide cada una.
+///
+/// Sale del catalogo de `libredisk-backend`, que es tambien de donde sale la ayuda de la
+/// linea de ordenes y la comprobacion al guardar. Un formulario que se invente sus propios
+/// campos es un formulario que acaba pidiendo algo que el motor ya no lee.
+#[tauri::command]
+fn tipos_de_proveedor() -> Vec<TipoJson> {
+    catalogo::TIPOS
+        .iter()
+        .map(|t| TipoJson {
+            clave: t.clave.to_string(),
+            etiqueta: t.etiqueta.to_string(),
+            explicacion: t.explicacion.to_string(),
+            hueco: live::hueco_libre_configurado(t)
+                .ok()
+                .flatten()
+                .map(|r| live::nombre_de_ranura(&r)),
+            campos: t
+                .campos
+                .iter()
+                .map(|c| CampoJson {
+                    clave: c.clave.to_string(),
+                    etiqueta: c.etiqueta.to_string(),
+                    ayuda: c.ayuda.to_string(),
+                    ejemplo: c.ejemplo.to_string(),
+                    secreto: c.secreto,
+                    obligatorio: c.obligatorio,
+                    grupo: c.grupo.map(str::to_string),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+/// Valida los campos y construye el proveedor. Comun a probar y a guardar.
+fn preparar(
+    tipo: &str,
+    campos: &HashMap<String, String>,
+) -> Result<
+    (
+        &'static catalogo::Tipo,
+        String,
+        libredisk_backend::OpendalBackend,
+    ),
+    String,
+> {
+    let t = catalogo::tipo(tipo).ok_or_else(|| format!("no conozco el tipo «{tipo}»"))?;
+    catalogo::validar(t, &|c| campos.get(c).cloned()).map_err(|fallos| fallos.join("; "))?;
+
+    let ranura = live::hueco_libre_configurado(t)
+        .map_err(|e| e.to_string())?
+        .ok_or("no quedan ranuras libres de este tipo")?;
+    let backend =
+        live::construir_uno(t, &ranura, &|c| campos.get(c).cloned()).map_err(|e| e.to_string())?;
+    Ok((t, ranura, backend))
+}
+
+/// Escribe, lee, compara y borra contra el proveedor, sin guardar nada.
+///
+/// Guardar primero y descubrir despues que las credenciales estaban mal deja la
+/// configuracion con un proveedor que no responde, y a partir de ahi todo lo que el programa
+/// enumere o mida sale con un hueco que hay que ir a explicar.
+#[tauri::command]
+async fn probar_proveedor(tipo: String, campos: HashMap<String, String>) -> Result<String, String> {
+    let (_, _, backend) = preparar(&tipo, &campos)?;
+    libredisk_backend::conformance::prueba_rapida(&backend).await
+}
+
+#[derive(Serialize)]
+struct Guardado {
+    nombre: String,
+    fichero: String,
+    /// `true` si ya hay un volumen creado. Entonces esto **no** lo mete en el volumen.
+    hay_volumen: bool,
+}
+
+/// Prueba el proveedor y, solo si responde, lo escribe en la configuracion del usuario.
+///
+/// Lo que **no** hace: meterlo en un volumen que ya exista. Son dos cosas distintas y la
+/// segunda cuesta ordenes de magnitud mas —hay que mover fragmentos, o reescribir el volumen
+/// entero segun para que se quiera— asi que la elige el usuario con `providers add`. Decir
+/// aqui que ya esta dentro seria la mentira mas cara de esta pantalla.
+#[tauri::command]
+async fn guardar_proveedor(
+    tipo: String,
+    campos: HashMap<String, String>,
+    estado: tauri::State<'_, Estado>,
+) -> Result<Guardado, String> {
+    let (t, ranura, backend) = preparar(&tipo, &campos)?;
+    libredisk_backend::conformance::prueba_rapida(&backend)
+        .await
+        .map_err(|e| format!("no se guarda nada porque el proveedor no responde: {e}"))?;
+
+    let fichero = config::fichero_de_usuario()
+        .ok_or("no se sabe donde vive la configuracion de este usuario")?;
+    let claves = live::claves_de(t, &ranura, &|c| campos.get(c).cloned());
+    config::guardar(&fichero, &claves).map_err(|e| e.to_string())?;
+
+    Ok(Guardado {
+        nombre: live::nombre_de_ranura(&ranura),
+        fichero: fichero.display().to_string(),
+        hay_volumen: estado.abierto.lock().await.is_some() || hay_volumen().await,
+    })
+}
+
+/// Si existe una cabecera en los proveedores configurados.
+async fn hay_volumen() -> bool {
+    let Ok(backends) = proveedores() else {
+        return false;
+    };
+    matches!(header::read(&backends).await, Ok(Some(_)))
+}
+
 /// Reparte los trozos en tres categorias **excluyentes**, y el orden importa.
 ///
 /// Un trozo del que no quedan fragmentos suficientes ya no se lee. Llamarlo degradado seria
@@ -625,8 +770,21 @@ fn main() {
     tauri::Builder::default()
         .manage(Estado::default())
         .invoke_handler(tauri::generate_handler![
-            arranque, abrir, resumen, cerrar, salud, espacio, pendiente, topologias, crear,
-            montaje, montar, desmontar
+            arranque,
+            abrir,
+            resumen,
+            cerrar,
+            salud,
+            espacio,
+            pendiente,
+            topologias,
+            crear,
+            montaje,
+            montar,
+            desmontar,
+            tipos_de_proveedor,
+            probar_proveedor,
+            guardar_proveedor
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo arrancar la ventana");

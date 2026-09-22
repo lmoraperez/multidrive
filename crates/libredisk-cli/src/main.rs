@@ -255,6 +255,17 @@ enum ServicioCmd {
 enum ConfigCmd {
     /// Ficheros donde se busca la configuracion, y cual de ellos existe.
     Ruta,
+    /// Anade un proveedor, leyendo los valores por la entrada estandar.
+    ///
+    /// Los valores no van por argumentos porque aqui dentro hay tokens y claves secretas, y
+    /// lo que se escribe en la linea de ordenes acaba en el historial del interprete y en la
+    /// lista de procesos.
+    ///
+    /// Se prueba contra el proveedor antes de guardar nada.
+    Add {
+        /// FS, ONEDRIVE, GDRIVE, S3 o WEBDAV.
+        tipo: String,
+    },
     /// Que claves hay y de donde vienen. **No imprime ningun valor.**
     Ver,
 }
@@ -327,6 +338,7 @@ async fn main() -> Result<()> {
         Command::Header(HeaderCmd::Import { fichero }) => volumen::header_import(&fichero).await,
         Command::Config(ConfigCmd::Ruta) => configuracion::ruta(),
         Command::Config(ConfigCmd::Ver) => configuracion::ver(),
+        Command::Config(ConfigCmd::Add { tipo }) => configuracion::add(&tipo).await,
         Command::Servicio(ServicioCmd::Registrar {
             nombre,
             cache_mb,
@@ -381,11 +393,11 @@ async fn main() -> Result<()> {
 
 async fn check(pasadas: usize) -> Result<()> {
     let proveedores = live::configurados()
-        .with_context(|| format!("configuracion de proveedores invalida\n\n{}", live::AYUDA))?;
+        .with_context(|| format!("configuracion de proveedores invalida\n\n{}", live::ayuda()))?;
 
     if proveedores.is_empty() {
         println!("No hay ningun proveedor configurado.\n");
-        println!("{}", live::AYUDA);
+        println!("{}", live::ayuda());
         return Ok(());
     }
 

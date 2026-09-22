@@ -36,6 +36,28 @@
 </section>
 
 
+
+<!-- Añadir proveedores. Va en su propia sección y visible siempre, porque se necesita
+     tanto antes de crear el volumen como después, para ampliarlo. -->
+<section id="alta">
+  <div class="fila">
+    <h2>Añadir un proveedor</h2>
+    <button id="plegar-alta" class="secundario">Mostrar</button>
+  </div>
+  <div id="alta-cuerpo" hidden>
+    <label for="tipo-proveedor">Tipo</label>
+    <select id="tipo-proveedor"></select>
+
+    <div id="campos-proveedor"></div>
+
+    <div class="enlinea">
+      <button id="probar-proveedor" class="secundario">Probar sin guardar</button>
+      <button id="guardar-proveedor">Probar y guardar</button>
+    </div>
+    <p id="resultado-proveedor" class="nota" hidden></p>
+  </div>
+</section>
+
 <!-- Sin volumen: crearlo sobre los proveedores que ya estén configurados. -->
 <section id="creacion" hidden>
   <h2>Crear un volumen</h2>

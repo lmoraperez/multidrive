@@ -51,9 +51,9 @@ fn frase() -> Result<String> {
 
 fn proveedores() -> Result<Vec<Arc<dyn Backend>>> {
     let configurados = live::configurados()
-        .with_context(|| format!("configuracion de proveedores invalida\n\n{}", live::AYUDA))?;
+        .with_context(|| format!("configuracion de proveedores invalida\n\n{}", live::ayuda()))?;
     if configurados.is_empty() {
-        bail!("no hay ningun proveedor configurado.\n\n{}", live::AYUDA);
+        bail!("no hay ningun proveedor configurado.\n\n{}", live::ayuda());
     }
     Ok(configurados
         .into_iter()

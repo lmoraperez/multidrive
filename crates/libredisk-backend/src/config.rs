@@ -169,6 +169,133 @@ pub fn candidatos() -> Vec<PathBuf> {
     rutas
 }
 
+/// El fichero de configuracion **del usuario**, que es donde se escriben las credenciales.
+///
+/// No es el de la maquina, y la diferencia no es de gusto: el de la maquina vive en
+/// `ProgramData` o en `/etc`, que cualquier usuario del equipo puede leer. Ahi dentro hay
+/// tokens de refresco y claves de S3, o sea acceso permanente a las cuentas. Un servicio
+/// necesita ese fichero para arrancar sin sesion, pero eso es una decision que hay que tomar
+/// a sabiendas y a mano: **nada de lo que escribe LibreDisk solo va alli**.
+pub fn fichero_de_usuario() -> Option<PathBuf> {
+    let var = |clave: &str| std::env::var(clave).ok().filter(|v| !v.trim().is_empty());
+    // `LIBREDISK_CONFIG` gana, igual que al leer: quien la pone esta diciendo exactamente
+    // que fichero quiere, y seria raro que se leyera de uno y se escribiera en otro.
+    if let Some(ruta) = var("LIBREDISK_CONFIG") {
+        return Some(PathBuf::from(ruta));
+    }
+    if let Some(dir) = var("APPDATA") {
+        return Some(PathBuf::from(dir).join("LibreDisk").join(FICHERO));
+    }
+    if let Some(dir) = var("XDG_CONFIG_HOME") {
+        return Some(PathBuf::from(dir).join("libredisk").join(FICHERO));
+    }
+    var("HOME").map(|d| {
+        PathBuf::from(d)
+            .join(".config")
+            .join("libredisk")
+            .join(FICHERO)
+    })
+}
+
+/// Escribe o actualiza claves en un fichero de configuracion, dejando lo demas como estaba.
+///
+/// Conserva comentarios, orden y espaciado: el fichero es de quien lo escribe, y una
+/// herramienta que lo reformatea a su gusto cada vez que toca una clave convierte cualquier
+/// anotacion en algo que no merece la pena escribir.
+///
+/// Se escribe a un temporal y se renombra, igual que el diario de escritura y que `get`: si
+/// el proceso muere a mitad, queda el fichero de antes y no uno truncado. Perder la
+/// configuracion de todos los proveedores por un corte de luz seria caro de recuperar.
+///
+/// En Unix nace con permisos `0600`. Lo que se guarda aqui son tokens de refresco y claves
+/// secretas, o sea acceso permanente a las cuentas del usuario.
+pub fn guardar(ruta: &Path, nuevas: &[(String, String)]) -> Result<(), BackendError> {
+    let fallo = |detalle: String| BackendError::FicheroDeConfig {
+        fichero: ruta.display().to_string(),
+        detalle,
+    };
+
+    if let Some(padre) = ruta.parent() {
+        std::fs::create_dir_all(padre).map_err(|e| fallo(e.to_string()))?;
+    }
+
+    let anterior = match std::fs::read_to_string(ruta) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(fallo(e.to_string())),
+    };
+
+    let mut lineas: Vec<String> = anterior.lines().map(str::to_string).collect();
+    let mut por_anadir = Vec::new();
+
+    for (clave, valor) in nuevas {
+        let linea = format!("{clave}={valor}");
+        match lineas.iter().position(|l| asigna_a(l, clave)) {
+            Some(i) => lineas[i] = linea,
+            None => por_anadir.push(linea),
+        }
+    }
+    lineas.extend(por_anadir);
+
+    let mut texto = lineas.join("\n");
+    if !texto.is_empty() {
+        texto.push('\n');
+    }
+
+    let temporal = ruta.with_extension("parcial");
+    escribir_restringido(&temporal, &texto).map_err(|e| fallo(e.to_string()))?;
+    if let Err(e) = std::fs::rename(&temporal, ruta) {
+        std::fs::remove_file(&temporal).ok();
+        return Err(fallo(e.to_string()));
+    }
+    Ok(())
+}
+
+/// Si esta linea le asigna un valor a esa clave, sea como sea que este escrita.
+///
+/// Tiene que reconocer las mismas formas que acepta el lector —con `export`, con espacios
+/// alrededor del `=`— o reescribir una clave anadiria una segunda linea y la vieja seguiria
+/// ganando o perdiendo segun el orden. Dos lineas para la misma clave es justo el estado en
+/// el que nadie sabe cual manda.
+fn asigna_a(linea: &str, clave: &str) -> bool {
+    let l = linea.trim_start();
+    if l.starts_with('#') {
+        return false;
+    }
+    let l = l.strip_prefix("export ").unwrap_or(l);
+    match l.split_once('=') {
+        Some((izq, _)) => izq.trim() == clave,
+        None => false,
+    }
+}
+
+#[cfg(unix)]
+fn escribir_restringido(ruta: &Path, texto: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        // Desde que nace, no cuando se termina de escribir: entre `create` y un `chmod`
+        // posterior hay una ventana en la que el fichero con los tokens es legible por todo
+        // el mundo.
+        .mode(0o600)
+        .open(ruta)?;
+    f.write_all(texto.as_bytes())?;
+    f.sync_all()
+}
+
+#[cfg(not(unix))]
+fn escribir_restringido(ruta: &Path, texto: &str) -> std::io::Result<()> {
+    // En Windows el fichero va bajo `%APPDATA%`, cuyo ACL ya excluye a los demas usuarios y
+    // lo hereda lo que se cree dentro. Por eso aqui no se toca el ACL: lo que si se hace es
+    // **no escribir nunca en `ProgramData`**, que es el que si esta abierto a todos. Ver
+    // `fichero_de_usuario`.
+    std::fs::write(ruta, texto)
+}
+
 /// La carpeta donde escribir la configuracion de la **maquina**, que es la que ve un servicio.
 pub fn carpeta_de_maquina() -> Option<PathBuf> {
     std::env::var("ProgramData")
@@ -204,6 +331,149 @@ mod tests {
         let ruta = d.join(nombre);
         std::fs::write(&ruta, contenido).unwrap();
         ruta
+    }
+
+    #[test]
+    fn guardar_crea_el_fichero_y_lo_que_se_escribe_se_lee() {
+        let d = dir("crear");
+        let ruta = d.join("libredisk.conf");
+        guardar(
+            &ruta,
+            &[("LIBREDISK_FS_ROOT".into(), "D:\\libredisk".into())],
+        )
+        .unwrap();
+
+        let c = Config::desde(&[ruta]).unwrap();
+        assert_eq!(c.get("LIBREDISK_FS_ROOT").as_deref(), Some("D:\\libredisk"));
+        std::fs::remove_dir_all(d).ok();
+    }
+
+    #[test]
+    fn actualizar_una_clave_no_anade_una_segunda_linea() {
+        // Dos lineas para la misma clave es el estado en el que nadie sabe cual manda.
+        let d = dir("actualizar");
+        let ruta = escribir(&d, "libredisk.conf", "LIBREDISK_FS_ROOT=/viejo\n");
+        guardar(&ruta, &[("LIBREDISK_FS_ROOT".into(), "/nuevo".into())]).unwrap();
+
+        let texto = std::fs::read_to_string(&ruta).unwrap();
+        assert_eq!(texto.matches("LIBREDISK_FS_ROOT").count(), 1, "{texto}");
+        assert!(texto.contains("/nuevo"));
+        assert!(!texto.contains("/viejo"));
+        std::fs::remove_dir_all(d).ok();
+    }
+
+    #[test]
+    fn se_reconoce_la_clave_escrita_como_la_escribe_la_gente() {
+        // El lector acepta `export` y espacios alrededor del `=`. Si el escritor no
+        // reconociera esas formas, anadiria una linea nueva y quedarian las dos.
+        for original in [
+            "export LIBREDISK_FS_ROOT=/viejo\n",
+            "LIBREDISK_FS_ROOT = /viejo\n",
+            "  LIBREDISK_FS_ROOT=/viejo\n",
+        ] {
+            let d = dir("formas");
+            let ruta = escribir(&d, "libredisk.conf", original);
+            guardar(&ruta, &[("LIBREDISK_FS_ROOT".into(), "/nuevo".into())]).unwrap();
+
+            let c = Config::desde(std::slice::from_ref(&ruta)).unwrap();
+            assert_eq!(
+                c.get("LIBREDISK_FS_ROOT").as_deref(),
+                Some("/nuevo"),
+                "con {original:?}"
+            );
+            let texto = std::fs::read_to_string(&ruta).unwrap();
+            assert_eq!(texto.matches("LIBREDISK_FS_ROOT").count(), 1, "{texto}");
+            std::fs::remove_dir_all(d).ok();
+        }
+    }
+
+    #[test]
+    fn una_clave_comentada_no_se_pisa_sino_que_se_anade_al_final() {
+        // Alguien que deja una linea comentada esta guardando una nota, no configurando.
+        // Reescribirla borraria la nota y ademas dejaria la clave comentada, o sea sin
+        // efecto: el proveedor no aparecera y no habra ni rastro de por que.
+        let d = dir("comentada");
+        let ruta = escribir(&d, "libredisk.conf", "# LIBREDISK_FS_ROOT=/lo-de-antes\n");
+        guardar(&ruta, &[("LIBREDISK_FS_ROOT".into(), "/nuevo".into())]).unwrap();
+
+        let texto = std::fs::read_to_string(&ruta).unwrap();
+        assert!(
+            texto.contains("# LIBREDISK_FS_ROOT=/lo-de-antes"),
+            "{texto}"
+        );
+        let c = Config::desde(&[ruta]).unwrap();
+        assert_eq!(c.get("LIBREDISK_FS_ROOT").as_deref(), Some("/nuevo"));
+        std::fs::remove_dir_all(d).ok();
+    }
+
+    #[test]
+    fn lo_que_habia_alrededor_sigue_ahi() {
+        // El fichero es de quien lo escribe. Una herramienta que lo reformatea a su gusto
+        // convierte cualquier anotacion en algo que no merece la pena escribir.
+        let d = dir("alrededor");
+        let ruta = escribir(
+            &d,
+            "libredisk.conf",
+            "# La cuenta del trabajo, no tocar\nLIBREDISK_GDRIVE_CLIENT_ID=abc\n\n# fin\n",
+        );
+        guardar(&ruta, &[("LIBREDISK_FS_ROOT".into(), "/nuevo".into())]).unwrap();
+
+        let texto = std::fs::read_to_string(&ruta).unwrap();
+        assert!(
+            texto.contains("# La cuenta del trabajo, no tocar"),
+            "{texto}"
+        );
+        assert!(texto.contains("LIBREDISK_GDRIVE_CLIENT_ID=abc"), "{texto}");
+        assert!(texto.contains("# fin"), "{texto}");
+        std::fs::remove_dir_all(d).ok();
+    }
+
+    #[test]
+    fn no_queda_ningun_fichero_a_medias() {
+        // Se escribe a un temporal y se renombra. Si quedara el temporal, un directorio de
+        // configuracion acabaria lleno de restos con credenciales dentro.
+        let d = dir("temporal");
+        let ruta = d.join("libredisk.conf");
+        guardar(&ruta, &[("LIBREDISK_FS_ROOT".into(), "/x".into())]).unwrap();
+
+        let restos: Vec<_> = std::fs::read_dir(&d)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n != "libredisk.conf")
+            .collect();
+        assert!(restos.is_empty(), "quedaron restos: {restos:?}");
+        std::fs::remove_dir_all(d).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn el_fichero_con_credenciales_no_lo_puede_leer_nadie_mas() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let d = dir("permisos");
+        let ruta = d.join("libredisk.conf");
+        guardar(
+            &ruta,
+            &[("LIBREDISK_GDRIVE_CLIENT_SECRET".into(), "s".into())],
+        )
+        .unwrap();
+
+        let modo = std::fs::metadata(&ruta).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            modo, 0o600,
+            "aqui dentro hay acceso permanente a las cuentas"
+        );
+        std::fs::remove_dir_all(d).ok();
+    }
+
+    #[test]
+    fn nunca_se_ofrece_el_fichero_de_la_maquina_para_escribir_credenciales() {
+        // `ProgramData` y `/etc` los lee cualquier usuario del equipo. Un servicio necesita
+        // ese fichero, pero eso se decide a mano y a sabiendas.
+        if let (Some(usuario), Some(maquina)) = (fichero_de_usuario(), fichero_de_maquina()) {
+            assert_ne!(usuario, maquina);
+        }
     }
 
     /// El Bloc de notas y PowerShell escriben UTF-8 con marca de orden de bytes. Si no se
