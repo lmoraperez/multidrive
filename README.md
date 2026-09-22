@@ -57,7 +57,7 @@ no se guarda en ninguna parte**. Ver [docs/SERVICIO.md](docs/SERVICIO.md).
 Requiere Rust estable (edición 2024).
 
 ```sh
-cargo test --workspace          # 213 tests
+cargo test --workspace          # 218 tests
 cargo run -- layout rs:4,2      # tolerancia y sobrecoste de una topología
 cargo run -- demo --layout rs:4,2 --kib 512
 cargo run -- check              # conformidad de los proveedores configurados
@@ -93,6 +93,8 @@ cargo run -- put ./grande.mkv /medios/grande.mkv --diferido   # vuelve enseguida
 cargo run -- sync                                             # y sube cuando toque
 cargo run -- mount Z:                        # montarlo como unidad (Windows)
 cargo run -- mount Z: --escritura            # ...y poder escribir (sube solo cada 30 s)
+
+cargo run -p libredisk-gui                   # la ventana de escritorio
 ```
 
 ## Montaje
@@ -134,6 +136,7 @@ montando de verdad.
 | `libredisk-backend` | `trait Backend` + adaptador OpenDAL (~40 proveedores) |
 | `libredisk-core` | Almacén de trozos: id por BLAKE3, `put`/`get`/`scrub`/`repair` |
 | `libredisk-mount` | Montaje como unidad del sistema: WinFsp en Windows, FUSE en Linux |
+| `libredisk-gui` | Ventana de escritorio (Tauri, sin Node): estado, salud y cola de subida |
 | `libredisk-cli` | Binario `libredisk` |
 
 ---

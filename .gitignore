@@ -15,3 +15,6 @@
 # El instalador de WinFsp se baja al construir, no se guarda en el repositorio: es un
 # binario de otro proyecto y su sitio es su propia pagina de publicaciones.
 /packaging/windows/terceros/
+
+# Lo genera tauri-build en cada compilacion.
+/crates/libredisk-gui/gen/

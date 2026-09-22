@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Lo minimo para que la ventana hable con este proceso y nada mas. Sin sistema de ficheros, sin red, sin shell: todo lo que hace falta pasa por las ordenes de este binario, que ya sabe lo que puede tocar.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

@@ -112,17 +112,7 @@ async fn almacen_con(
     header: &Header,
     cache_bytes: usize,
 ) -> Result<ChunkStore> {
-    header.check_backends(backends)?;
-    let layout: Layout = header.layout.parse().with_context(|| {
-        format!(
-            "la cabecera declara una topologia invalida: {}",
-            header.layout
-        )
-    })?;
-    let key = MasterKey::derive(&frase()?, &header.salt)?;
-    Ok(ChunkStore::new(layout, backends.to_vec(), key)?
-        .with_cache(cache_bytes)
-        .with_reparto(header.reparto))
+    Ok(header.almacen(backends.to_vec(), &frase()?, cache_bytes)?)
 }
 
 /// Igual, pudiendo activar la escritura diferida.
@@ -137,18 +127,7 @@ async fn almacen_todo(
         .await?
         .ok_or(CoreError::NoVolume)
         .context("¿has ejecutado `libredisk volume create`?")?;
-    header.check_backends(&backends)?;
-
-    let layout: Layout = header.layout.parse().with_context(|| {
-        format!(
-            "la cabecera declara una topologia invalida: {}",
-            header.layout
-        )
-    })?;
-    let key = MasterKey::derive(&frase()?, &header.salt)?;
-    let mut store = ChunkStore::new(layout, backends, key)?
-        .with_cache(cache_bytes)
-        .with_reparto(header.reparto);
+    let mut store = header.almacen(backends, &frase()?, cache_bytes)?;
 
     if disco_bytes > 0 {
         let dir = dir_cache(&header.salt);
