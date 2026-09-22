@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LibreDisk — Política de privacidad</title>
+<meta name="description" content="LibreDisk no recoge ningun dato. El programa se ejecuta en el equipo del usuario, cifra antes de subir y habla directamente con las cuentas de nube del propio usuario. No hay servidores intermedios.">
+<style>
+:root{
+  --bg:#0e1116; --panel:#161b22; --line:#262d38;
+  --fg:#e6edf3; --muted:#8b949e; --accent:#4cc4a0; --warn:#d8a657;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:820px;margin:0 auto;padding:0 20px}
+header{padding:72px 0 44px;border-bottom:1px solid var(--line)}
+a{color:var(--accent)}
+.volver{display:inline-block;font-size:14px;color:var(--muted);text-decoration:none;margin-bottom:26px}
+.volver:hover{color:var(--fg)}
+h1{margin:0 0 6px;font-size:clamp(30px,6vw,44px);letter-spacing:-.02em;line-height:1.08}
+.tag{margin:0;font-size:16px;color:var(--muted)}
+section{padding:44px 0;border-bottom:1px solid var(--line)}
+h2{font-size:13px;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0 0 18px;font-weight:600}
+p{margin:0 0 16px}
+.lead{font-size:18px}
+ul{margin:0 0 16px;padding-left:22px}
+li{margin-bottom:9px}
+strong{font-weight:600}
+.nota{font-size:14px;color:var(--muted);border-left:2px solid var(--line);padding-left:16px;margin:22px 0 0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;
+  background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <a class="volver" href="/">← LibreDisk</a>
+  <h1>Política de privacidad</h1>
+  <p class="tag">Última revisión: 22 de septiembre de 2026</p>
+</header>
+
+<section>
+  <h2>En una línea</h2>
+  <p class="lead">LibreDisk <strong>no recoge ningún dato</strong>. No hay servidores: el
+  programa se ejecuta en tu equipo, cifra antes de subir y habla directamente con tus propias
+  cuentas de nube.</p>
+  <p>Esto no es una promesa de intenciones, es una consecuencia de cómo está construido. No
+  existe ninguna infraestructura de LibreDisk a la que pudieran llegar tus datos aunque
+  quisiéramos. El código es libre (AGPL-3.0) y se puede comprobar.</p>
+</section>
+
+<section>
+  <h2>Qué hace con tus archivos</h2>
+  <ul>
+    <li>Los corta en trozos y los <strong>cifra en tu equipo</strong> con XChaCha20-Poly1305,
+    con una clave derivada de una frase de paso que solo tú conoces.</li>
+    <li>Reparte esos trozos ya cifrados entre las cuentas de nube que tú hayas
+    configurado.</li>
+    <li>Los nombres de los ficheros también van cifrados: el proveedor no ve ni la estructura
+    ni cómo se llaman las cosas.</li>
+    <li>La frase de paso <strong>no se guarda en ninguna parte</strong> ni sale del proceso.
+    Si la pierdes, nadie —tampoco nosotros— puede recuperar el volumen.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Qué hace con tu cuenta de Google</h2>
+  <p>Cuando conectas una cuenta de Google Drive, se abre tu navegador en la página de Google.
+  <strong>Tu contraseña no pasa por LibreDisk</strong>: va de tu navegador a Google, y de
+  vuelta llega únicamente un código de un solo uso que se canjea por un permiso de acceso.</p>
+  <ul>
+    <li>Se pide un único permiso: <code>drive.file</code>, que da acceso <strong>solo a los
+    archivos que LibreDisk crea</strong>. No puede ver, leer ni tocar el resto de tu Drive.</li>
+    <li>Ese permiso se usa exclusivamente para guardar, leer y borrar los bloques cifrados del
+    volumen. Para nada más.</li>
+    <li>El testigo que permite renovarlo se guarda <strong>en tu equipo</strong>, en tu perfil
+    de usuario, con permisos que impiden que lo lean otros usuarios de la máquina. No se
+    transmite a ningún sitio salvo a Google al renovar.</li>
+    <li>Puedes retirar el permiso cuando quieras desde los ajustes de tu cuenta de Google, o
+    borrando el proveedor de la configuración de LibreDisk.</li>
+  </ul>
+  <p class="nota">El uso que LibreDisk hace de la información recibida de las APIs de Google
+  se ajusta a la <a href="https://developers.google.com/terms/api-services-user-data-policy"
+  rel="noopener">Política de Datos de Usuario de los Servicios de las API de Google</a>,
+  incluidos los requisitos de uso limitado. Los datos de Google no se transfieren a terceros,
+  no se usan para publicidad y ningún ser humano los lee.</p>
+</section>
+
+<section>
+  <h2>Qué no hay</h2>
+  <ul>
+    <li>No hay telemetría, estadísticas de uso ni informes de fallos automáticos.</li>
+    <li>No hay cuentas de LibreDisk, ni registro, ni servidor de licencias.</li>
+    <li>No hay anuncios ni perfilado, y no se vende ni se cede nada a terceros, porque no hay
+    nada que ceder.</li>
+    <li>Este sitio web no usa cookies ni analítica.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Con quién hablas</h2>
+  <p>LibreDisk se comunica únicamente con los proveedores de almacenamiento que tú hayas
+  configurado y con sus servicios de autenticación. Esa lista la decides tú, y las direcciones
+  concretas están en el código, no ocultas.</p>
+  <p>Lo que esos proveedores hacen con lo que les subes se rige por <em>sus</em> políticas, no
+  por esta. Lo que LibreDisk garantiza es que lo que llega ahí está cifrado antes de salir de
+  tu equipo.</p>
+</section>
+
+<section>
+  <h2>Contacto</h2>
+  <p>Escribe a <a href="mailto:gerencia@jlsoltech.com">gerencia@jlsoltech.com</a>, o abre una
+  incidencia en el <a href="https://github.com/lmoraperez/libredisk" rel="noopener">repositorio
+  del proyecto</a>.</p>
+</section>
+
+<footer>
+  <div class="wrap" style="padding:0">
+    LibreDisk · AGPL-3.0 · <a href="/">Volver al proyecto</a>
+  </div>
+</footer>
+
+</div>
+</body>
+</html>
