@@ -99,3 +99,52 @@ select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .enlinea input { flex: 1; }
 .enlinea button { margin-top: 0; white-space: nowrap; }
 #creacion .aviso b { color: var(--warn); }
+
+/* ---------------------------------------------------------------------------------------
+   Barras de espacio
+
+   La barra tiene dos tramos y el orden importa: primero lo que ocupa LibreDisk y despues el
+   resto de lo que hay en la cuenta. Asi el tramo que el usuario controla desde aqui empieza
+   siempre en el mismo sitio y se puede comparar de un proveedor a otro de un vistazo.
+   --------------------------------------------------------------------------------------- */
+.proveedor { margin-top: 16px; }
+.proveedor:first-child { margin-top: 6px; }
+
+.proveedor .cabeza {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.proveedor .cabeza b { color: var(--fg); font-size: 15px; font-weight: 600; }
+
+.barra {
+  display: flex;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--line);
+}
+.barra .nuestro { background: var(--accent); }
+.barra .ajeno { background: var(--muted); opacity: 0.5; }
+/* Casi llena: el color deja de ser decorativo y pasa a ser el aviso. */
+.barra.apurada .ajeno, .barra.apurada .nuestro { background: var(--warn); opacity: 1; }
+.barra.llena .ajeno, .barra.llena .nuestro { background: var(--mal); opacity: 1; }
+
+/* Leyenda con el mismo codigo de color que la barra, porque sin ella dos tramos grises no
+   dicen cual es cual. */
+.leyenda { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 6px; font-size: 12px; color: var(--muted); }
+.leyenda span::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 2px;
+  background: currentColor;
+}
+.leyenda .nuestro { color: var(--accent); }
+.leyenda .libre { color: var(--line); }

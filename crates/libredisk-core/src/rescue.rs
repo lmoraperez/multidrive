@@ -195,7 +195,7 @@ impl ChunkStore {
         let mut ids: BTreeSet<ChunkId> = BTreeSet::new();
         for (i, resultado) in listados {
             match resultado {
-                Ok(claves) => ids.extend(claves.iter().filter_map(|c| id_de_clave(c))),
+                Ok(objetos) => ids.extend(objetos.iter().filter_map(|o| id_de_clave(&o.clave))),
                 Err(e) => inv.sin_enumerar.push((i, e.to_string())),
             }
         }

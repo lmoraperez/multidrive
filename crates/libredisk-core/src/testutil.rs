@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
-use libredisk_backend::{Backend, BackendError, OpendalBackend};
+use libredisk_backend::{Backend, BackendError, Objeto, OpendalBackend};
 use libredisk_crypto::MasterKey;
 use libredisk_raid::Layout;
 
@@ -67,7 +67,7 @@ impl Backend for Contador {
         self.exists.fetch_add(1, Ordering::Relaxed);
         self.inner.exists(key).await
     }
-    async fn list(&self, prefix: &str) -> Result<Vec<String>, BackendError> {
+    async fn list(&self, prefix: &str) -> Result<Vec<Objeto>, BackendError> {
         self.lists.fetch_add(1, Ordering::Relaxed);
         self.inner.list(prefix).await
     }

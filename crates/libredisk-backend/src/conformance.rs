@@ -516,10 +516,11 @@ async fn listado_enumera_lo_escrito(b: &dyn Backend, esc: &Escenario, c: &Cargas
     }
 
     let vistas = b.list(&format!("{}/listado/", esc.prefijo)).await?;
+    let nombres: Vec<&str> = vistas.iter().map(|o| o.clave.as_str()).collect();
 
     let faltan: Vec<&str> = claves
         .iter()
-        .filter(|k| !vistas.contains(*k))
+        .filter(|k| !nombres.contains(&k.as_str()))
         .map(String::as_str)
         .collect();
     if !faltan.is_empty() {
@@ -531,13 +532,26 @@ async fn listado_enumera_lo_escrito(b: &dyn Backend, esc: &Escenario, c: &Cargas
         )));
     }
 
+    // El tamano viene en el mismo listado en los seis proveedores soportados, y de ahi sale
+    // lo que ocupa el volumen en cada uno. Un proveedor que lo devolviera a cero haria que
+    // LibreDisk informase de una ocupacion de cero sobre datos que existen, que es
+    // exactamente la clase de mentira que este proyecto no se permite. Mejor fallar aqui.
+    let esperado = c.listado.len() as u64;
+    if let Some(malo) = vistas.iter().find(|o| o.bytes != esperado) {
+        return Err(incumplido(format!(
+            "list devolvio '{}' con {} bytes cuando se escribieron {esperado}: sin el tamano \
+             en el listado no se puede medir lo que ocupa el volumen sin descargarlo entero",
+            malo.clave, malo.bytes
+        )));
+    }
+
     // Enumerar tiene que devolver claves usables tal cual. Si el proveedor cuela directorios
     // o rutas relativas al prefijo, scrub las compara contra shard_key y no casan: contaria
     // como ausentes fragmentos que estan ahi.
-    let intrusas: Vec<&str> = vistas
+    let intrusas: Vec<&str> = nombres
         .iter()
-        .filter(|k| !claves.contains(*k))
-        .map(String::as_str)
+        .filter(|k| !claves.iter().any(|c| c == *k))
+        .copied()
         .collect();
     if !intrusas.is_empty() {
         return Err(incumplido(format!(
@@ -591,7 +605,7 @@ async fn limpiar(b: &dyn Backend, esc: &Escenario) -> Result<(), BackendError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::OpendalBackend;
+    use crate::{Objeto, OpendalBackend};
 
     /// El proveedor en memoria cumple el contrato por construccion: si la suite falla aqui,
     /// el fallo esta en la suite, no en el proveedor.
@@ -678,7 +692,7 @@ mod tests {
             async fn exists(&self, key: &str) -> Result<bool, BackendError> {
                 self.0.exists(key).await
             }
-            async fn list(&self, prefix: &str) -> Result<Vec<String>, BackendError> {
+            async fn list(&self, prefix: &str) -> Result<Vec<Objeto>, BackendError> {
                 self.0.list(prefix).await
             }
         }

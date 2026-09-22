@@ -95,6 +95,15 @@ enum Command {
     Mkdir { path: String },
     /// Borra un fichero, o un directorio vacio.
     Rm { path: String },
+    /// Cuanto espacio hay en cada proveedor y cuanto ocupa el volumen.
+    Espacio {
+        /// Enumera para saber tambien cuanto ocupa el volumen en cada uno.
+        ///
+        /// Sin esto solo se pregunta el cupo de la cuenta, que es una peticion. Con
+        /// esto hay que enumerar, y contra una nube eso son minutos.
+        #[arg(long)]
+        medir: bool,
+    },
     /// Revisa la salud de todos los trozos del volumen.
     Scrub,
     /// Regenera los fragmentos que falten, donde todavia se pueda.
@@ -288,6 +297,7 @@ async fn main() -> Result<()> {
         Command::Mkdir { path } => volumen::mkdir(&path).await,
         Command::Rm { path } => volumen::rm(&path).await,
         Command::Scrub => volumen::scrub().await,
+        Command::Espacio { medir } => volumen::espacio(medir).await,
         Command::Rebuild => volumen::rebuild().await,
         Command::Mount {
             punto,

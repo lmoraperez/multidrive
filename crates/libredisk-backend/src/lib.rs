@@ -10,8 +10,11 @@
 use async_trait::async_trait;
 use opendal::{Operator, services};
 
+use crate::cuota::{Medidor, Nube};
+
 pub mod config;
 pub mod conformance;
+mod cuota;
 pub mod live;
 
 #[derive(Debug, thiserror::Error)]
@@ -30,12 +33,70 @@ pub enum BackendError {
         proveedor: &'static str,
         falta: String,
     },
+    #[error("no se pudo consultar el espacio de '{name}': {detalle}")]
+    Cuota { name: String, detalle: String },
     #[error("fallo de E/S en el proveedor '{name}' sobre '{key}': {source}")]
     Io {
         name: String,
         key: String,
         source: Box<opendal::Error>,
     },
+}
+
+/// Un objeto tal y como lo ve una enumeracion: su clave y lo que ocupa.
+///
+/// El tamano viene con el listado y **no cuesta ninguna peticion extra**: los seis
+/// proveedores soportados lo incluyen en la misma respuesta que ya devuelve los nombres
+/// (`size` en Drive y OneDrive, `Size` en S3, `getcontentlength` en WebDAV, el `stat` del
+/// directorio en el sistema de ficheros local). Por eso va aqui y no en un metodo aparte:
+/// separarlos obligaria a enumerar dos veces para saber dos cosas que llegan juntas, y una
+/// enumeracion completa contra una nube se mide en minutos.
+///
+/// Un proveedor que no lo diga se detecta: la suite de conformidad lo comprueba contra un
+/// objeto de tamano conocido. Vale mas fallar ahi que informar de una ocupacion de cero.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Objeto {
+    /// Clave completa, comparable tal cual con lo que produce `ChunkId::shard_key`.
+    pub clave: String,
+    /// Bytes que ocupa el objeto en el proveedor.
+    pub bytes: u64,
+}
+
+/// Lo que el proveedor dice de su propio espacio.
+///
+/// Los dos campos son opcionales, y un `None` significa "este proveedor no lo declara", que
+/// no es lo mismo que "no se pudo preguntar": lo segundo es un `Err`.
+///
+/// La distincion importa porque hay proveedores **sin limite que declarar**: un bucket S3 se
+/// factura por lo que ocupa y no tiene cupo, asi que pintar ahi una barra al 0 % seria
+/// inventarse un total. Cuando no hay total, la interfaz dice que no lo hay.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Cuota {
+    /// Capacidad total de la cuenta, si el proveedor declara una.
+    pub total: Option<u64>,
+    /// Ocupado en la cuenta **entera**, no solo por LibreDisk.
+    ///
+    /// Es lo que responden las APIs de cupo de Drive y OneDrive, y es la cifra honesta para
+    /// una barra: lo que le queda libre al usuario depende de sus fotos tanto como de sus
+    /// fragmentos. Lo que ocupa el volumen es otra medida distinta, y se obtiene enumerando
+    /// (ver [`Objeto`]).
+    pub usado: Option<u64>,
+}
+
+impl Cuota {
+    /// Ni total ni ocupado: el proveedor no dice nada de su espacio.
+    pub const MUDA: Self = Self {
+        total: None,
+        usado: None,
+    };
+
+    /// Libre segun el proveedor, cuando dice las dos cosas.
+    pub fn libre(&self) -> Option<u64> {
+        match (self.total, self.usado) {
+            (Some(t), Some(u)) => Some(t.saturating_sub(u)),
+            _ => None,
+        }
+    }
 }
 
 /// Un proveedor de almacenamiento donde viven fragmentos.
@@ -87,12 +148,30 @@ pub trait Backend: Send + Sync {
     ///   aparecen: aguas arriba nadie sabe que existen.
     /// - Un prefijo sin nada debajo devuelve la lista vacia. **No** es `NotFound`: un volumen
     ///   recien creado esta vacio, no roto.
+    /// - Cada entrada trae **el tamano ademas del nombre**. Los proveedores lo mandan en la
+    ///   misma respuesta, asi que no cuesta nada pedirlo, y evita tener que enumerar otra vez
+    ///   para medir lo que ocupa el volumen.
     /// - **Sin orden garantizado.** Quien necesite determinismo, que ordene.
     ///
     /// La lista viene entera en memoria. A ~75 bytes por clave, ese mismo volumen de 1 TB son
     /// ~30 MB: asumible hoy. El dia que deje de serlo habra que paginar, y esta firma
     /// cambiara.
-    async fn list(&self, prefix: &str) -> Result<Vec<String>, BackendError>;
+    async fn list(&self, prefix: &str) -> Result<Vec<Objeto>, BackendError>;
+
+    /// Lo que el proveedor dice de su propio espacio: cuanto cabe y cuanto hay ocupado.
+    ///
+    /// Es **una peticion**, no una enumeracion: se le pregunta al servicio por el cupo de la
+    /// cuenta. Se puede llamar al abrir una ventana sin que se note, al reves que `list`.
+    ///
+    /// Cuidado con lo que significa `usado`: es la cuenta entera del usuario, fotos y
+    /// correos incluidos, no lo que ocupa LibreDisk. Son dos cifras distintas y conviene no
+    /// confundirlas al pintarlas.
+    ///
+    /// Por defecto, [`Cuota::MUDA`]: un proveedor que no implemente esto no declara nada, y
+    /// eso es lo que se muestra. Devolver ceros seria decir que esta vacio.
+    async fn cuota(&self) -> Result<Cuota, BackendError> {
+        Ok(Cuota::MUDA)
+    }
 }
 
 /// Credenciales OAuth2 de una nube de consumo (OneDrive, Google Drive).
@@ -133,12 +212,16 @@ impl std::fmt::Debug for OauthCreds {
 pub struct OpendalBackend {
     name: String,
     op: Operator,
+    /// A quien preguntarle cuanto espacio queda. No lo sabe OpenDAL: el cupo de una cuenta
+    /// no es un objeto, y cada servicio lo cuenta en su propia API.
+    medidor: Medidor,
 }
 
 impl OpendalBackend {
     fn build(
         name: impl Into<String>,
         builder: impl opendal::Builder,
+        medidor: Medidor,
     ) -> Result<Self, BackendError> {
         let name = name.into();
         let op = Operator::new(builder)
@@ -156,17 +239,21 @@ impl OpendalBackend {
             // son inmutables: repetir un put reescribe los mismos bytes en la misma clave,
             // y get, exists, list y delete no tienen efectos que se acumulen.
             .layer(opendal::layers::RetryLayer::new().with_jitter());
-        Ok(Self { name, op })
+        Ok(Self { name, op, medidor })
     }
 
     /// Proveedor en memoria. Solo para pruebas.
     pub fn memory(name: impl Into<String>) -> Result<Self, BackendError> {
-        Self::build(name, services::Memory::default())
+        Self::build(name, services::Memory::default(), Medidor::Muda)
     }
 
     /// Directorio local. Util para pruebas y para usar un disco propio como un proveedor mas.
     pub fn fs(name: impl Into<String>, root: &str) -> Result<Self, BackendError> {
-        Self::build(name, services::Fs::default().root(root))
+        Self::build(
+            name,
+            services::Fs::default().root(root),
+            Medidor::Disco(root.into()),
+        )
     }
 
     /// Cualquier servicio compatible con S3: Backblaze B2, Cloudflare R2, Wasabi, MinIO.
@@ -186,7 +273,9 @@ impl OpendalBackend {
         if let Some((key_id, secret)) = creds {
             builder = builder.access_key_id(key_id).secret_access_key(secret);
         }
-        Self::build(name, builder)
+        // Un bucket no tiene cupo que declarar: se factura por lo que ocupa. Preguntarle
+        // cuanto le queda no tiene respuesta, y responder "0 de 0" seria inventarsela.
+        Self::build(name, builder, Medidor::Muda)
     }
 
     /// WebDAV, que es como se habla con Nextcloud.
@@ -200,7 +289,15 @@ impl OpendalBackend {
         if let Some((usuario, contrasena)) = creds {
             builder = builder.username(usuario).password(contrasena);
         }
-        Self::build(name, builder)
+        Self::build(
+            name,
+            builder,
+            Medidor::Webdav {
+                endpoint: endpoint.to_string(),
+                root: root.to_string(),
+                creds: creds.map(|(u, p)| (u.to_string(), p.to_string())),
+            },
+        )
     }
 
     /// OneDrive, personal o de empresa.
@@ -224,7 +321,7 @@ impl OpendalBackend {
                 .client_id(client_id)
                 .client_secret(client_secret),
         };
-        Self::build(name, builder)
+        Self::build(name, builder, Medidor::nube(Nube::Onedrive, creds))
     }
 
     /// Google Drive. Mismo aviso sobre `root` que en [`OpendalBackend::onedrive`].
@@ -245,7 +342,7 @@ impl OpendalBackend {
                 .client_id(client_id)
                 .client_secret(client_secret),
         };
-        Self::build(name, builder)
+        Self::build(name, builder, Medidor::nube(Nube::Gdrive, creds))
     }
 
     fn io_err<'a>(&'a self, key: &'a str) -> impl Fn(opendal::Error) -> BackendError + 'a {
@@ -302,25 +399,37 @@ impl Backend for OpendalBackend {
         self.op.exists(key).await.map_err(self.io_err(key))
     }
 
-    async fn list(&self, prefix: &str) -> Result<Vec<String>, BackendError> {
+    async fn list(&self, prefix: &str) -> Result<Vec<Objeto>, BackendError> {
         match self.op.list_with(prefix).recursive(true).await {
             Ok(entradas) => Ok(entradas
                 .into_iter()
                 // Algunos proveedores materializan los directorios y los devuelven como una
                 // entrada mas. Aguas arriba solo existen objetos.
                 .filter(|e| e.metadata().is_file())
-                .map(|e| e.path().to_string())
+                .map(|e| Objeto {
+                    bytes: e.metadata().content_length(),
+                    clave: e.path().to_string(),
+                })
                 .collect()),
             // Un prefijo que todavia no existe no es un fallo: es un volumen vacio.
             Err(e) if e.kind() == opendal::ErrorKind::NotFound => Ok(Vec::new()),
             Err(e) => Err(self.io_err(prefix)(e)),
         }
     }
+
+    async fn cuota(&self) -> Result<Cuota, BackendError> {
+        self.medidor.medir(&self.name).await
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Solo los nombres, para los tests a los que el tamano les da igual.
+    fn claves(objetos: Vec<Objeto>) -> Vec<String> {
+        objetos.into_iter().map(|o| o.clave).collect()
+    }
 
     #[tokio::test]
     async fn ida_y_vuelta_en_memoria() {
@@ -393,7 +502,7 @@ mod tests {
         }
         b.put("otra-cosa/z", b"x".to_vec()).await.unwrap();
 
-        let mut vistas = b.list("chunks/").await.unwrap();
+        let mut vistas = claves(b.list("chunks/").await.unwrap());
         vistas.sort();
         assert_eq!(
             vistas,
@@ -415,7 +524,7 @@ mod tests {
         b.put("chunks/aa/uno.000", b"x".to_vec()).await.unwrap();
         let vistas = b.list("chunks/").await.unwrap();
         assert!(
-            vistas.iter().all(|k| !k.ends_with('/')),
+            vistas.iter().all(|o| !o.clave.ends_with('/')),
             "se colo una entrada de directorio: {vistas:?}"
         );
     }
@@ -441,7 +550,14 @@ mod tests {
         );
 
         b.put("chunks/aa/uno.000", vec![1, 2, 3]).await.unwrap();
-        assert_eq!(b.list("chunks/").await.unwrap(), vec!["chunks/aa/uno.000"]);
+        assert_eq!(
+            b.list("chunks/").await.unwrap(),
+            vec![Objeto {
+                clave: "chunks/aa/uno.000".into(),
+                bytes: 3
+            }],
+            "el listado trae la clave y el tamano, que es de donde sale lo que ocupa el volumen"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }

@@ -495,7 +495,7 @@ mod tests_con_almacen {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use libredisk_backend::{Backend, BackendError, OpendalBackend};
+    use libredisk_backend::{Backend, BackendError, Objeto, OpendalBackend};
     use libredisk_raid::Layout;
 
     use super::*;
@@ -618,7 +618,7 @@ mod tests_con_almacen {
         async fn exists(&self, key: &str) -> Result<bool, BackendError> {
             self.0.exists(key).await
         }
-        async fn list(&self, prefix: &str) -> Result<Vec<String>, BackendError> {
+        async fn list(&self, prefix: &str) -> Result<Vec<Objeto>, BackendError> {
             self.0.list(prefix).await
         }
     }
@@ -868,7 +868,7 @@ mod tests_carrera {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     use async_trait::async_trait;
-    use libredisk_backend::{Backend, BackendError, OpendalBackend};
+    use libredisk_backend::{Backend, BackendError, Objeto, OpendalBackend};
     use libredisk_raid::Layout;
 
     use super::*;
@@ -937,7 +937,7 @@ mod tests_carrera {
         async fn exists(&self, key: &str) -> Result<bool, BackendError> {
             self.inner.exists(key).await
         }
-        async fn list(&self, prefix: &str) -> Result<Vec<String>, BackendError> {
+        async fn list(&self, prefix: &str) -> Result<Vec<Objeto>, BackendError> {
             self.inner.list(prefix).await
         }
     }
