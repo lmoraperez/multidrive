@@ -213,19 +213,25 @@ impl ScrubReport {
 }
 
 /// Almacen de trozos repartido entre varios proveedores.
+///
+/// Se puede clonar barato, y las copias **comparten** caches y cola: no son almacenes
+/// distintos, son la misma cosa vista desde otro sitio. Hace falta para el montaje en
+/// escritura, donde un sincronizador de fondo trabaja a la vez que el sistema de ficheros y
+/// no puede quedarse esperando a un cerrojo del volumen durante toda una subida.
+#[derive(Clone)]
 pub struct ChunkStore {
     layout: Layout,
     backends: Vec<Arc<dyn Backend>>,
     key: MasterKey,
     /// Cache de lectura en memoria. Sin ella cada operacion del sistema de ficheros va a la
     /// red.
-    cache: Option<cache::ChunkCache>,
+    cache: Option<Arc<cache::ChunkCache>>,
     /// Segundo escalon, en disco y sobreviviendo al reinicio. Guarda el blob **sellado**:
     /// los datos del usuario no se quedan en claro en la maquina.
-    disco: Option<diskcache::DiskCache>,
+    disco: Option<Arc<diskcache::DiskCache>>,
     /// Cola de escritura diferida. Con ella, escribir no sube nada: prepara en local y
     /// espera a `sync`.
-    pending: Option<writeback::WriteQueue>,
+    pending: Option<Arc<writeback::WriteQueue>>,
 }
 
 impl std::fmt::Debug for ChunkStore {
@@ -273,32 +279,34 @@ impl ChunkStore {
     /// No hace falta invalidarla nunca: los trozos son inmutables y su nombre es su
     /// contenido. Ver [`cache`].
     pub fn with_cache(mut self, bytes: usize) -> Self {
-        self.cache = Some(cache::ChunkCache::new(bytes));
+        self.cache = Some(Arc::new(cache::ChunkCache::new(bytes)));
         self
     }
 
     /// Anade el segundo escalon: una cache en disco que sobrevive al proceso.
     pub fn with_disk_cache(mut self, disco: diskcache::DiskCache) -> Self {
-        self.disco = Some(disco);
+        self.disco = Some(Arc::new(disco));
         self
     }
 
     /// Difiere las escrituras: `put` prepara en local en vez de subir, y la raiz espera.
-    pub fn with_writeback(mut self, cola: writeback::WriteQueue) -> Self {
+    /// La cola va en un `Arc` porque no siempre es exclusiva del almacen: con el montaje en
+    /// escritura hay un sincronizador en segundo plano mirando lo mismo.
+    pub fn with_writeback(mut self, cola: Arc<writeback::WriteQueue>) -> Self {
         self.pending = Some(cola);
         self
     }
 
     /// La cola de escritura diferida, si la hay.
     pub fn writeback(&self) -> Option<&writeback::WriteQueue> {
-        self.pending.as_ref()
+        self.pending.as_deref()
     }
 
     /// Que queda por subir.
     pub fn pendiente(&self) -> writeback::Pendiente {
         self.pending
             .as_ref()
-            .map(writeback::WriteQueue::pendiente)
+            .map(|c| c.pendiente())
             .unwrap_or_default()
     }
 
@@ -349,12 +357,18 @@ impl ChunkStore {
         // Es seguro descartarlas porque un trozo preparado se escribio **en esta sesion**, y
         // la raiz que ya estuviera publicada es anterior: no puede referenciarlo. Si el
         // recorrido falla no se descarta nada, que es el lado prudente del error.
-        let vivos = match cola.root() {
+        // Trozos y raiz se leen a la vez, no por separado: entre las dos lecturas podria
+        // colarse una escritura, y entonces se publicaria una raiz cuyos trozos nuevos no
+        // estan subidos. Con `mount --escritura` y sincronizacion en segundo plano eso no es
+        // teorico.
+        let (trozos, raiz) = cola.instantanea();
+
+        let vivos = match &raiz {
             Some(root) => self.alcanzables(&root.node).await.ok(),
             None => None,
         };
 
-        for id in cola.chunks() {
+        for id in trozos {
             if let Some(vivos) = &vivos
                 && !vivos.contains(&id)
             {
@@ -389,10 +403,13 @@ impl ChunkStore {
             }
         }
 
-        // La raiz solo si TODO subio. Si algo fallo se queda esperando, y un `sync` posterior
-        // la publicara cuando sus trozos esten arriba.
-        if let Some(root) = cola.root()
+        // La raiz solo si TODO subio, y solo si **sigue siendo la misma**. Si mientras se
+        // subia entro otra escritura, la raiz de la cola ya es otra y sus trozos no estan
+        // arriba: publicarla romperia el invariante. Se deja para el siguiente `sync`, que la
+        // vera completa.
+        if let Some(root) = raiz
             && informe.todo_arriba()
+            && cola.root().as_ref() == Some(&root)
         {
             tree::publicar_ahora(self, &root).await?;
             cola.root_done().await?;
@@ -404,12 +421,12 @@ impl ChunkStore {
 
     /// Estadisticas de la cache en disco, si la hay.
     pub fn disk_stats(&self) -> Option<diskcache::Stats> {
-        self.disco.as_ref().map(diskcache::DiskCache::stats)
+        self.disco.as_ref().map(|d| d.stats())
     }
 
     /// Estadisticas de la cache, si la hay.
     pub fn cache_stats(&self) -> Option<cache::Stats> {
-        self.cache.as_ref().map(cache::ChunkCache::stats)
+        self.cache.as_ref().map(|c| c.stats())
     }
 
     pub fn backend_names(&self) -> Vec<&str> {
