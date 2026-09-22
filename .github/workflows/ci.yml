@@ -54,11 +54,18 @@ jobs:
       - name: WinFsp
         run: choco install winfsp -y --no-progress
       - name: WiX
-        run: dotnet tool install --global wix --version 5.0.2
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add --global WixToolset.BootstrapperApplications.wixext/5.0.2
       - name: Empaquetar
+        # Construye el MSI y el instalador completo. El segundo se baja el de WinFsp y
+        # comprueba su huella y su firma: si en esa URL apareciera algo distinto, se descubre
+        # aqui y no el dia de la publicacion.
         run: .\packaging\windows\construir-msi.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: libredisk-msi
-          path: target/msi/*.msi
+          name: libredisk-instaladores
+          path: |
+            target/msi/*.msi
+            target/msi/*.exe
           if-no-files-found: error

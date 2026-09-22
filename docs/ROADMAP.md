@@ -163,6 +163,19 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       instalar, ejecutar, desinstalar sin dejar rastro y reinstalar. Lo construye también CI
       en cada cambio, porque un instalador que solo se compila el día de la publicación es un
       instalador que se descubre roto ese día
+- [x] Instalador completo que **encadena el de WinFsp sin modificar**, que es lo único que
+      permite su excepción FLOSS: rempaquetar su controlador sería modificarlo. Detecta si ya
+      está y no lo toca, y **no lo desinstala** al quitar LibreDisk, porque puede haber otros
+      programas usándolo. El guión comprueba la huella SHA-256 y la firma Authenticode del
+      paquete de WinFsp antes de empaquetarlo: se redistribuye software de otro y verificar
+      que es el suyo es lo mínimo. Probado el ciclo entero, incluido que al desinstalar
+      WinFsp se queda
+- [x] El MSI suelto sigue existiendo, para quien ya administra WinFsp por su cuenta. Dentro
+      del encadenador se oculta su entrada en «Programas y características»: si no, salen dos
+      LibreDisk y quitar la equivocada deja la otra registrada sobre algo que ya no está
+- [x] La excepción de WinFsp pide su aviso de copyright y el enlace a su repositorio en la
+      interfaz y en la documentación. Va en el README, en AVISOS.txt —que se instala junto al
+      programa— y en la salida de `libredisk mount`, que es donde se está usando
 - [x] WiX fijado a la 5.0.2. De la 6 en adelante hay que aceptar la licencia de la Open
       Source Maintenance Fee, que es de pago para uso comercial; la 5 es la última bajo MS-RL
       sin esa condición. Subir de versión es una decisión de licencia, no de empaquetado

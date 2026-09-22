@@ -17,23 +17,35 @@ Sitio del proyecto: https://libredisk.chambaya.net
 
 ## Instalar en Windows
 
-Hace falta **WinFsp** primero, que es quien pone el controlador del sistema de ficheros:
-descargarlo de <https://winfsp.dev>. El instalador de LibreDisk se niega a continuar sin él,
-porque una herramienta que se instala y luego no puede montar nada es peor que una que avisa.
+Hay dos descargas en la página de publicaciones, y la que quieres casi seguro es la primera:
 
-Después, el MSI de la página de publicaciones. Deja `libredisk.exe` en Archivos de programa
-y la carpeta en el PATH de la máquina.
+| | |
+|---|---|
+| `libredisk-X.Y.Z-x64-completo.exe` | Instala **WinFsp y LibreDisk**. Es lo normal. |
+| `libredisk-X.Y.Z-x64.msi` | Solo LibreDisk; se niega a instalarse si no hay WinFsp. Para quien ya administra WinFsp por su cuenta. |
 
-> **El MSI todavía no va firmado.** Windows lo anunciará como de «editor desconocido» y
-> SmartScreen avisará la primera vez. Qué cuesta eso y por qué sigue sin resolverse está en
+WinFsp es quien pone el controlador que hace aparecer la unidad. El instalador completo
+**encadena el instalador de WinFsp sin modificar, tal y como lo publica su proyecto**, y lo
+detecta si ya está: no lo toca, ni lo reinstala, ni lo quita al desinstalar LibreDisk. Puede
+haber otros programas usándolo.
+
+> **Hace falta reiniciar una vez después de instalar WinFsp.** Su proveedor de red se registra
+> en el arranque, así que hasta el primer reinicio `net use` responde «error de sistema 67»
+> aunque todo lo demás esté bien. Montar con `libredisk mount Z:` funciona desde el primer
+> momento.
+
+> **Todavía no van firmados.** Windows los anunciará como de «editor desconocido» y SmartScreen
+> avisará la primera vez. Qué cuesta eso y por qué sigue sin resolverse está en
 > [docs/FIRMA.md](docs/FIRMA.md). Comprueba el SHA-256 contra el publicado en la versión.
 
-Para construirlo desde el código hacen falta el SDK de .NET y WiX 5:
+Para construirlos desde el código hacen falta el SDK de .NET y WiX 5:
 
 ```powershell
 winget install Microsoft.DotNet.SDK.8
 dotnet tool install --global wix --version 5.0.2
-.\packaging\windows\construir-msi.ps1
+wix extension add --global WixToolset.BootstrapperApplications.wixext/5.0.2
+.\packaging\windows\construir-msi.ps1            # los dos
+.\packaging\windows\construir-msi.ps1 -SoloMsi   # sin red, solo el MSI
 ```
 
 Para que el volumen esté disponible sin tener una consola abierta, se registra en el lanzador
@@ -45,7 +57,7 @@ no se guarda en ninguna parte**. Ver [docs/SERVICIO.md](docs/SERVICIO.md).
 Requiere Rust estable (edición 2024).
 
 ```sh
-cargo test --workspace          # 172 tests
+cargo test --workspace          # 187 tests
 cargo run -- layout rs:4,2      # tolerancia y sobrecoste de una topología
 cargo run -- demo --layout rs:4,2 --kib 512
 cargo run -- check              # conformidad de los proveedores configurados
@@ -81,21 +93,26 @@ cargo run -- mount Z: --escritura            # ...y poder escribir (sube solo ca
 
 ## Montaje
 
-En Windows, `libredisk mount Z:` expone el volumen como una unidad del sistema: el
-Explorador lista carpetas, cualquier programa abre ficheros y `Copy-Item` copia. Requiere
-[WinFsp](https://winfsp.dev) instalado, el toolchain **MSVC** de Rust y la carpeta
-`C:\Program Files (x86)\WinFsp\bin` en el `PATH`.
+En Windows, `libredisk mount Z:` expone el volumen como una unidad del sistema: el Explorador
+lista carpetas, cualquier programa abre ficheros y `Copy-Item` copia. Requiere
+[WinFsp](https://winfsp.dev), que trae el instalador completo, y el toolchain **MSVC** de Rust
+para compilarlo.
 
-Es **de solo lectura**: escribir a través del montaje exige antes una caché con escritura
-diferida. Leer sí va razonable, porque hay caché en memoria (`--cache-mb`, 512 por defecto):
-la primera lectura de cada trozo va a la nube y las siguientes no. Medido sobre un proveedor
-local, releer 7,6 MiB pasa de 2 718 ms a 23 ms.
+Con `--escritura` se monta en **lectura y escritura**. Lo que se escribe queda en esta máquina
+y un hilo de fondo lo sube cada `--sync-cada` segundos (30 por defecto); al desmontar se sube
+lo que quede antes de salir.
+
+Leer va razonable porque hay caché en memoria (`--cache-mb`, 512 por defecto): la primera
+lectura de cada trozo va a la nube y las siguientes no. Medido sobre un proveedor local,
+releer 7,6 MiB pasa de 2 718 ms a 23 ms.
 
 Hay además una **caché en disco** (`--disco-mb`, 4096 por defecto) que sobrevive al reinicio,
 así que montar de nuevo no vuelve a pagar la red. Guarda los trozos **cifrados**: los datos
 no quedan en claro en la máquina.
 
-En Linux todavía no hay montaje: hará falta FUSE.
+En Linux el adaptador de FUSE está escrito y compila, pero **todavía no se ha conseguido
+montar** en la máquina de pruebas: su `fusermount3` no acepta el descriptor que se le pasa.
+El detalle está en [docs/ROADMAP.md](docs/ROADMAP.md).
 
 
 ## Estructura
@@ -106,7 +123,7 @@ En Linux todavía no hay montaje: hará falta FUSE.
 | `libredisk-raid` | Reed-Solomon `k+m`, espejo, concat |
 | `libredisk-backend` | `trait Backend` + adaptador OpenDAL (~40 proveedores) |
 | `libredisk-core` | Almacén de trozos: id por BLAKE3, `put`/`get`/`scrub`/`repair` |
-| `libredisk-mount` | Montaje como unidad del sistema: WinFsp en Windows |
+| `libredisk-mount` | Montaje como unidad del sistema: WinFsp en Windows, FUSE en Linux |
 | `libredisk-cli` | Binario `libredisk` |
 
 ---
@@ -142,6 +159,17 @@ completos, ninguno puede leerlos, y la caída de uno no te deja sin volumen.**
 - [docs/PRUEBAS-PROVEEDORES.md](docs/PRUEBAS-PROVEEDORES.md) — probar contra cuentas reales (OneDrive, Google Drive, S3, WebDAV)
 - [docs/SERVICIO.md](docs/SERVICIO.md) — montar como unidad de red sin tener una consola abierta
 - [docs/FIRMA.md](docs/FIRMA.md) — por qué el instalador todavía no va firmado, y qué haría falta
+
+## Créditos
+
+**WinFsp - Windows File System Proxy, Copyright (C) Bill Zissimopoulos**
+— <https://github.com/winfsp/winfsp>
+
+WinFsp pone el controlador que hace que el volumen aparezca como una unidad de Windows.
+LibreDisk lo usa al amparo de su excepción para software libre, y la cumple: se distribuye
+bajo AGPL-3.0, lleva este aviso aquí, en [packaging/windows/AVISOS.txt](packaging/windows/AVISOS.txt)
+—que se instala junto al programa— y en la propia orden de montaje, y no va con ningún
+componente propietario.
 
 ## Licencia
 

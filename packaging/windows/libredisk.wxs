@@ -32,6 +32,18 @@
     <MediaTemplate EmbedCab="yes" />
 
     <!--
+      El encadenador pone esta propiedad para que el MSI **no** registre su propia entrada en
+      "Programas y caracteristicas": la que se ve tiene que ser la suya, o saldrian dos
+      LibreDisk y quitar la equivocada dejaria la otra registrada sobre algo que ya no esta.
+
+      Va declarada como segura porque el instalador se eleva, y una propiedad que no lo sea no
+      cruza esa frontera: se perderia justo cuando hace falta.
+
+      Instalado suelto, nadie la pone y el MSI aparece con normalidad.
+    -->
+    <Property Id="ARPSYSTEMCOMPONENT" Secure="yes" />
+
+    <!--
       WinFsp vive en la vista de 32 bits del registro aunque el controlador sea de 64: lo
       pone asi su propio instalador. Sin `always32` un paquete de 64 bits no ve la clave y
       rechazaria la instalacion en una maquina que si tiene WinFsp.
@@ -77,6 +89,14 @@
       </Component>
       <Component Id="Licencia" Guid="*">
         <File Id="LICENSE.txt" Source="$(var.RepoDir)\LICENSE" Name="LICENSE.txt" KeyPath="yes" />
+      </Component>
+      <!--
+        Los avisos de terceros se instalan junto al programa, no solo viven en el repositorio:
+        la excepcion FLOSS de WinFsp pide que su aviso de copyright y el enlace a su
+        repositorio esten en la documentacion que ve el usuario, y esta es la que le llega.
+      -->
+      <Component Id="Avisos" Guid="*">
+        <File Id="AVISOS.txt" Source="$(var.PaqueteDir)\AVISOS.txt" KeyPath="yes" />
       </Component>
     </ComponentGroup>
 

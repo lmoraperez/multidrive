@@ -704,6 +704,13 @@ pub async fn mount(
     });
 
     di!("montado en {punto}");
+    // Quien pone el controlador que hace aparecer la unidad es WinFsp, y su excepcion FLOSS
+    // pide este aviso y este enlace en la interfaz. Va aqui porque es justo el momento en que
+    // se esta usando, no escondido en un `--version` que nadie ejecuta.
+    #[cfg(windows)]
+    di!("controlador   WinFsp - Windows File System Proxy, Copyright (C) Bill Zissimopoulos");
+    #[cfg(windows)]
+    di!("              https://github.com/winfsp/winfsp");
     di!(
         "modo          {}",
         if escritura {

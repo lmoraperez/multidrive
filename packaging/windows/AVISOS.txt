@@ -1,0 +1,58 @@
+AVISOS DE SOFTWARE DE TERCEROS
+==============================
+
+LibreDisk
+---------
+
+Copyright (C) 2026 LibreDisk
+https://github.com/lmoraperez/libredisk
+
+Distribuido bajo la GNU Affero General Public License, version 3 o posterior
+(AGPL-3.0-or-later). El texto completo va en LICENSE, junto al programa.
+
+
+WinFsp - Windows File System Proxy
+----------------------------------
+
+WinFsp - Windows File System Proxy, Copyright (C) Bill Zissimopoulos
+
+https://github.com/winfsp/winfsp
+
+WinFsp es quien pone el controlador que hace que el volumen aparezca como una
+unidad de Windows. LibreDisk no lo incluye dentro de su propio paquete: el
+instalador completo **encadena el instalador de WinFsp sin modificar, tal y como
+lo publica el proyecto WinFsp**, firmado por NAVIMATICS LLC.
+
+WinFsp esta licenciado bajo la GPLv3 con una excepcion para software libre y de
+codigo abierto, que es la que permite lo anterior. Sus terminos, literales:
+
+    As a special exception to GPLv3, Bill Zissimopoulos grants additional
+    permissions to Free/Libre and Open Source Software ("FLOSS") without
+    requiring that such software is covered by the GPLv3.
+
+        1. Permission to link with a platform specific version of the WinFsp
+        DLL (one of: winfsp-a64.dll, winfsp-x64.dll, winfsp-x86.dll,
+        winfsp-msil.dll).
+
+        2. Permission to distribute unmodified binary releases of the WinFsp
+        installer (as released by the WinFsp project).
+
+        These permissions (and no other) are granted provided that the
+        software:
+
+        1. Is distributed under a license that satisfies the Free Software
+        Definition Version 1.141 or the Open Source Definition Version 1.9.
+
+        2. Includes the copyright notice "WinFsp - Windows File System Proxy,
+        Copyright (C) Bill Zissimopoulos" and a link to the WinFsp repository
+        in its user-interface and any user-facing documentation.
+
+        3. Is not linked or distributed with proprietary (non-FLOSS) software.
+
+LibreDisk cumple las tres: se distribuye bajo AGPL-3.0, que satisface las dos
+definiciones citadas; lleva el aviso y el enlace en este fichero, en la
+documentacion y en la propia orden de montaje; y no se distribuye con ningun
+componente propietario.
+
+Al desinstalar LibreDisk **no se desinstala WinFsp**. Puede haber otros
+programas usandolo.
