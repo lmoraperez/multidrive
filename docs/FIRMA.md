@@ -86,6 +86,23 @@ El **sellado de tiempo** no es opcional aunque parezca un parámetro más. Sin �
 de validar cuando caduque el certificado, y los instaladores ya repartidos se convierten en
 «editor desconocido» de un día para otro. Con él siguen siendo válidos para siempre.
 
+## Firmar el instalador encadenado
+
+Un paquete encadenado no se firma como un fichero cualquiera. Lleva el motor y la carga útil
+en el mismo ejecutable, y firmarlo de golpe rompe la firma en cuanto el motor se extrae a sí
+mismo para ejecutarse. Hay que separar el motor, firmarlo, volver a unirlo y firmar el
+conjunto:
+
+```powershell
+wix burn detach   instalador.exe -engine motor.exe
+signtool sign ... motor.exe
+wix burn reattach instalador.exe -engine motor.exe -o instalador.exe
+signtool sign ... instalador.exe
+```
+
+`construir-msi.ps1` ya lo hace. Está aquí porque es el paso que se olvida y produce un
+instalador que Windows rechaza a medio instalar, no al empezar.
+
 ## Mientras tanto
 
 El script imprime el **SHA-256** del MSI al terminar. Publicarlo junto a la descarga no

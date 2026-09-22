@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Compila LibreDisk y empaqueta el MSI.
+    Compila LibreDisk y empaqueta los dos instaladores.
 
 .DESCRIPTION
     Necesita el SDK de .NET y la herramienta WiX:
@@ -14,9 +14,17 @@
     la ultima bajo MS-RL sin esa condicion. Cambiar a la 6 o la 7 es una decision de
     licencia del proyecto, no un detalle de empaquetado: hasta que se tome, se queda aqui.
 
-    Firma el resultado solo si se le dan las variables de entorno correspondientes. Un MSI
-    sin firmar se instala igual, pero Windows lo anuncia como de "editor desconocido": ver
-    docs/FIRMA.md antes de publicarlo en ningun sitio.
+    Produce dos cosas:
+
+      libredisk-X.Y.Z-x64.msi            solo LibreDisk; exige WinFsp ya instalado
+      libredisk-X.Y.Z-x64-completo.exe   encadena el instalador de WinFsp y el MSI
+
+    Los dos, y no uno: quien ya administra WinFsp por su cuenta --porque lo comparte con
+    rclone, sshfs-win o Cyberduck-- no quiere que le llegue otro paquete que decida por el.
+
+    Firma el resultado solo si se le dan las variables de entorno correspondientes. Un
+    instalador sin firmar se instala igual, pero Windows lo anuncia como de "editor
+    desconocido": ver docs/FIRMA.md antes de publicarlo en ningun sitio.
 
 .PARAMETER Version
     Version del paquete. Por defecto, la del workspace. MSI solo admite tres numeros
@@ -26,7 +34,10 @@
 [CmdletBinding()]
 param(
     [string]$Version,
-    [string]$Salida = "$PSScriptRoot\..\..\target\msi"
+    [string]$Salida = "$PSScriptRoot\..\..\target\msi",
+    # Construye solo el MSI, sin el instalador completo. Util sin red, y para quien
+    # administra WinFsp por su cuenta.
+    [switch]$SoloMsi
 )
 
 $ErrorActionPreference = 'Stop'
@@ -118,6 +129,99 @@ function Firmar {
 }
 
 # ---------------------------------------------------------------------------------------
+# WinFsp
+# ---------------------------------------------------------------------------------------
+
+# Version de WinFsp que se encadena. Fijada a proposito: redistribuir el binario de otro
+# proyecto y dejar que cambie solo seria entregar algo que nadie ha probado.
+$WinFspVersion = '2.1.25156'
+$WinFspUrl     = "https://github.com/winfsp/winfsp/releases/download/v2.1/winfsp-$WinFspVersion.msi"
+$WinFspSha256  = '073A70E00F77423E34BED98B86E600DEF93393BA5822204FAC57A29324DB9F7A'
+# A quien tiene que pertenecer la firma. Es la comprobacion que de verdad vale: una huella
+# la calculo yo, y si me bajara un fichero cambiado calcularia la huella del fichero cambiado.
+$WinFspFirmante = 'NAVIMATICS LLC'
+
+<#
+.SYNOPSIS
+    Devuelve la ruta del instalador de WinFsp, bajandolo si hace falta, y lo verifica.
+
+.DESCRIPTION
+    Lo que se empaqueta aqui es software de otro proyecto, redistribuido **sin modificar** al
+    amparo de su excepcion FLOSS. Comprobar que es el suyo y no otra cosa no es celo: es la
+    diferencia entre encadenar un instalador firmado y repartir un binario de procedencia
+    desconocida que instala un controlador de nucleo.
+
+    Se comprueban las dos cosas, y por motivos distintos. La huella fija la version exacta que
+    se probo. La firma Authenticode dice quien lo hizo, y eso es lo unico que no se puede
+    falsificar bajandose otro fichero.
+#>
+function ObtenerWinFsp {
+    $dir = Join-Path $PSScriptRoot 'terceros'
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    $msi = Join-Path $dir "winfsp-$WinFspVersion.msi"
+
+    if (-not (Test-Path $msi)) {
+        Write-Host "==> bajando WinFsp $WinFspVersion"
+        $previo = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
+        try {
+            Invoke-WebRequest $WinFspUrl -OutFile $msi -UseBasicParsing
+        } finally {
+            $ProgressPreference = $previo
+        }
+    }
+
+    $huella = (Get-FileHash $msi -Algorithm SHA256).Hash
+    if ($huella -ne $WinFspSha256) {
+        Remove-Item $msi -Force
+        throw "el instalador de WinFsp no cuadra con la huella esperada.`n" +
+              "  esperada: $WinFspSha256`n" +
+              "  obtenida: $huella`n" +
+              "Se ha borrado. No se empaqueta un binario que no es el que se probo."
+    }
+
+    $firma = Get-AuthenticodeSignature $msi
+    if ($firma.Status -ne 'Valid') {
+        throw "la firma del instalador de WinFsp no es valida: $($firma.Status)"
+    }
+    if ($firma.SignerCertificate.Subject -notmatch [regex]::Escape($WinFspFirmante)) {
+        throw "el instalador de WinFsp lo firma otro: $($firma.SignerCertificate.Subject)"
+    }
+
+    Write-Host "==> WinFsp $WinFspVersion verificado (huella y firma de $WinFspFirmante)"
+    return $msi
+}
+
+<#
+.SYNOPSIS
+    Firma un instalador encadenado, que no se firma como un fichero cualquiera.
+
+.DESCRIPTION
+    Un paquete de Burn lleva el motor y la carga util en el mismo ejecutable. Firmarlo de
+    golpe rompe la firma en cuanto el motor se extrae a si mismo para ejecutarse, asi que hay
+    que separar el motor, firmarlo, volver a unirlo y firmar el conjunto. Es el procedimiento
+    que documenta WiX, no un rodeo.
+#>
+function FirmarBundle {
+    param([Parameter(Mandatory)][string]$Ruta)
+
+    if (-not $env:LIBREDISK_SIGN_PFX -and -not $env:LIBREDISK_SIGN_SHA1) {
+        Write-Warning "sin certificado: $(Split-Path -Leaf $Ruta) queda SIN FIRMAR (ver docs/FIRMA.md)"
+        return
+    }
+
+    $motor = [System.IO.Path]::ChangeExtension($Ruta, '.engine.exe')
+    try {
+        Ejecutar -Programa "wix" -Argumentos @("burn", "detach", $Ruta, "-engine", $motor)
+        Firmar $motor
+        Ejecutar -Programa "wix" -Argumentos @("burn", "reattach", $Ruta, "-engine", $motor, "-o", $Ruta)
+        Firmar $Ruta
+    } finally {
+        Remove-Item $motor -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# ---------------------------------------------------------------------------------------
 # Construccion
 # ---------------------------------------------------------------------------------------
 
@@ -161,6 +265,7 @@ Ejecutar -Programa "wix" -Argumentos @(
     "-d", "Version=$Version",
     "-d", "BinDir=$bin",
     "-d", "RepoDir=$repo",
+    "-d", "PaqueteDir=$PSScriptRoot",
     "-o", $msi)
 
 Firmar $msi
@@ -168,3 +273,32 @@ Firmar $msi
 Write-Host ""
 Write-Host "MSI listo: $msi"
 Get-FileHash $msi -Algorithm SHA256 | Format-List Algorithm, Hash
+
+if ($SoloMsi) {
+    Write-Host ""
+    Write-Host "Instalador completo omitido (-SoloMsi). El MSI exige WinFsp ya instalado."
+    return
+}
+
+# ---------------------------------------------------------------------------------------
+# Instalador completo: WinFsp encadenado
+# ---------------------------------------------------------------------------------------
+
+$winfsp = ObtenerWinFsp
+$bundle = Join-Path (Resolve-Path $Salida).Path "libredisk-$Version-x64-completo.exe"
+
+Write-Host "==> empaquetando $bundle"
+Ejecutar -Programa "wix" -Argumentos @(
+    "build", (Join-Path $PSScriptRoot "libredisk-bundle.wxs"),
+    "-arch", "x64",
+    "-ext", "WixToolset.BootstrapperApplications.wixext",
+    "-d", "Version=$Version",
+    "-d", "WinFspMsi=$winfsp",
+    "-d", "LibreDiskMsi=$msi",
+    "-o", $bundle)
+
+FirmarBundle $bundle
+
+Write-Host ""
+Write-Host "Instalador completo listo: $bundle"
+Get-FileHash $bundle -Algorithm SHA256 | Format-List Algorithm, Hash
