@@ -17,6 +17,7 @@ pub mod config;
 pub mod conformance;
 mod cuota;
 pub mod live;
+pub mod oauth;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BackendError {
@@ -36,6 +37,8 @@ pub enum BackendError {
     },
     #[error("no se pudo consultar el espacio de '{name}': {detalle}")]
     Cuota { name: String, detalle: String },
+    #[error("no se pudo conectar la cuenta: {detalle}")]
+    Oauth { detalle: String },
     #[error("fallo de E/S en el proveedor '{name}' sobre '{key}': {source}")]
     Io {
         name: String,

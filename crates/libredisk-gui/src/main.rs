@@ -72,6 +72,12 @@ struct Estado {
     /// ella para no atribuirle a un proveedor lo que midio otro si la configuracion cambia
     /// entre medias.
     ocupado: Mutex<Option<Ocupacion>>,
+    /// Cuentas conectadas por navegador y todavia sin guardar, por tipo de proveedor.
+    ///
+    /// Viven aqui y no en la pagina porque un token de refresco es acceso permanente a la
+    /// cuenta. Que la pagina sea nuestra y corra en este mismo proceso no es motivo para
+    /// pasearlo por ella.
+    conectadas: Mutex<HashMap<String, String>>,
     /// Lo ultimo que dijo el sincronizador, para poder ensenarlo.
     ultimo_sync: Arc<std::sync::Mutex<Option<String>>>,
 }
@@ -668,6 +674,51 @@ fn tipos_de_proveedor() -> Vec<TipoJson> {
         .collect()
 }
 
+/// Abre el navegador, espera a que el usuario de permiso y **se queda el token aqui**.
+///
+/// Lo que devuelve es un texto para ensenar, no la credencial. El token de refresco es
+/// acceso permanente a la cuenta: no tiene por que pasar por la pagina, aunque la pagina sea
+/// nuestra y viva en este mismo proceso. Se queda en el estado y lo recoge `guardar_proveedor`
+/// cuando toca escribirlo.
+#[tauri::command]
+async fn conectar_nube(
+    tipo: String,
+    campos: HashMap<String, String>,
+    estado: tauri::State<'_, Estado>,
+) -> Result<String, String> {
+    let t = catalogo::tipo(&tipo).ok_or_else(|| format!("no conozco el tipo «{tipo}»"))?;
+    let oauth = t
+        .oauth
+        .ok_or("este tipo de proveedor no se conecta por navegador")?;
+
+    // Hacen falta antes de abrir el navegador: sin ellos, el proveedor rechaza la peticion
+    // con un error que el usuario lee en una pestana y no aqui.
+    let falta = |c: &str| campos.get(c).is_none_or(|v| v.trim().is_empty());
+    if falta("CLIENT_ID") || falta("CLIENT_SECRET") {
+        return Err(
+            "faltan el ID y el secreto de la aplicacion. Son de la aplicacion que registraste \
+             en la consola del proveedor, no de tu cuenta"
+                .into(),
+        );
+    }
+
+    let conectada = libredisk_backend::oauth::conectar(
+        oauth,
+        &campos["CLIENT_ID"],
+        &campos["CLIENT_SECRET"],
+        &libredisk_backend::oauth::abrir_en_navegador,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    estado
+        .conectadas
+        .lock()
+        .await
+        .insert(tipo, conectada.refresh_token);
+    Ok("Cuenta conectada. Ya puedes guardar el proveedor.".into())
+}
+
 /// Valida los campos y construye el proveedor. Comun a probar y a guardar.
 fn preparar(
     tipo: &str,
@@ -691,13 +742,34 @@ fn preparar(
     Ok((t, ranura, backend))
 }
 
+/// Junta lo tecleado con lo que trajo el navegador.
+///
+/// Los campos marcados como `navegador` en el catalogo no vienen de la pagina —un token de
+/// refresco no se teclea ni se pasea por ella— sino del estado, donde los dejo
+/// [`conectar_nube`].
+async fn con_lo_conectado(
+    tipo: &str,
+    mut campos: HashMap<String, String>,
+    estado: &tauri::State<'_, Estado>,
+) -> HashMap<String, String> {
+    if let Some(token) = estado.conectadas.lock().await.get(tipo) {
+        campos.insert("REFRESH_TOKEN".into(), token.clone());
+    }
+    campos
+}
+
 /// Escribe, lee, compara y borra contra el proveedor, sin guardar nada.
 ///
 /// Guardar primero y descubrir despues que las credenciales estaban mal deja la
 /// configuracion con un proveedor que no responde, y a partir de ahi todo lo que el programa
 /// enumere o mida sale con un hueco que hay que ir a explicar.
 #[tauri::command]
-async fn probar_proveedor(tipo: String, campos: HashMap<String, String>) -> Result<String, String> {
+async fn probar_proveedor(
+    tipo: String,
+    campos: HashMap<String, String>,
+    estado: tauri::State<'_, Estado>,
+) -> Result<String, String> {
+    let campos = con_lo_conectado(&tipo, campos, &estado).await;
     let (_, _, backend) = preparar(&tipo, &campos)?;
     libredisk_backend::conformance::prueba_rapida(&backend).await
 }
@@ -722,6 +794,7 @@ async fn guardar_proveedor(
     campos: HashMap<String, String>,
     estado: tauri::State<'_, Estado>,
 ) -> Result<Guardado, String> {
+    let campos = con_lo_conectado(&tipo, campos, &estado).await;
     let (t, ranura, backend) = preparar(&tipo, &campos)?;
     libredisk_backend::conformance::prueba_rapida(&backend)
         .await
@@ -731,6 +804,10 @@ async fn guardar_proveedor(
         .ok_or("no se sabe donde vive la configuracion de este usuario")?;
     let claves = live::claves_de(t, &ranura, &|c| campos.get(c).cloned());
     config::guardar(&fichero, &claves).map_err(|e| e.to_string())?;
+
+    // Guardada ya en el fichero, la copia en memoria sobra: cuanto menos tiempo viva un
+    // token de refresco en el proceso, mejor.
+    estado.conectadas.lock().await.remove(&tipo);
 
     Ok(Guardado {
         nombre: live::nombre_de_ranura(&ranura),
@@ -783,6 +860,7 @@ fn main() {
             montar,
             desmontar,
             tipos_de_proveedor,
+            conectar_nube,
             probar_proveedor,
             guardar_proveedor
         ])

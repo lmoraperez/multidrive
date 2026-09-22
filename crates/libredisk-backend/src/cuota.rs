@@ -41,6 +41,11 @@ pub(crate) enum Medidor {
     },
 }
 
+/// Cual de las dos nubes OAuth2, para saber donde va cada cifra en la respuesta.
+///
+/// Las **direcciones** no estan aqui: viven en el catalogo, junto a las del flujo del
+/// navegador, porque son las mismas. Lo que cambia entre una y otra y no se puede compartir
+/// es la forma del JSON que devuelven.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Nube {
     Gdrive,
@@ -48,24 +53,16 @@ pub(crate) enum Nube {
 }
 
 impl Nube {
-    /// El mismo sitio al que va OpenDAL a renovar. Que las dos piezas usen el mismo extremo
-    /// importa: si aqui valiera otro, un token que sirve para escribir podria no servir para
-    /// preguntar por el cupo, y el fallo pareceria de permisos.
-    fn refresco(self) -> &'static str {
-        match self {
-            Self::Gdrive => "https://oauth2.googleapis.com/token",
-            Self::Onedrive => "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-        }
-    }
-
-    fn consulta(self) -> &'static str {
-        match self {
-            Self::Gdrive => "https://www.googleapis.com/drive/v3/about?fields=storageQuota",
-            Self::Onedrive => "https://graph.microsoft.com/v1.0/me/drive?$select=quota",
-        }
+    fn datos(self) -> &'static crate::catalogo::Oauth {
+        let clave = match self {
+            Self::Gdrive => "GDRIVE",
+            Self::Onedrive => "ONEDRIVE",
+        };
+        crate::catalogo::tipo(clave)
+            .and_then(|t| t.oauth)
+            .expect("las dos nubes del catalogo tienen datos de OAuth")
     }
 }
-
 impl Medidor {
     /// Medidor de una nube OAuth2, con la cache de token todavia vacia.
     pub(crate) fn nube(cual: Nube, creds: &OauthCreds) -> Self {
@@ -138,7 +135,7 @@ async fn nube(
     };
 
     let respuesta = cliente()
-        .get(cual.consulta())
+        .get(cual.datos().cuota)
         .bearer_auth(&token)
         .send()
         .await
@@ -180,7 +177,7 @@ async fn refrescar(
     client_secret: &str,
 ) -> Result<(String, Duration), BackendError> {
     let respuesta = cliente()
-        .post(cual.refresco())
+        .post(cual.datos().token)
         .form(&[
             ("grant_type", "refresh_token"),
             ("refresh_token", refresh_token),

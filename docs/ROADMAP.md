@@ -228,6 +228,29 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       quita el arreglo**
 
 ## v0.3 — "¿Lo puede usar alguien que no sea yo?"
+- [x] **Conectar OneDrive y Drive desde el navegador.** Se pulsa conectar, se abre el
+      navegador en la página del proveedor, entras en tu cuenta y das permiso. Ya no se
+      teclea ningún token: el flujo de código de autorización con redirección a `localhost`,
+      que es el que usan las aplicaciones de escritorio. Tus credenciales **no pasan por
+      LibreDisk**: van del navegador al proveedor, y aquí solo llega un código de un solo uso
+- [x] Con PKCE, aunque la aplicación lleve secreto y no sea obligatorio. El motivo es
+      concreto: el redirector es `localhost`, así que cualquier otro programa de la máquina
+      podría quedarse escuchando y recoger el código. Con PKCE ese código no sirve sin un
+      valor que solo conoce este proceso y que nunca viaja por el navegador. El reto está
+      comprobado contra el vector del apéndice B del RFC 7636
+- [x] El `state` se comprueba al volver, y el token de refresco **no pasa por la página**:
+      se queda en el proceso hasta que se guarda, y se borra de memoria en cuanto está en el
+      fichero. Que la página sea nuestra y corra en el mismo proceso no es motivo para
+      pasear por ella acceso permanente a una cuenta
+- [x] A Google se le pide `drive.file`, o sea **solo los ficheros que LibreDisk cree**. Pedir
+      el Drive entero sería pedir permiso sobre las fotos del usuario para guardar en una
+      carpeta, y además Google lo clasifica como ámbito restringido, que obliga a una
+      evaluación de seguridad anual de terceros
+- [ ] Registrar una aplicación de LibreDisk en Google y en Azure, para que el ID y el secreto
+      vengan dentro del programa y el formulario quede solo con el botón. Mientras tanto hay
+      que pegarlos una vez, que sigue siendo un paso de desarrollador. Implica política de
+      privacidad publicada y, en Google, una revisión para quitar el aviso de aplicación sin
+      verificar y el límite de 100 usuarios
 - [x] **Se pueden añadir proveedores desde la ventana.** Elegir tipo, rellenar los campos y
       «Probar y guardar»: escribe, lee, compara y borra contra el proveedor, y **solo si eso
       sale bien** escribe la configuración. Guardar primero y descubrir después que las
