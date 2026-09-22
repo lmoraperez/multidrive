@@ -9,10 +9,32 @@ monta como una unidad más del sistema en Windows y Linux, con semántica tipo R
 
 > Estado: **pre-alfa.** El núcleo funciona y está cubierto por tests: cifrado, RAID,
 > troceado, árbol de metadatos copy-on-write y rescate. Google Drive y OneDrive pasan la
-> suite de conformidad contra cuentas reales. **Ya se monta como unidad en Windows**, en
-> solo lectura y sin caché: sirve para comprobar que funciona, no para trabajar encima.
+> suite de conformidad contra cuentas reales. **Se monta como unidad en Windows en lectura
+> y escritura**, con caché en memoria y en disco y subida en segundo plano. Sigue siendo
+> pre-alfa: no es donde poner el único ejemplar de nada.
 
 Sitio del proyecto: https://libredisk.chambaya.net
+
+## Instalar en Windows
+
+Hace falta **WinFsp** primero, que es quien pone el controlador del sistema de ficheros:
+descargarlo de <https://winfsp.dev>. El instalador de LibreDisk se niega a continuar sin él,
+porque una herramienta que se instala y luego no puede montar nada es peor que una que avisa.
+
+Después, el MSI de la página de publicaciones. Deja `libredisk.exe` en Archivos de programa
+y la carpeta en el PATH de la máquina.
+
+> **El MSI todavía no va firmado.** Windows lo anunciará como de «editor desconocido» y
+> SmartScreen avisará la primera vez. Qué cuesta eso y por qué sigue sin resolverse está en
+> [docs/FIRMA.md](docs/FIRMA.md). Comprueba el SHA-256 contra el publicado en la versión.
+
+Para construirlo desde el código hacen falta el SDK de .NET y WiX 5:
+
+```powershell
+winget install Microsoft.DotNet.SDK.8
+dotnet tool install --global wix --version 5.0.2
+.\packaging\windows\construir-msi.ps1
+```
 
 ## Probarlo
 

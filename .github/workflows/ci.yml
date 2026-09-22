@@ -39,3 +39,26 @@ jobs:
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
       - name: Tests
         run: cargo test --workspace
+
+  # Construye el MSI en cada cambio, aunque nadie lo vaya a instalar: un instalador que solo
+  # se compila el dia de la publicacion es un instalador que se descubre roto ese dia.
+  #
+  # Sin firmar. Los secretos de firma no se exponen a un job que corre en cada rama; la
+  # version firmada sale de una publicacion etiquetada, no de aqui.
+  instalador:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: WinFsp
+        run: choco install winfsp -y --no-progress
+      - name: WiX
+        run: dotnet tool install --global wix --version 5.0.2
+      - name: Empaquetar
+        run: .\packaging\windows\construir-msi.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libredisk-msi
+          path: target/msi/*.msi
+          if-no-files-found: error

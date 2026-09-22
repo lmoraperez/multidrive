@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Instalador MSI de LibreDisk.
+
+  Instala una sola cosa: `libredisk.exe` en Archivos de programa, y la carpeta en el PATH de
+  la maquina para poder llamarlo desde cualquier consola.
+
+  No trae WinFsp dentro. Empaquetar el instalador de otro proyecto dentro del nuestro obliga
+  a decidir por el usuario si se actualiza su controlador de sistema de ficheros, y eso no es
+  nuestro. Lo que si hace es **negarse a instalar sin el**, con el enlace: una herramienta que
+  se instala y luego falla al montar es peor que una que no se instala.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package
+      Name="LibreDisk"
+      Manufacturer="LibreDisk"
+      Version="$(var.Version)"
+      UpgradeCode="EE1DE9F7-EC44-4156-B80A-B506D74C33C6"
+      Scope="perMachine"
+      Compressed="yes"
+      Language="0"
+      Codepage="65001">
+
+    <SummaryInformation Description="Un volumen sobre varias nubes, cifrado en el cliente" />
+
+    <!-- Desinstala la version anterior antes de copiar la nueva: el binario estaria en uso. -->
+    <MajorUpgrade
+        AllowSameVersionUpgrades="yes"
+        DowngradeErrorMessage="Ya hay instalada una version mas nueva de LibreDisk." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!--
+      WinFsp vive en la vista de 32 bits del registro aunque el controlador sea de 64: lo
+      pone asi su propio instalador. Sin `always32` un paquete de 64 bits no ve la clave y
+      rechazaria la instalacion en una maquina que si tiene WinFsp.
+    -->
+    <Property Id="WINFSPDIR">
+      <RegistrySearch
+          Id="BuscarWinFsp"
+          Root="HKLM"
+          Key="SOFTWARE\WinFsp"
+          Name="InstallDir"
+          Type="directory"
+          Bitness="always32" />
+    </Property>
+
+    <Launch
+        Condition="Installed OR WINFSPDIR"
+        Message="LibreDisk necesita WinFsp para montar el volumen como una unidad. Instalalo desde https://winfsp.dev y vuelve a ejecutar este instalador." />
+
+    <!-- Se comprueba explicitamente: el binario es x64 y el mensaje por defecto no lo dice. -->
+    <Launch
+        Condition="VersionNT64"
+        Message="LibreDisk solo se distribuye para Windows de 64 bits." />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="LibreDisk" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="Programa" Directory="INSTALLFOLDER">
+      <Component Id="Ejecutable" Guid="*">
+        <File Id="libredisk.exe" Source="$(var.BinDir)\libredisk.exe" KeyPath="yes" />
+        <!--
+          Al PATH de la maquina, al final. Delante se adelantaria a ordenes que el usuario ya
+          tenga resueltas, que es una forma silenciosa de romperle el sistema.
+        -->
+        <Environment
+            Id="PathDeLaMaquina"
+            Name="PATH"
+            Value="[INSTALLFOLDER]"
+            Action="set"
+            Part="last"
+            System="yes"
+            Permanent="no" />
+      </Component>
+      <Component Id="Licencia" Guid="*">
+        <File Id="LICENSE.txt" Source="$(var.RepoDir)\LICENSE" Name="LICENSE.txt" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Principal" Title="LibreDisk" Level="1" AllowAbsent="no">
+      <ComponentGroupRef Id="Programa" />
+    </Feature>
+
+  </Package>
+</Wix>
