@@ -10,6 +10,7 @@ rust-version.workspace = true
 anyhow.workspace = true
 libredisk-backend.workspace = true
 libredisk-core.workspace = true
+libredisk-mount.workspace = true
 libredisk-crypto.workspace = true
 libredisk-raid.workspace = true
 serde = { workspace = true }
@@ -21,3 +22,6 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 [build-dependencies]
 tauri-build = { version = "2.6", features = [] }
+
+[target."cfg(windows)".build-dependencies]
+winfsp = "0.13"

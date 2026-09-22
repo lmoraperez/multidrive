@@ -121,6 +121,50 @@ impl Header {
     }
 }
 
+/// Crea la cabecera de un volumen nuevo y devuelve el almacen listo para estrenarlo.
+///
+/// Quien llama termina con [`crate::tree::Volume::create`], que publica la primera raiz.
+///
+/// # Por que la cabecera va primero
+///
+/// Porque lleva la sal, y sin la sal nadie puede volver a derivar la clave. Una raiz
+/// publicada antes que su cabecera seria ilegible para siempre, incluso sabiendo la frase.
+///
+/// # Por que no se sobrescribe nunca
+///
+/// Una cabecera nueva trae una sal nueva, y con otra sal la clave es otra: todo lo que
+/// hubiera escrito antes quedaria inalcanzable sin ningun aviso. Si una creacion quedo a
+/// medias, borrar el objeto a mano tiene que ser una decision de quien lo hace.
+pub async fn crear(
+    backends: Vec<Arc<dyn Backend>>,
+    layout: Layout,
+    frase: &str,
+) -> Result<ChunkStore, CoreError> {
+    if backends.len() != layout.shard_count() {
+        return Err(CoreError::BackendCount {
+            layout,
+            needed: layout.shard_count(),
+            given: backends.len(),
+        });
+    }
+    if read(&backends).await?.is_some() {
+        return Err(CoreError::YaHayVolumen);
+    }
+
+    let salt = libredisk_crypto::generate_salt();
+    let header = Header {
+        version: HEADER_VERSION,
+        layout: layout.to_string(),
+        reparto: 0,
+        salt: salt.to_vec(),
+        backends: backends.iter().map(|b| b.name().to_string()).collect(),
+    };
+    write(&backends, &header).await?;
+
+    let key = MasterKey::derive(frase, &salt)?;
+    ChunkStore::new(layout, backends, key)
+}
+
 /// Escribe la cabecera en todos los proveedores.
 pub async fn write(backends: &[Arc<dyn Backend>], header: &Header) -> Result<(), CoreError> {
     let bytes = serde_json::to_vec_pretty(header)?;

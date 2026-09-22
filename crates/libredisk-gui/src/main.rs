@@ -31,9 +31,15 @@ use std::sync::Arc;
 use libredisk_backend::{Backend, live};
 use libredisk_core::ChunkHealth;
 use libredisk_core::header::{self, Header};
+use libredisk_core::sincronizador::Sincronizador;
 use libredisk_core::tree::Volume;
+use libredisk_core::writeback::{self, WriteQueue};
+use libredisk_raid::Layout;
 use serde::Serialize;
 use tokio::sync::Mutex;
+
+/// Cada cuantos segundos sube lo pendiente mientras esta montado en escritura.
+const SYNC_CADA: u64 = 30;
 
 /// Cache modesta: la ventana recorre el arbol para la salud, no sirve ficheros.
 const CACHE: usize = 64 * 1024 * 1024;
@@ -47,6 +53,9 @@ struct Abierto {
 #[derive(Default)]
 struct Estado {
     abierto: Mutex<Option<Abierto>>,
+    montado: Mutex<Option<Montado>>,
+    /// Lo ultimo que dijo el sincronizador, para poder ensenarlo.
+    ultimo_sync: Arc<std::sync::Mutex<Option<String>>>,
 }
 
 /// Lo primero que se enseña: que hay configurado y si hace falta la frase.
@@ -92,6 +101,30 @@ struct Pendiente {
     a_salvo: bool,
 }
 
+/// Abre el almacen **con la cola de escritura diferida**.
+///
+/// La cola no es opcional aqui aunque la ventana no escriba por su cuenta: sin ella,
+/// `pendiente` diria "nada pendiente" aunque la linea de ordenes tenga la cola llena, que es
+/// la mentira mas cara que puede decir un volumen con escritura diferida. Y es lo que permite
+/// montar en lectura y escritura sin volver a pedir la frase.
+async fn abrir_almacen(
+    header: &Header,
+    backends: Vec<Arc<dyn Backend>>,
+    frase: &str,
+) -> Result<libredisk_core::ChunkStore, String> {
+    let store = header
+        .almacen(backends, frase, CACHE)
+        .map_err(|e| e.to_string())?;
+    let dir = writeback::dir_de_volumen(writeback::dir_base(), &header.salt);
+    let cola = WriteQueue::open(&dir).await.map_err(|e| {
+        format!(
+            "no se pudo abrir la cola de subida en '{}': {e}",
+            dir.display()
+        )
+    })?;
+    Ok(store.with_writeback(Arc::new(cola)))
+}
+
 fn proveedores() -> Result<Vec<Arc<dyn Backend>>, String> {
     let configurados = live::configurados().map_err(|e| e.to_string())?;
     if configurados.is_empty() {
@@ -101,6 +134,222 @@ fn proveedores() -> Result<Vec<Arc<dyn Backend>>, String> {
         .into_iter()
         .map(|b| Arc::new(b) as Arc<dyn Backend>)
         .collect())
+}
+
+/// Una topologia posible para los proveedores que hay, con su precio.
+///
+/// Se calculan aqui y no en la ventana porque el numero que importa --cuantas caidas
+/// aguanta-- sale de las mismas reglas que luego aplica el motor. Dos sitios que lo calculen
+/// por su cuenta acaban discrepando, y el que discrepa es el que el usuario cree.
+#[derive(Serialize)]
+struct Opcion {
+    spec: String,
+    tolera: usize,
+    sobrecoste: f64,
+    /// Fraccion del espacio contratado que queda utilizable.
+    aprovechado: f64,
+}
+
+/// Que topologias tienen sentido con `n` proveedores.
+fn opciones(n: usize) -> Vec<Opcion> {
+    let describir = |l: Layout| Opcion {
+        spec: l.to_string(),
+        tolera: l.shard_count() - l.shards_needed(),
+        sobrecoste: l.shard_count() as f64 / l.shards_needed() as f64,
+        aprovechado: l.shards_needed() as f64 / l.shard_count() as f64,
+    };
+
+    let mut out = Vec::new();
+    if n == 0 {
+        return out;
+    }
+    // Espejo: una copia entera en cada proveedor. Aguanta todo menos uno, y desperdicia
+    // tanto como aguanta.
+    if n > 1 {
+        out.push(describir(Layout::Mirror { n }));
+    }
+    // Reed-Solomon con toda la paridad posible, de mas segura a mas aprovechada. Se deja
+    // fuera m = 0, que no es redundancia ninguna: con ella, perder un proveedor es perder el
+    // volumen, y eso no deberia poder elegirse sin querer en una lista.
+    for m in (1..n).rev() {
+        out.push(describir(Layout::ReedSolomon { k: n - m, m }));
+    }
+    if n == 1 {
+        out.push(describir(Layout::Concat));
+    }
+    out
+}
+
+/// Lo que hay montado, si hay algo.
+///
+/// `Montaje` desmonta al soltarlo, asi que tenerlo guardado aqui **es** lo que mantiene la
+/// unidad viva. El sincronizador va al lado por lo mismo.
+struct Montado {
+    punto: String,
+    escritura: bool,
+    _montaje: libredisk_mount::Montaje,
+    _sincronizador: Option<Sincronizador>,
+}
+
+#[derive(Serialize, Default)]
+struct EstadoMontaje {
+    montado: bool,
+    punto: Option<String>,
+    escritura: bool,
+    /// Que hay que escribir en el campo del punto de montaje en este sistema.
+    ejemplo: String,
+}
+
+fn ejemplo_de_punto() -> String {
+    if cfg!(windows) {
+        "Z:".into()
+    } else {
+        "/mnt/libredisk".into()
+    }
+}
+
+#[tauri::command]
+async fn montaje(estado: tauri::State<'_, Estado>) -> Result<EstadoMontaje, String> {
+    let guardia = estado.montado.lock().await;
+    Ok(match guardia.as_ref() {
+        Some(m) => EstadoMontaje {
+            montado: true,
+            punto: Some(m.punto.clone()),
+            escritura: m.escritura,
+            ejemplo: ejemplo_de_punto(),
+        },
+        None => EstadoMontaje {
+            ejemplo: ejemplo_de_punto(),
+            ..Default::default()
+        },
+    })
+}
+
+#[tauri::command]
+async fn montar(
+    punto: String,
+    escritura: bool,
+    estado: tauri::State<'_, Estado>,
+) -> Result<EstadoMontaje, String> {
+    if estado.montado.lock().await.is_some() {
+        return Err("ya hay un montaje; desmontalo antes".into());
+    }
+    let guardia = estado.abierto.lock().await;
+    let abierto = guardia.as_ref().ok_or("el volumen no esta abierto")?;
+
+    // El montaje trabaja sobre una copia del volumen. No es un rodeo: la ventana sigue
+    // consultando salud y pendientes mientras tanto, y compartir un cerrojo entre algo que
+    // puede tardar minutos y una pantalla que se refresca seria bloquear la segunda. La copia
+    // comparte almacen, caches y cola, asi que ve exactamente lo mismo.
+    let store = abierto.volumen.store().clone();
+    let compartido = Arc::new(std::sync::RwLock::new(Volume::at(
+        store.clone(),
+        abierto.volumen.root().clone(),
+    )));
+    drop(guardia);
+
+    let montaje = libredisk_mount::montar(compartido, &punto, !escritura).map_err(|e| {
+        // Es lo primero que ve alguien sin WinFsp instalado, o que apunta a una letra
+        // ocupada: el error merece llegar entero y no resumido.
+        format!("{e:#}")
+    })?;
+
+    // En escritura, alguien tiene que subir lo que se escriba. Los avisos no van a ninguna
+    // consola —una ventana no tiene— asi que se guardan para ensenarlos en el panel.
+    let sincronizador = escritura.then(|| {
+        let ultimo = Arc::clone(&estado.ultimo_sync);
+        Sincronizador::arrancar(
+            store,
+            std::time::Duration::from_secs(SYNC_CADA),
+            Box::new(move |r| {
+                use libredisk_core::sincronizador::Resultado;
+                let texto = match r {
+                    Resultado::Hecho(i) => format!(
+                        "{} subidos, {} descartados{}",
+                        i.subidos,
+                        i.descartados,
+                        if i.raiz_publicada {
+                            ", raiz publicada"
+                        } else {
+                            ""
+                        }
+                    ),
+                    Resultado::Fallo(e) => format!("fallo, se reintentara: {e}"),
+                };
+                *ultimo.lock().unwrap_or_else(|p| p.into_inner()) = Some(texto);
+            }),
+        )
+    });
+
+    *estado.montado.lock().await = Some(Montado {
+        punto: punto.clone(),
+        escritura,
+        _montaje: montaje,
+        _sincronizador: sincronizador,
+    });
+    Ok(EstadoMontaje {
+        montado: true,
+        punto: Some(punto),
+        escritura,
+        ejemplo: ejemplo_de_punto(),
+    })
+}
+
+#[tauri::command]
+async fn desmontar(estado: tauri::State<'_, Estado>) -> Result<EstadoMontaje, String> {
+    // Soltarlo es desmontar: el `Drop` de `Montaje` lo hace.
+    *estado.montado.lock().await = None;
+    Ok(EstadoMontaje {
+        ejemplo: ejemplo_de_punto(),
+        ..Default::default()
+    })
+}
+
+#[tauri::command]
+fn topologias(proveedores: usize) -> Vec<Opcion> {
+    opciones(proveedores)
+}
+
+#[tauri::command]
+async fn crear(
+    spec: String,
+    frase: String,
+    estado: tauri::State<'_, Estado>,
+) -> Result<Resumen, String> {
+    let backends = proveedores()?;
+    let layout: Layout = spec
+        .parse()
+        .map_err(|_| format!("topologia invalida: {spec}"))?;
+
+    let store = header::crear(backends.clone(), layout, &frase)
+        .await
+        .map_err(|e| match e {
+            libredisk_core::CoreError::YaHayVolumen => {
+                "ya hay un volumen en estos proveedores. Crear otro encima generaria una sal \
+                 nueva y dejaria inalcanzable todo lo anterior, asi que no se hace."
+                    .to_string()
+            }
+            otro => otro.to_string(),
+        })?;
+
+    let (volumen, degradados) = Volume::create(store).await.map_err(|e| e.to_string())?;
+    if !degradados.is_empty() {
+        // Un volumen recien creado al que ya le falta un proveedor no es un volumen sano, y
+        // callarlo aqui seria empezar mintiendo sobre la redundancia.
+        return Err(format!(
+            "el volumen se creo pero estos proveedores no aceptaron la escritura: {}. \
+             Revisa con `libredisk scrub`.",
+            degradados.join(", ")
+        ));
+    }
+
+    let header = header::read(&backends)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("la cabecera no se pudo releer tras crearla")?;
+    let resumen = resumir(&volumen, &header).map_err(|e| e.to_string())?;
+    *estado.abierto.lock().await = Some(Abierto { volumen, header });
+    Ok(resumen)
 }
 
 #[tauri::command]
@@ -139,9 +388,7 @@ async fn abrir(frase: String, estado: tauri::State<'_, Estado>) -> Result<Resume
         .map_err(|e| e.to_string())?
         .ok_or("no hay ningun volumen en estos proveedores")?;
 
-    let store = header
-        .almacen(backends, &frase, CACHE)
-        .map_err(|e| e.to_string())?;
+    let store = abrir_almacen(&header, backends, &frase).await?;
 
     // Una frase equivocada no da un error de descifrado: da una raiz que no se abre, y por
     // tanto "no hay raiz". Decirlo tal cual pareceria corrupcion.
@@ -250,7 +497,8 @@ fn main() {
     tauri::Builder::default()
         .manage(Estado::default())
         .invoke_handler(tauri::generate_handler![
-            arranque, abrir, resumen, cerrar, salud, pendiente
+            arranque, abrir, resumen, cerrar, salud, pendiente, topologias, crear, montaje, montar,
+            desmontar
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo arrancar la ventana");

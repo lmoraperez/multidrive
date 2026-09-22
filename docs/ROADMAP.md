@@ -244,9 +244,26 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] Las capacidades de Tauri quedan en lo mínimo: sin sistema de ficheros, sin red y sin
       shell desde el webview. Todo lo que hace falta pasa por las órdenes de este binario, que
       ya sabe lo que puede tocar
-- [ ] Asistente de creación de volumen. Es la parte que toca credenciales de nube, y merece
-      pensarse aparte: un formulario que las guarda mal es peor que no tener formulario
-- [ ] Montar y desmontar desde la ventana
+- [x] Asistente de creación de volumen. Lista los proveedores ya configurados, ofrece las
+      topologías que caben con ese número **ordenadas de más segura a más aprovechada**, y
+      enseña el precio en román paladino: «aguanta perder 2 proveedores, aprovechas el 33 %
+      del espacio». El valor por defecto es el prudente, porque quien no sepa elegir se queda
+      con el primero. Se deja fuera `m = 0`, que no es redundancia ninguna y no debería poder
+      elegirse sin querer de una lista
+- [x] La frase se pide **dos veces**. Sin recuperación posible, una errata al teclearla es un
+      volumen perdido antes de empezar
+- [x] No toca credenciales de nube. Se crea sobre lo que ya esté configurado, y se dice. Un
+      formulario que guarda mal un token de OAuth es peor que no tener formulario, y eso va
+      aparte
+- [x] Montar y desmontar desde la ventana, en solo lectura o en lectura y escritura. Con
+      escritura arranca el sincronizador de fondo, cuyos avisos no van a ninguna consola
+      —una ventana no tiene— sino al panel. Cerrar el volumen desmonta primero: dejar una
+      unidad sirviendo un volumen que la ventana dice haber cerrado sería mentir en la peor
+      dirección
+- [ ] Conseguir automatizar el recorrido completo de la ventana. Ni `SendKeys` ni un `WM_CHAR`
+      puesto a mano llegan a un WebView2, que lleva su propia cadena de entrada. Lo que queda
+      sin comprobar de punta a punta es el cableado de JavaScript; la lógica está en funciones
+      con tests
 - [ ] **Estimador de coste mensual** por topología y proveedor
 - [ ] Indicador honesto de "guardado localmente" vs "a salvo en la nube"
 
