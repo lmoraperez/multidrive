@@ -226,6 +226,21 @@ pub struct ScrubReport {
     /// lo que se ha perdido. Antes de dar un trozo por degradado por culpa de uno de estos,
     /// hay que volver a preguntar.
     pub unlistable: Vec<(usize, String)>,
+    /// Lo que ocupan los fragmentos en cada proveedor, en bytes, o `None` si no se dejo
+    /// enumerar.
+    ///
+    /// Sale **de la misma enumeracion** que la salud: los proveedores mandan el tamano en la
+    /// misma respuesta que los nombres, asi que esta cifra no cuesta ni una peticion mas.
+    /// Por eso vive aqui y no en un metodo propio: medirla aparte significaria volver a
+    /// enumerar, y una enumeracion completa contra una nube son minutos.
+    ///
+    /// Cuenta **todo lo que hay bajo el prefijo de fragmentos**, no solo lo alcanzable desde
+    /// la raiz actual. Es deliberado: lo que se cobra el proveedor es lo que ocupa, y las
+    /// versiones viejas ocupan. Para saber cuanto sobra esta `gc`.
+    ///
+    /// Un proveedor mudo es `None` y no cero. Un cero diria que esta vacio, que es una
+    /// afirmacion, y aqui no se sabe nada.
+    pub ocupado: Vec<Option<u64>>,
 }
 
 impl ScrubReport {
@@ -302,6 +317,14 @@ impl ChunkStore {
     }
 
     /// Que reparto de fragmentos usa este almacen.
+    /// Nombres de los proveedores, en el mismo orden en que se indexan los fragmentos.
+    ///
+    /// El orden **es** el que da sentido a los indices de `ScrubReport`: el fragmento `i` va
+    /// al proveedor `i`. Quien enseñe cifras por proveedor las tiene que casar por aqui.
+    pub fn nombres(&self) -> Vec<String> {
+        self.backends.iter().map(|b| b.name().to_string()).collect()
+    }
+
     pub fn reparto(&self) -> u32 {
         self.reparto
     }
@@ -689,10 +712,14 @@ impl ChunkStore {
         .await;
 
         let mut presentes: Vec<HashSet<String>> = vec![HashSet::new(); self.backends.len()];
+        let mut ocupado: Vec<Option<u64>> = vec![None; self.backends.len()];
         let mut unlistable = Vec::new();
         for (i, resultado) in listados {
             match resultado {
-                Ok(claves) => presentes[i] = claves.into_iter().collect(),
+                Ok(objetos) => {
+                    ocupado[i] = Some(objetos.iter().map(|o| o.bytes).sum());
+                    presentes[i] = objetos.into_iter().map(|o| o.clave).collect();
+                }
                 Err(e) => unlistable.push((i, e.to_string())),
             }
         }
@@ -712,7 +739,11 @@ impl ChunkStore {
             })
             .collect();
 
-        ScrubReport { health, unlistable }
+        ScrubReport {
+            health,
+            unlistable,
+            ocupado,
+        }
     }
 
     /// Traduce fragmentos presentes y ausentes a salud.
@@ -785,6 +816,7 @@ impl ChunkStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use libredisk_backend::Objeto;
     use std::sync::atomic::Ordering;
 
     use async_trait::async_trait;
@@ -1087,9 +1119,34 @@ mod tests {
             );
         }
     }
+    /// Lo que ocupa el volumen en cada proveedor sale **de la enumeracion que ya se hacia**.
+    ///
+    /// El test cuenta las llamadas ademas de comprobar las cifras: si algun dia medir
+    /// costara una peticion mas, esto falla. Contra una nube esa peticion de mas son minutos.
+    #[tokio::test]
+    async fn medir_lo_ocupado_no_cuesta_ninguna_peticion_de_mas() {
+        let layout = Layout::ReedSolomon { k: 2, m: 1 };
+        let cs = contadores(layout.shard_count());
+        let s = ChunkStore::new(layout, como_backends(&cs), clave()).unwrap();
 
-    /// Un proveedor que no se deja enumerar no es un proveedor vacio. Confundirlos
-    /// convertiria una caida pasajera en una perdida total sobre el papel.
+        let chunk = s.put(&datos(4096)).await.unwrap().chunk;
+        reiniciar(&cs);
+
+        let informe = s.scrub_many(std::slice::from_ref(&chunk)).await;
+
+        for c in &cs {
+            assert_eq!(c.lists.load(Ordering::Relaxed), 1);
+            assert_eq!(c.gets.load(Ordering::Relaxed), 0, "medir no descarga nada");
+        }
+        for (i, ocupado) in informe.ocupado.iter().enumerate() {
+            let bytes = ocupado.expect("todos enumeraron");
+            assert!(
+                bytes > 0,
+                "el proveedor {i} tiene un fragmento escrito y dice ocupar cero"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn un_proveedor_que_falla_al_enumerar_se_declara_en_vez_de_darse_por_vacio() {
         struct NoEnumera(OpendalBackend);
@@ -1112,7 +1169,7 @@ mod tests {
                 self.0.exists(key).await
             }
             /// Cualquier fallo sirve: lo que se prueba es que no se traduce a "vacio".
-            async fn list(&self, _prefix: &str) -> Result<Vec<String>, BackendError> {
+            async fn list(&self, _prefix: &str) -> Result<Vec<Objeto>, BackendError> {
                 Err(BackendError::NotFound("el proveedor no responde".into()))
             }
         }
@@ -1136,6 +1193,14 @@ mod tests {
         assert_eq!(informe.unlistable.len(), 1);
         assert_eq!(informe.unlistable[0].0, 3);
         assert_eq!(informe.health[0].missing, vec![3]);
+        // Y lo que ocupa es **lo que no se sabe**, no cero. Un cero se pintaria como una
+        // barra vacia, o sea como "aqui no hay nada guardado": convertiria una caida
+        // pasajera en la afirmacion de que el proveedor esta vacio.
+        assert_eq!(informe.ocupado[3], None, "no se sabe no es cero");
+        assert!(
+            informe.ocupado[0].is_some_and(|b| b > 0),
+            "los que si enumeraron dicen lo que ocupan"
+        );
 
         // Y preguntando de uno en uno se ve que el fragmento si estaba: el informe era un
         // suelo pesimista, que es exactamente lo que declara ser.

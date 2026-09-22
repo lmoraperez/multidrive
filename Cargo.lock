@@ -2392,9 +2392,13 @@ name = "libredisk-backend"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "libc",
  "opendal",
+ "reqwest",
+ "serde_json",
  "thiserror 2.0.20",
  "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2429,6 +2433,7 @@ name = "libredisk-gui"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "futures",
  "libredisk-backend",
  "libredisk-core",
  "libredisk-crypto",
@@ -3796,6 +3801,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",

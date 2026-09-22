@@ -539,7 +539,60 @@ pie.
 entre sí. No hay ninguna proporción entre proveedores en este documento que haya sobrevivido
 a tres tandas. **Las que quedan escritas son de la tanda en que se midieron, y nada más.**
 
-## 9. Honestidad sobre el rendimiento
+## 9. Primer volumen real sobre dos nubes, y qué dice cada una de su espacio
+
+Fecha: 2026-09-22. Cuentas reales de OneDrive y Google Drive, desde esta máquina y esta red.
+Topología `mirror:2`, o sea una copia entera en cada nube.
+
+### 9.1 Lo que pasó
+
+| | |
+|---|---|
+| Crear el volumen | instantáneo: es escribir la cabecera en los dos |
+| Subir 20,0 MiB (2 trozos) | **3 min 6 s** |
+| Bajarlos y comprobar el SHA-256 | **1 min 32 s**, idéntico byte a byte |
+| Enumerar los dos proveedores (`espacio --medir`) | **37 s** |
+
+La bajada no descarga los dos lados: con `mirror` basta el primer fragmento que conteste, y
+por eso tarda la mitad que la subida en vez de lo mismo.
+
+Los 37 s de la enumeración **no contradicen** los 5 a 17 minutos estimados en §7: aquel
+cálculo era para un volumen con los 257 directorios del prefijo de dos caracteres poblados, y
+este tiene dos trozos, o sea dos directorios. El coste sigue dependiendo del árbol y no del
+número de bytes, que es justo lo que decía §7.
+
+### 9.2 Cuánto dice cada nube que le queda
+
+Una petición por proveedor, no una enumeración:
+
+| | Total | Ocupado en la cuenta | Este volumen |
+|---|---|---|---|
+| OneDrive | 15,0 GiB | 921,6 MiB (6 %) | 20,0 MiB |
+| Google Drive | 17,0 GiB | 13,5 GiB (79 %) | 20,0 MiB |
+
+Las dos primeras columnas son de la cuenta entera —las fotos del usuario cuentan tanto como
+los fragmentos— y salen de la API de cupo de cada servicio. La tercera es de LibreDisk y sale
+de la enumeración. Son cifras distintas y cuestan cosas distintas: por eso en la línea de
+órdenes la tercera va detrás de `--medir`.
+
+### 9.3 El dato que obliga a no fiarse de la resta
+
+**Después de subir 20,0 MiB, OneDrive siguió diciendo 921,6 MiB.** Tres consultas repartidas
+en unos quince minutos, en procesos distintos, dieron la misma cifra. Los 20 MiB son un 2,2 %
+de esa cantidad, así que no es un redondeo que la esconda: la cuenta de uso que devuelve el
+proveedor **va por detrás de lo que uno acaba de escribir**. Cuánto por detrás, este
+experimento no lo dice.
+
+Eso tiene una consecuencia directa en la interfaz, y está implementada: el tramo de la barra
+que corresponde a LibreDisk se recorta a lo que el proveedor dice que hay ocupado
+(`min(del_volumen, usado)`). Sin ese recorte, un volumen recién escrito pintaría un tramo
+mayor que la barra entera y la ventana enseñaría más del 100 % de una cuenta que está al 6 %.
+
+No es un fallo de OneDrive ni hay nada que arreglar: es que las dos cifras se miden en
+momentos distintos y por sistemas distintos. Lo que no se puede hacer es restarlas y
+presentar el resultado como si fuera una medida.
+
+## 10. Honestidad sobre el rendimiento
 
 Posicionarlo correctamente desde el README evita el 90% de las malas reseñas:
 

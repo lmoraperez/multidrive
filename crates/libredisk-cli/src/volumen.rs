@@ -1348,3 +1348,80 @@ pub async fn providers_remove(nombre: &str, sacrificio: Sacrificio) -> Result<()
     println!("Quita ahora {nombre} de tu configuracion.");
     Ok(())
 }
+/// Cuanto espacio hay en cada proveedor, y cuanto de el ocupa el volumen.
+///
+/// Las dos cifras vienen de sitios distintos y cuestan cosas distintas, y eso se ve en la
+/// salida: el cupo de la cuenta es **una peticion** por proveedor, mientras que lo que ocupa
+/// el volumen obliga a **enumerar**, que contra una nube son minutos. Por eso lo segundo va
+/// detras de `--medir` en vez de pasar siempre.
+pub async fn espacio(medir: bool) -> Result<()> {
+    let backends = libredisk_backend::live::configurados()?;
+    if backends.is_empty() {
+        println!("No hay ningun proveedor configurado.");
+        return Ok(());
+    }
+
+    // Lo que ocupa el volumen solo se puede saber con la frase de paso: los fragmentos estan
+    // bajo un prefijo conocido, pero es el volumen abierto quien dice cual.
+    let ocupado = if medir {
+        let volumen = abrir().await?;
+        let (chunks, _) = volumen.walk().await;
+        let informe = volumen.store().scrub_many(&chunks).await;
+        let nombres = volumen.store().nombres();
+        Some((nombres, informe.ocupado))
+    } else {
+        None
+    };
+
+    for (i, b) in backends.iter().enumerate() {
+        let nombre = b.name();
+        println!("{nombre}");
+
+        match b.cuota().await {
+            Ok(c) => match (c.total, c.usado) {
+                (Some(total), Some(usado)) => {
+                    println!(
+                        "  cuenta        {} de {}   ({:.0} % ocupado, {} libres)",
+                        tamano(usado),
+                        tamano(total),
+                        (usado as f64 / total.max(1) as f64) * 100.0,
+                        tamano(total.saturating_sub(usado))
+                    );
+                }
+                (None, Some(usado)) => {
+                    println!(
+                        "  cuenta        {} ocupados, sin limite declarado",
+                        tamano(usado)
+                    )
+                }
+                // Ni total ni ocupado: el proveedor no dice nada de su espacio. No es un
+                // fallo, y decir "0 de 0" lo pareceria.
+                _ => println!("  cuenta        no declara cupo (se paga por lo que ocupa)"),
+            },
+            // Un proveedor que no contesta no es un proveedor vacio. Se dice el motivo en vez
+            // de poner un cero que se leeria como "aqui no hay nada guardado".
+            Err(e) => println!("  cuenta        NO SE PUDO CONSULTAR: {e}"),
+        }
+
+        match &ocupado {
+            // Se casa por nombre y no solo por posicion: si la configuracion ha cambiado
+            // desde la medida, vale mas no decir nada que atribuirsela a otro proveedor.
+            Some((nombres, bytes)) if nombres.get(i).is_some_and(|n| n == nombre) => {
+                match bytes.get(i).copied().flatten() {
+                    Some(b) => println!("  este volumen  {}", tamano(b)),
+                    None => println!("  este volumen  no se pudo enumerar"),
+                }
+            }
+            Some(_) => println!("  este volumen  (este proveedor no esta en el volumen)"),
+            None => {}
+        }
+    }
+
+    if ocupado.is_none() {
+        println!();
+        println!("Lo de arriba es la cuenta entera del proveedor, no lo que ocupa LibreDisk.");
+        println!("Con --medir se enumera el volumen y se dice tambien eso, pero tarda:");
+        println!("una enumeracion completa contra una nube se mide en minutos.");
+    }
+    Ok(())
+}

@@ -228,6 +228,23 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       quita el arreglo**
 
 ## v0.3 — "¿Lo puede usar alguien que no sea yo?"
+- [x] **Probado contra dos nubes reales de punta a punta.** Volumen `mirror:2` sobre las
+      cuentas de OneDrive y Google Drive: crear, subir 20 MiB, bajarlos y comprobar el
+      SHA-256 —idéntico—, enumerar y medir. Cifras y método en
+      [VIABILIDAD.md §9](VIABILIDAD.md#9-primer-volumen-real-sobre-dos-nubes-y-qué-dice-cada-una-de-su-espacio)
+- [x] Barra de espacio por proveedor, en la ventana y en `libredisk espacio`. Enseña **tres
+      cifras que no se mezclan**: lo que cabe en la cuenta, lo que hay ocupado en ella y lo
+      que ocupa este volumen. Las dos primeras son una petición al proveedor; la tercera
+      obliga a enumerar, así que va detrás de `--medir` y de «Revisar»
+- [x] La cifra de lo que ocupa el volumen **sale de la enumeración que ya hacía `scrub`**:
+      los seis proveedores mandan el tamaño en la misma respuesta que los nombres, así que no
+      cuesta ni una petición más. Lo fija un test que cuenta llamadas
+- [x] Un proveedor sin cupo que declarar —un bucket S3 se factura por lo que ocupa— sale como
+      «sin límite declarado» y no como una barra vacía; uno que no contesta sale con el
+      motivo y no con un cero. Un cero diría que está vacío, que es una afirmación
+- [x] El tramo de LibreDisk se recorta a lo que el proveedor dice que hay ocupado. Medido:
+      tras escribir 20 MiB, OneDrive seguía dando la misma cifra un cuarto de hora después. Sin el
+      recorte, un volumen recién escrito pintaría más del 100 % de una cuenta al 6 %
 - [x] Topología `stripe:n`, que es RAID 0: todo el espacio sumado y el ancho de banda
       repartido, a cambio de que **perder un solo proveedor pierda el volumen entero**. No es
       `rs(k,0)` porque eso no existe —Reed-Solomon necesita al menos un fragmento de

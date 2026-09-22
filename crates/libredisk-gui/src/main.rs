@@ -44,6 +44,14 @@ const SYNC_CADA: u64 = 30;
 /// Cache modesta: la ventana recorre el arbol para la salud, no sirve ficheros.
 const CACHE: usize = 64 * 1024 * 1024;
 
+/// Lo que se midio que ocupa el volumen en cada proveedor, con los nombres que tenian
+/// cuando se midio.
+///
+/// Los nombres viajan con las cifras a proposito: el informe las devuelve por indice, y si
+/// la configuracion cambia entre la medida y el repintado, un indice suelto se las
+/// atribuiria al proveedor equivocado.
+type Ocupacion = (Vec<String>, Vec<Option<u64>>);
+
 /// Lo que se tiene abierto, si hay algo.
 struct Abierto {
     volumen: Volume,
@@ -54,6 +62,14 @@ struct Abierto {
 struct Estado {
     abierto: Mutex<Option<Abierto>>,
     montado: Mutex<Option<Montado>>,
+    /// Lo que se midio que ocupa el volumen en cada proveedor la ultima vez que se reviso,
+    /// junto con los nombres que tenian entonces.
+    ///
+    /// Va guardado porque la cifra **cuesta una enumeracion completa** —minutos contra una
+    /// nube— y no se puede pedir cada vez que se repinta una barra. Los nombres viajan con
+    /// ella para no atribuirle a un proveedor lo que midio otro si la configuracion cambia
+    /// entre medias.
+    ocupado: Mutex<Option<Ocupacion>>,
     /// Lo ultimo que dijo el sincronizador, para poder ensenarlo.
     ultimo_sync: Arc<std::sync::Mutex<Option<String>>>,
 }
@@ -477,7 +493,101 @@ async fn salud(estado: tauri::State<'_, Estado>) -> Result<Salud, String> {
         .map(|l| l.shards_needed())
         .unwrap_or(1);
     (out.completos, out.degradados, out.perdidos) = clasificar(&informe.health, minimo);
+
+    // La enumeracion ya se ha pagado: de ella sale tambien lo que ocupa el volumen en cada
+    // proveedor, y se guarda para que las barras puedan pintarlo sin volver a enumerar.
+    let nombres = abierto.volumen.store().nombres();
+    *estado.ocupado.lock().await = Some((nombres, informe.ocupado));
+
     Ok(out)
+}
+
+/// El espacio de un proveedor, con las tres cifras separadas a proposito.
+///
+/// Son tres medidas distintas y mezclarlas seria mentir:
+///
+/// - `total` y `usado` los declara el proveedor, y `usado` es **la cuenta entera**: las
+///   fotos del usuario cuentan tanto como los fragmentos. Es lo que de verdad determina
+///   cuanto le queda libre.
+/// - `del_volumen` es lo que ocupa LibreDisk ahi, y solo se sabe **despues de enumerar**.
+///   Hasta entonces va a `null`, que la ventana pinta como "sin medir" y no como cero.
+///
+/// Un `fallo` no se convierte en ceros: se ensena. Un proveedor que no contesta no es un
+/// proveedor vacio.
+#[derive(Serialize, Default)]
+struct Espacio {
+    proveedor: String,
+    total: Option<u64>,
+    usado: Option<u64>,
+    del_volumen: Option<u64>,
+    /// Si este proveedor forma parte del volumen, cuando hay uno abierto para saberlo.
+    ///
+    /// Hace falta para no decir una tonteria: un proveedor configurado que no esta en el
+    /// volumen nunca va a tener una cifra de ocupacion, y animar a pulsar «Revisar» seria
+    /// mandar a enumerar durante minutos para que no cambie nada.
+    en_el_volumen: Option<bool>,
+    fallo: Option<String>,
+}
+
+/// Cuanto espacio hay en cada proveedor configurado.
+///
+/// Funciona **con el volumen cerrado**: el cupo es de la cuenta, no del volumen, y se puede
+/// mirar antes de escribir la frase de paso. Lo que no se sabe sin abrir y enumerar es
+/// cuanto de eso ocupa LibreDisk, y por eso ese campo llega vacio hasta que se pulsa
+/// «Revisar».
+///
+/// Se pregunta a todos a la vez. En serie, cuatro nubes lentas son cuatro esperas seguidas
+/// delante de una ventana que todavia no ha pintado nada.
+#[tauri::command]
+async fn espacio(estado: tauri::State<'_, Estado>) -> Result<Vec<Espacio>, String> {
+    let backends = proveedores()?;
+    let medido = estado.ocupado.lock().await.clone();
+    // Con el volumen abierto se sabe ademas cuales de los configurados lo forman, que no
+    // tienen por que ser todos.
+    let del_volumen: Option<Vec<String>> = estado
+        .abierto
+        .lock()
+        .await
+        .as_ref()
+        .map(|a| a.volumen.store().nombres());
+
+    let cuotas = futures::future::join_all(backends.iter().map(|b| async move {
+        let nombre = b.name().to_string();
+        (nombre, b.cuota().await)
+    }))
+    .await;
+
+    Ok(cuotas
+        .into_iter()
+        .enumerate()
+        .map(|(i, (proveedor, r))| {
+            // La ocupacion se guarda por indice, que es como la devuelve el informe. Si la
+            // configuracion ha cambiado desde la ultima revision, sobra el dato antes que
+            // arriesgarse a atribuirselo al proveedor equivocado.
+            let ocupa = medido
+                .as_ref()
+                .filter(|(nombres, _)| nombres.get(i).is_some_and(|n| *n == proveedor))
+                .and_then(|(_, bytes)| bytes.get(i).copied().flatten());
+            let en_el_volumen = del_volumen.as_ref().map(|ns| ns.contains(&proveedor));
+            match r {
+                Ok(c) => Espacio {
+                    proveedor,
+                    total: c.total,
+                    usado: c.usado,
+                    del_volumen: ocupa,
+                    en_el_volumen,
+                    fallo: None,
+                },
+                Err(e) => Espacio {
+                    proveedor,
+                    del_volumen: ocupa,
+                    en_el_volumen,
+                    fallo: Some(e.to_string()),
+                    ..Default::default()
+                },
+            }
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -515,8 +625,8 @@ fn main() {
     tauri::Builder::default()
         .manage(Estado::default())
         .invoke_handler(tauri::generate_handler![
-            arranque, abrir, resumen, cerrar, salud, pendiente, topologias, crear, montaje, montar,
-            desmontar
+            arranque, abrir, resumen, cerrar, salud, espacio, pendiente, topologias, crear,
+            montaje, montar, desmontar
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo arrancar la ventana");

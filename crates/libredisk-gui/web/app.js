@@ -46,6 +46,11 @@ async function arrancar() {
   }
   definiciones($("previo"), pares);
 
+  // El cupo es de la cuenta del proveedor, no del volumen: se puede ver con el volumen
+  // cerrado, y es justo lo que hace falta para decidir si merece la pena crear uno.
+  if (a.proveedores.length) refrescarEspacio($("espacio"));
+  else $("espacio").replaceChildren(nota("No hay ningún proveedor configurado."));
+
   if (a.problema) {
     // Sin volumen no hay nada que abrir: pedir la frase seria pedir algo inutil. Pero si hay
     // proveedores configurados, si hay algo que hacer: crearlo.
@@ -106,6 +111,7 @@ async function mostrarPanel(ya) {
   rellenarResumen(r);
   await refrescarMontaje();
   await refrescarPendiente();
+  await refrescarEspacio($("espacio-panel"));
 }
 
 function rellenarResumen(r) {
@@ -126,6 +132,9 @@ $("revisar").addEventListener("click", async () => {
   try {
     const s = await invoke("salud");
     pintarSalud(s);
+    // La revision acaba de enumerar, que es lo unico que sabe cuanto ocupa el volumen en
+    // cada proveedor. Las barras se repintan ahora para ensenar ese tramo.
+    await refrescarEspacio($("espacio-panel"));
   } catch (err) {
     $("salud").replaceChildren(nota(String(err)));
   } finally {
@@ -360,3 +369,115 @@ arrancar().catch((err) => {
   $("formulario").hidden = true;
   aviso(String(err?.message ?? err), true);
 });
+
+// ---------------------------------------------------------------------------------------
+// Espacio por proveedor
+// ---------------------------------------------------------------------------------------
+
+/**
+ * Pinta una barra por proveedor en `caja`.
+ *
+ * Las tres cifras son medidas distintas y aqui se mantienen separadas:
+ * el total y lo ocupado los declara el proveedor y valen para **toda la cuenta**; lo que
+ * ocupa el volumen solo se sabe despues de enumerar, y hasta entonces no se dibuja. Pintar
+ * un cero seria afirmar que LibreDisk no ocupa nada ahi.
+ */
+async function refrescarEspacio(caja) {
+  if (!caja) return;
+  let proveedores;
+  try {
+    proveedores = await invoke("espacio");
+  } catch (err) {
+    caja.replaceChildren(nota(String(err)));
+    return;
+  }
+  caja.replaceChildren(...proveedores.map(pintarProveedor));
+}
+
+function pintarProveedor(p) {
+  const bloque = document.createElement("div");
+  bloque.className = "proveedor";
+
+  const cabeza = document.createElement("div");
+  cabeza.className = "cabeza";
+  const nombre = document.createElement("b");
+  nombre.textContent = p.proveedor;
+  const cifra = document.createElement("span");
+  cabeza.append(nombre, cifra);
+  bloque.append(cabeza);
+
+  if (p.fallo) {
+    // Un proveedor que no contesta no es un proveedor vacio: no lleva barra, lleva el
+    // motivo. Una barra a cero aqui diria que esta libre del todo.
+    cifra.textContent = "no se pudo consultar";
+    bloque.append(nota(p.fallo));
+    return bloque;
+  }
+
+  if (p.total === null) {
+    // Un bucket S3 no tiene cupo: se paga por lo que ocupa. Dibujar una barra exigiria
+    // inventarse un total.
+    cifra.textContent = "sin límite declarado";
+    bloque.append(
+      nota(
+        p.del_volumen === null
+          ? (p.en_el_volumen === false
+              ? "Este proveedor no declara ningún total, y no forma parte del volumen."
+              : "Este proveedor no declara ningún total. Pulsa «Revisar» para medir lo que ocupa el volumen.")
+          : `El volumen ocupa ${tamano(p.del_volumen)} aquí. Se paga por lo que ocupa, no hay cupo.`,
+      ),
+    );
+    return bloque;
+  }
+
+  const usado = p.usado ?? 0;
+  cifra.textContent = `${tamano(usado)} de ${tamano(p.total)}`;
+
+  const barra = document.createElement("div");
+  barra.className = "barra";
+  const fraccion = p.total > 0 ? usado / p.total : 0;
+  if (fraccion >= 0.95) barra.classList.add("llena");
+  else if (fraccion >= 0.85) barra.classList.add("apurada");
+
+  // El tramo de LibreDisk nunca se pinta mayor que lo que el proveedor dice que hay
+  // ocupado. Las dos cifras vienen de sitios distintos y pueden no cuadrar --una medida es
+  // de hace un minuto y la otra de hace media hora-- y en ese caso manda la del proveedor.
+  const nuestro = Math.min(p.del_volumen ?? 0, usado);
+  bloque.append(barra);
+  for (const [clase, bytes] of [["nuestro", nuestro], ["ajeno", usado - nuestro]]) {
+    if (bytes <= 0) continue;
+    const tramo = document.createElement("div");
+    tramo.className = clase;
+    tramo.style.width = `${(bytes / p.total) * 100}%`;
+    barra.append(tramo);
+  }
+
+  const leyenda = document.createElement("div");
+  leyenda.className = "leyenda";
+  const partes =
+    p.del_volumen === null
+      ? [["", `${tamano(usado)} ocupados en la cuenta`], ["libre", `${tamano(p.total - usado)} libres`]]
+      : [
+          ["nuestro", `${tamano(nuestro)} este volumen`],
+          ["", `${tamano(usado - nuestro)} otras cosas de la cuenta`],
+          ["libre", `${tamano(p.total - usado)} libres`],
+        ];
+  for (const [clase, texto] of partes) {
+    const s = document.createElement("span");
+    s.className = clase;
+    s.textContent = texto;
+    leyenda.append(s);
+  }
+  bloque.append(leyenda);
+
+  if (p.en_el_volumen === false) {
+    // Configurado, pero fuera del volumen. Mandarlo a «Revisar» seria mandarlo a enumerar
+    // durante minutos para que no cambiara nada.
+    bloque.append(nota("Este proveedor no forma parte del volumen: aquí no guarda nada."));
+  } else if (p.del_volumen === null) {
+    bloque.append(
+      nota("Cuánto de esto es del volumen no se sabe hasta enumerar: pulsa «Revisar»."),
+    );
+  }
+  return bloque;
+}

@@ -74,6 +74,41 @@ No es `rs(k,0)` porque eso no existe —Reed-Solomon necesita al menos un fragme
 paridad—, y tenerlo como topología propia hace que «sin redundancia» se lea en el nombre en
 vez de esconderse en un cero.
 
+### Cuánto espacio queda
+
+Son **tres cifras distintas** y el sistema no las mezcla, porque mezclarlas sería inventarse
+una medida:
+
+| Cifra | De dónde sale | Qué cuesta |
+|---|---|---|
+| Total de la cuenta | la API de cupo del proveedor | una petición |
+| Ocupado en la cuenta | la misma | (la misma) |
+| Lo que ocupa **este volumen** | enumerar el prefijo de fragmentos | una enumeración |
+
+El cupo no pasa por OpenDAL: OpenDAL abstrae objetos, y el cupo de una cuenta no es un
+objeto. Cada servicio lo cuenta en su sitio —`drive/v3/about` en Google, `/me/drive` en
+Graph, un `PROPFIND` con las propiedades del RFC 4331 en WebDAV, `statvfs` o
+`GetDiskFreeSpaceEx` en un directorio local— así que hay una llamada propia por servicio.
+
+**Un proveedor puede no tener total, y eso no es cero.** Un bucket S3 se factura por lo que
+ocupa y no tiene cupo: ahí la interfaz dice «sin límite declarado» en vez de pintar una barra
+vacía. Y un proveedor que no contesta sale con el motivo, no con una barra a cero, que se
+leería como «aquí no hay nada guardado».
+
+Lo que ocupa el volumen **sale de la enumeración que ya hacía `scrub`**: los seis proveedores
+soportados mandan el tamaño en la misma respuesta que los nombres, así que la cifra no cuesta
+ni una petición más. Por eso viaja en `ScrubReport` y no en un método aparte: medirla por su
+cuenta obligaría a enumerar dos veces para saber dos cosas que llegan juntas. Cuenta todo lo
+que hay bajo el prefijo, no solo lo alcanzable desde la raíz actual, porque lo que cobra el
+proveedor es lo que ocupa y las versiones viejas ocupan.
+
+**Las dos medidas no se restan.** Medido contra OneDrive el 2026-09-22: después de escribir
+20 MiB, la cuenta de uso del proveedor seguía dando la misma cifra un cuarto de hora
+después. La cuenta de la nube va por detrás de lo que uno acaba de escribir, así que el tramo
+de la barra que corresponde a LibreDisk se recorta a lo que el proveedor dice que hay
+ocupado. Sin ese recorte, un volumen recién escrito pintaría más del 100 % de una cuenta que
+está al 6 %. Detalle en [VIABILIDAD.md §9](VIABILIDAD.md#9-primer-volumen-real-sobre-dos-nubes-y-qué-dice-cada-una-de-su-espacio).
+
 ### Metadatos
 
 **La verdad vive en los proveedores, no en el disco local.** El árbol es una estructura

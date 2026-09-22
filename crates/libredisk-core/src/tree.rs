@@ -957,7 +957,8 @@ mod tests {
         v.write_file("/nominas-2026.txt", &b"x"[..]).await.unwrap();
 
         for b in &bs {
-            for clave in b.list("").await.unwrap() {
+            for objeto in b.list("").await.unwrap() {
+                let clave = objeto.clave;
                 let bytes = b.get(&clave).await.unwrap();
                 assert!(
                     !bytes.windows(8).any(|w| w == b"nominas-"),
