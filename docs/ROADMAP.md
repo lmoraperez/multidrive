@@ -155,6 +155,21 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       montaje sobre un proveedor local: leer 7,6 MiB pasa de **2 718 ms a 23 ms**, y contra
       una nube de verdad la diferencia es mucho mayor porque la primera lectura son segundos
 
+- [x] Sincronización automática mientras el volumen está montado. Un hilo de fondo sube lo
+      pendiente cada `--sync-cada` segundos (30 por defecto) y al desmontar se sube lo que
+      quede antes de salir: dejar cosas a medias justo al desmontar sería la peor forma de
+      perderlas, porque el usuario cree que ha terminado.
+      Trabaja sobre una **copia del almacén**, no sobre el volumen: subir puede tardar
+      minutos, y sostener el cerrojo del volumen durante ese rato bloquearía todas las
+      escrituras. La copia comparte cachés y cola, así que ve lo mismo sin estorbar
+- [x] Arreglada una carrera que la sincronización de fondo destapaba: `sync` leía los trozos
+      pendientes y la raíz por separado, así que una escritura colada entre las dos lecturas
+      podía hacer que se publicara una raíz cuyos trozos nuevos no estaban subidos — justo el
+      invariante que la escritura diferida existe para sostener. Ahora se leen de una vez y
+      la raíz solo se publica si no ha cambiado. Hay un test que provoca la carrera de verdad,
+      con un proveedor que cuela una escritura en mitad de la subida, y que **falla si se
+      quita el arreglo**
+
 ## v0.3 — "¿Lo puede usar alguien que no sea yo?"
 - [ ] GUI de escritorio (Tauri): asistente de volumen, salud, cola de subida
 - [ ] **Estimador de coste mensual** por topología y proveedor

@@ -178,6 +178,19 @@ impl WriteQueue {
         tokio::fs::read(self.ruta(id)).await.ok()
     }
 
+    /// Los trozos pendientes y la raiz que espera, **leidos de una vez**.
+    ///
+    /// Tomarlos por separado abre una carrera: si entre una lectura y la otra se cuela una
+    /// escritura, se acabaria publicando una raiz cuyos trozos nuevos todavia no se han
+    /// subido, que es exactamente el invariante que este modulo existe para sostener.
+    pub fn instantanea(&self) -> (Vec<ChunkId>, Option<Root>) {
+        let d = self.lock();
+        (
+            d.trozos.iter().map(|(id, _)| id.clone()).collect(),
+            d.raiz.clone(),
+        )
+    }
+
     pub fn chunks(&self) -> Vec<ChunkId> {
         self.lock()
             .trozos
@@ -261,6 +274,7 @@ pub fn dir_de_volumen(base: impl AsRef<Path>, salt: &[u8]) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::ChunkRef;
 
@@ -431,7 +445,7 @@ mod tests_con_almacen {
 
         let store = ChunkStore::new(layout, como_backends(&cs), clave())
             .unwrap()
-            .with_writeback(WriteQueue::open(&d).await.unwrap());
+            .with_writeback(Arc::new(WriteQueue::open(&d).await.unwrap()));
         let (mut v, _) = Volume::create(store).await.unwrap();
 
         reiniciar(&cs);
@@ -468,7 +482,7 @@ mod tests_con_almacen {
 
         let store = ChunkStore::new(layout, backends.clone(), clave())
             .unwrap()
-            .with_writeback(WriteQueue::open(&d).await.unwrap());
+            .with_writeback(Arc::new(WriteQueue::open(&d).await.unwrap()));
         let mut v = Volume::open(store).await.unwrap();
         v.write_file("/nuevo.txt", &b"todavia no"[..])
             .await
@@ -546,7 +560,7 @@ mod tests_con_almacen {
 
         let store = ChunkStore::new(layout, backends.clone(), clave())
             .unwrap()
-            .with_writeback(WriteQueue::open(&d).await.unwrap());
+            .with_writeback(Arc::new(WriteQueue::open(&d).await.unwrap()));
         let (mut v, _) = Volume::create(store).await.unwrap();
         v.write_file("/a.txt", &b"no va a llegar"[..])
             .await
@@ -584,7 +598,7 @@ mod tests_con_almacen {
         {
             let store = ChunkStore::new(layout, backends.clone(), clave())
                 .unwrap()
-                .with_writeback(WriteQueue::open(&d).await.unwrap());
+                .with_writeback(Arc::new(WriteQueue::open(&d).await.unwrap()));
             let (mut v, _) = Volume::create(store).await.unwrap();
             v.write_file("/a.txt", &b"pendiente"[..]).await.unwrap();
             // Se cierra sin sincronizar, como si se fuera la luz.
@@ -593,7 +607,7 @@ mod tests_con_almacen {
         // Otra ejecucion: la cola se recupera del disco y termina el trabajo.
         let store = ChunkStore::new(layout, backends.clone(), clave())
             .unwrap()
-            .with_writeback(WriteQueue::open(&d).await.unwrap());
+            .with_writeback(Arc::new(WriteQueue::open(&d).await.unwrap()));
         assert!(!store.pendiente().a_salvo());
 
         let informe = store.sync().await.unwrap();
@@ -619,6 +633,8 @@ mod tests_con_almacen {
 #[cfg(test)]
 mod tests_basura {
     use libredisk_raid::Layout;
+
+    use std::sync::Arc;
 
     use super::*;
     use crate::ChunkStore;
@@ -652,7 +668,7 @@ mod tests_basura {
 
         let store = ChunkStore::new(layout, bs.clone(), clave())
             .unwrap()
-            .with_writeback(WriteQueue::open(&d).await.unwrap());
+            .with_writeback(Arc::new(WriteQueue::open(&d).await.unwrap()));
         let (mut v, _) = Volume::create(store).await.unwrap();
 
         // Cinco versiones del mismo fichero, sin sincronizar en medio.
@@ -704,7 +720,7 @@ mod tests_basura {
 
         let store = ChunkStore::new(layout, bs.clone(), clave())
             .unwrap()
-            .with_writeback(WriteQueue::open(&d).await.unwrap());
+            .with_writeback(Arc::new(WriteQueue::open(&d).await.unwrap()));
         let (mut v, _) = Volume::create(store).await.unwrap();
 
         v.write_file("/uno.txt", &b"primero"[..]).await.unwrap();
@@ -748,7 +764,7 @@ mod tests_basura {
 
         let store = ChunkStore::new(layout, bs, clave())
             .unwrap()
-            .with_writeback(cola);
+            .with_writeback(Arc::new(cola));
         let informe = store.sync().await.unwrap();
 
         assert_eq!(
@@ -756,6 +772,161 @@ mod tests_basura {
             "sin raiz, se sube todo por prudencia"
         );
         assert_eq!(informe.subidos, 1);
+
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod tests_carrera {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use async_trait::async_trait;
+    use libredisk_backend::{Backend, BackendError, OpendalBackend};
+    use libredisk_raid::Layout;
+
+    use super::*;
+    use crate::testutil::{backends, clave};
+    use crate::tree::{ROOT_KEY, Volume};
+    use crate::{ChunkRef, ChunkStore};
+
+    fn rs() -> Layout {
+        Layout::ReedSolomon { k: 4, m: 2 }
+    }
+
+    fn dir(nombre: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "libredisk-race-{}-{nombre}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+        d
+    }
+
+    /// Proveedor que, en mitad de una subida, mete una escritura por detras.
+    ///
+    /// Es la forma de reproducir lo que pasa de verdad con `mount --escritura`: alguien
+    /// escribe mientras el sincronizador de fondo esta subiendo.
+    struct EscribeEnMedio {
+        inner: OpendalBackend,
+        cola: Arc<WriteQueue>,
+        ya: AtomicBool,
+    }
+
+    #[async_trait]
+    impl Backend for EscribeEnMedio {
+        fn name(&self) -> &str {
+            self.inner.name()
+        }
+        async fn put(&self, key: &str, data: Vec<u8>) -> Result<(), BackendError> {
+            if key.starts_with("chunks/") && !self.ya.swap(true, Ordering::SeqCst) {
+                // Una escritura nueva: un trozo mas y una raiz mas moderna, ninguno de los
+                // dos subido todavia.
+                let id = ChunkId::of(b"llegado tarde");
+                let _ = self.cola.stage(&id, b"sellado que no sube aun").await;
+                let _ = self
+                    .cola
+                    .stage_root(Root {
+                        generation: 999,
+                        node: ChunkRef {
+                            id,
+                            plain_len: 13,
+                            sealed_len: 23,
+                        },
+                    })
+                    .await;
+            }
+            self.inner.put(key, data).await
+        }
+        async fn get(&self, key: &str) -> Result<Vec<u8>, BackendError> {
+            self.inner.get(key).await
+        }
+        async fn delete(&self, key: &str) -> Result<(), BackendError> {
+            self.inner.delete(key).await
+        }
+        async fn exists(&self, key: &str) -> Result<bool, BackendError> {
+            self.inner.exists(key).await
+        }
+        async fn list(&self, prefix: &str) -> Result<Vec<String>, BackendError> {
+            self.inner.list(prefix).await
+        }
+    }
+
+    /// Si entra una escritura mientras se sube, la raiz **no** se publica.
+    ///
+    /// Publicarla dejaria el volumen apuntando a un nodo que no esta en ningun proveedor:
+    /// exactamente el invariante que la escritura diferida existe para sostener. Leer los
+    /// trozos y la raiz por separado abria esa ventana; `instantanea` la cierra.
+    #[tokio::test]
+    async fn una_escritura_en_mitad_de_la_subida_no_publica_una_raiz_incompleta() {
+        let d = dir("en-medio");
+        let layout = rs();
+        let cola = Arc::new(WriteQueue::open(&d).await.unwrap());
+
+        // Un proveedor cuela la escritura; los demas son normales.
+        let bs: Vec<Arc<dyn Backend>> = (0..layout.shard_count())
+            .map(|i| {
+                let mem = OpendalBackend::memory(format!("proveedor-{i}")).unwrap();
+                if i == 0 {
+                    Arc::new(EscribeEnMedio {
+                        inner: mem,
+                        cola: Arc::clone(&cola),
+                        ya: AtomicBool::new(false),
+                    }) as Arc<dyn Backend>
+                } else {
+                    Arc::new(mem) as Arc<dyn Backend>
+                }
+            })
+            .collect();
+
+        let store = ChunkStore::new(layout, bs.clone(), clave())
+            .unwrap()
+            .with_writeback(Arc::clone(&cola));
+        let (mut v, _) = Volume::create(store).await.unwrap();
+        v.write_file("/a.txt", &b"contenido"[..]).await.unwrap();
+
+        let informe = v.store().sync().await.unwrap();
+
+        assert!(
+            !informe.raiz_publicada,
+            "la raiz cambio durante la subida: publicarla apuntaria a un nodo que no esta arriba"
+        );
+        for b in &bs {
+            assert!(
+                !b.exists(ROOT_KEY).await.unwrap(),
+                "no puede haber raiz publicada"
+            );
+        }
+        assert!(
+            cola.root().is_some(),
+            "la raiz nueva se queda esperando al siguiente sync"
+        );
+
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Y sin nadie escribiendo por detras, la raiz si se publica: el arreglo no puede
+    /// bloquear el caso normal.
+    #[tokio::test]
+    async fn sin_carrera_la_raiz_se_publica_igual() {
+        let d = dir("sin-carrera");
+        let layout = rs();
+        let bs = backends(layout.shard_count());
+
+        let store = ChunkStore::new(layout, bs, clave())
+            .unwrap()
+            .with_writeback(Arc::new(WriteQueue::open(&d).await.unwrap()));
+        let (mut v, _) = Volume::create(store).await.unwrap();
+        v.write_file("/a.txt", &b"contenido"[..]).await.unwrap();
+
+        let informe = v.store().sync().await.unwrap();
+        assert!(informe.raiz_publicada);
+        assert!(v.store().pendiente().a_salvo());
 
         let _ = std::fs::remove_dir_all(&d);
     }

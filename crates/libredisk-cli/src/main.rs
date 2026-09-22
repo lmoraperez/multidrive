@@ -117,6 +117,9 @@ enum Command {
         /// Lo que se escriba queda **solo en esta maquina** hasta `libredisk sync`.
         #[arg(long)]
         escritura: bool,
+        /// Cada cuantos segundos sube lo pendiente, con `--escritura`.
+        #[arg(long, default_value_t = 30)]
+        sync_cada: u64,
     },
     /// Reconstruye el volumen a partir de lo que quede en los proveedores.
     ///
@@ -189,7 +192,8 @@ async fn main() -> Result<()> {
             cache_mb,
             disco_mb,
             escritura,
-        } => volumen::mount(&punto, cache_mb, disco_mb, escritura).await,
+            sync_cada,
+        } => volumen::mount(&punto, cache_mb, disco_mb, escritura, sync_cada).await,
         Command::Rescue { adoptar } => volumen::rescue(adoptar.as_deref()).await,
         Command::Header(HeaderCmd::Export { fichero }) => volumen::header_export(&fichero).await,
         Command::Header(HeaderCmd::Import { fichero }) => volumen::header_import(&fichero).await,

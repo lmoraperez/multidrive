@@ -122,7 +122,7 @@ async fn almacen_todo(
         let cola = WriteQueue::open(&dir)
             .await
             .with_context(|| format!("no se pudo abrir la cola en '{}'", dir.display()))?;
-        store = store.with_writeback(cola);
+        store = store.with_writeback(std::sync::Arc::new(cola));
     }
     Ok(store)
 }
@@ -632,12 +632,24 @@ pub async fn header_import(origen: &str) -> Result<()> {
 }
 
 /// Monta el volumen como una unidad del sistema.
-pub async fn mount(punto: &str, cache_mb: usize, disco_mb: usize, escritura: bool) -> Result<()> {
+pub async fn mount(
+    punto: &str,
+    cache_mb: usize,
+    disco_mb: usize,
+    escritura: bool,
+    sync_cada: u64,
+) -> Result<()> {
     // Montar en escritura difiere siempre: cada `write` del sistema no puede ser una subida
-    // sincrona a varias nubes. Lo pendiente se sube luego con `libredisk sync`.
+    // sincrona a varias nubes. Lo pendiente lo sube el sincronizador de fondo.
     let store = almacen_todo(cache_mb * 1024 * 1024, disco_mb * 1024 * 1024, escritura).await?;
+    // Una copia del almacen para el sincronizador: comparte cola y caches con el volumen,
+    // pero no pasa por su cerrojo, asi que subir no bloquea las escrituras.
+    let para_sync = store.clone();
     let volumen = Arc::new(std::sync::RwLock::new(Volume::open(store).await?));
     let montaje = libredisk_mount::montar(Arc::clone(&volumen), punto, !escritura)?;
+
+    let sincronizador = escritura
+        .then(|| Sincronizador::arrancar(para_sync, std::time::Duration::from_secs(sync_cada)));
 
     println!("montado en {punto}");
     println!(
@@ -654,7 +666,8 @@ pub async fn mount(punto: &str, cache_mb: usize, disco_mb: usize, escritura: boo
     }
     println!();
     if escritura {
-        println!("Lo que escribas queda SOLO EN ESTA MAQUINA hasta que ejecutes `libredisk sync`.");
+        println!("Lo que escribas queda SOLO EN ESTA MAQUINA hasta que suba, cada {sync_cada} s.");
+        println!("Al desmontar se sube lo que quede antes de salir.");
     } else {
         println!("La primera lectura de cada trozo va a la nube; las siguientes no.");
     }
@@ -662,9 +675,41 @@ pub async fn mount(punto: &str, cache_mb: usize, disco_mb: usize, escritura: boo
 
     tokio::signal::ctrl_c().await?;
     drop(montaje);
+    drop(sincronizador);
 
     println!();
     println!("desmontado");
+
+    // Una ultima subida antes de salir: dejar cosas a medias justo al desmontar seria la
+    // peor forma de perderlas, porque el usuario cree que ha terminado.
+    if escritura {
+        let queda = volumen
+            .read()
+            .expect("el montaje ya termino")
+            .store()
+            .pendiente();
+        if !queda.a_salvo() {
+            println!();
+            println!(
+                "subiendo lo que queda: {} trozo(s), {}...",
+                queda.trozos,
+                tamano(queda.bytes)
+            );
+            let store = volumen
+                .read()
+                .expect("el montaje ya termino")
+                .store()
+                .clone();
+            match store.sync().await {
+                Ok(i) if i.todo_arriba() => println!("todo a salvo en los proveedores"),
+                Ok(i) => println!(
+                    "AVISO: quedan {} trozo(s) sin subir. Ejecuta `libredisk sync`.",
+                    i.fallidos.len()
+                ),
+                Err(e) => println!("AVISO: no se pudo subir: {e}. Ejecuta `libredisk sync`."),
+            }
+        }
+    }
     let volumen = volumen.read().expect("el montaje ya termino");
     if let Some(s) = volumen.store().cache_stats() {
         let tasa = s
@@ -792,4 +837,84 @@ pub async fn sync() -> Result<()> {
         println!("Todo a salvo en los proveedores.");
     }
     Ok(())
+}
+
+/// Sincronizador de fondo para el montaje en escritura.
+///
+/// Trabaja sobre una **copia del almacen**, no sobre el volumen. Eso no es un rodeo: subir
+/// puede tardar minutos, y si sostuviera el cerrojo del volumen durante ese rato bloquearia
+/// todas las escrituras del sistema de ficheros. La copia comparte caches y cola con el
+/// original, asi que ve lo mismo sin estorbar.
+///
+/// Corre en un hilo propio, fuera del runtime, por el mismo motivo que los metodos de WinFsp:
+/// bloquea sobre el, y hacerlo desde un hilo del runtime seria un panico.
+struct Sincronizador {
+    parar: Arc<std::sync::atomic::AtomicBool>,
+    hilo: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Sincronizador {
+    fn arrancar(store: ChunkStore, cada: std::time::Duration) -> Self {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let parar = Arc::new(AtomicBool::new(false));
+        let rt = tokio::runtime::Handle::current();
+
+        let hilo = std::thread::spawn({
+            let parar = Arc::clone(&parar);
+            move || {
+                while !parar.load(Ordering::Relaxed) {
+                    // Se duerme a trocitos para poder parar enseguida al desmontar, en vez
+                    // de tener que esperar a que se cumpla el intervalo entero.
+                    let mut queda = cada;
+                    let paso = std::time::Duration::from_millis(200);
+                    while queda > std::time::Duration::ZERO && !parar.load(Ordering::Relaxed) {
+                        let dormir = paso.min(queda);
+                        std::thread::sleep(dormir);
+                        queda -= dormir;
+                    }
+                    if parar.load(Ordering::Relaxed) {
+                        return;
+                    }
+
+                    if store.pendiente().a_salvo() {
+                        continue;
+                    }
+                    match rt.block_on(store.sync()) {
+                        Ok(i) if i.subidos > 0 || i.descartados > 0 => {
+                            println!(
+                                "  [sync] {} subidos ({}), {} descartados{}",
+                                i.subidos,
+                                tamano(i.bytes),
+                                i.descartados,
+                                if i.raiz_publicada {
+                                    ", raiz publicada"
+                                } else {
+                                    ""
+                                }
+                            );
+                        }
+                        Ok(_) => {}
+                        // Un fallo no para el montaje: lo pendiente sigue en disco y el
+                        // siguiente intento lo recoge. Callarselo si seria grave.
+                        Err(e) => println!("  [sync] fallo, se reintentara: {e}"),
+                    }
+                }
+            }
+        });
+
+        Self {
+            parar,
+            hilo: Some(hilo),
+        }
+    }
+}
+
+impl Drop for Sincronizador {
+    fn drop(&mut self) {
+        self.parar.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(h) = self.hilo.take() {
+            let _ = h.join();
+        }
+    }
 }
