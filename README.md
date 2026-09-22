@@ -112,7 +112,8 @@ no quedan en claro en la máquina.
 
 En Linux, `libredisk mount /ruta/vacia` hace lo mismo con FUSE, y está probado de punta a
 punta: leer y escribir con el contenido intacto, renombrar carpetas con cosas dentro, y los
-códigos de error que `rm -r` necesita para no rendirse.
+códigos de error que `rm -r` necesita para no rendirse. Lo comprueba CI en cada cambio,
+montando de verdad.
 
 > En un contenedor **LXC sin privilegios** hace falta root para montar. No es cosa del
 > adaptador: su `fusermount3` no acepta el descriptor que se le pasa, y como root ese ayudante
