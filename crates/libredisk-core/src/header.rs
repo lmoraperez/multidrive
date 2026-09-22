@@ -19,7 +19,10 @@ use futures::future::join_all;
 use libredisk_backend::{Backend, BackendError};
 use serde::{Deserialize, Serialize};
 
-use crate::CoreError;
+use libredisk_crypto::MasterKey;
+use libredisk_raid::Layout;
+
+use crate::{ChunkStore, CoreError};
 
 /// Clave conocida donde vive la cabecera, en claro, replicada en todos los proveedores.
 pub const HEADER_KEY: &str = "libredisk-volume.json";
@@ -58,6 +61,44 @@ pub struct Header {
 }
 
 impl Header {
+    /// Construye el almacen que describe esta cabecera.
+    ///
+    /// Reune las cuatro cosas que hay que acertar a la vez para poder leer un volumen: que los
+    /// proveedores sean los suyos y en su orden, que la topologia sea la declarada, que la
+    /// clave salga de **esta** sal, y que se busquen los fragmentos del reparto que vale.
+    ///
+    /// Vive aqui y no en quien llama porque olvidarse de una sola de las cuatro no da un error
+    /// limpio: da un volumen que no se abre, o peor, uno que busca los fragmentos donde ya no
+    /// estan. Ya paso con el reparto, que se quedo sin aplicar en tres sitios a la vez.
+    pub fn almacen(
+        &self,
+        backends: Vec<Arc<dyn Backend>>,
+        frase: &str,
+        cache_bytes: usize,
+    ) -> Result<ChunkStore, CoreError> {
+        self.check_backends(&backends)?;
+        let layout: Layout = self.layout.parse().map_err(|_| {
+            CoreError::BackendMismatch(format!(
+                "la cabecera declara una topologia invalida: {}",
+                self.layout
+            ))
+        })?;
+        let key = MasterKey::derive(frase, &self.salt)?;
+        Ok(ChunkStore::new(layout, backends, key)?
+            .with_cache(cache_bytes)
+            .with_reparto(self.reparto))
+    }
+
+    /// La topologia que declara, ya interpretada.
+    pub fn layout(&self) -> Result<Layout, CoreError> {
+        self.layout.parse().map_err(|_| {
+            CoreError::BackendMismatch(format!(
+                "la cabecera declara una topologia invalida: {}",
+                self.layout
+            ))
+        })
+    }
+
     /// Comprueba que estos proveedores son los del volumen, en el mismo orden.
     pub fn check_backends(&self, backends: &[Arc<dyn Backend>]) -> Result<(), CoreError> {
         let actuales: Vec<&str> = backends.iter().map(|b| b.name()).collect();

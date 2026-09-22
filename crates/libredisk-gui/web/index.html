@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>LibreDisk</title>
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+
+<header>
+  <h1>Libre<span>Disk</span></h1>
+  <p id="cabecera">Comprobando…</p>
+</header>
+
+<!-- Antes de abrir: que hay configurado y la frase de paso. -->
+<section id="entrada" hidden>
+  <div id="aviso" class="aviso" hidden></div>
+
+  <dl id="previo"></dl>
+
+  <form id="formulario">
+    <label for="frase">Frase de paso</label>
+    <input type="password" id="frase" autocomplete="off" spellcheck="false" autofocus required>
+    <p class="nota">
+      No sale de este programa, no se guarda y no se escribe en ningún registro.
+      Si la pierdes, se pierde el volumen: no hay recuperación.
+    </p>
+    <button type="submit" id="abrir">Abrir volumen</button>
+  </form>
+</section>
+
+<!-- Abierto: estado, salud y lo que todavía no ha subido. -->
+<section id="panel" hidden>
+  <div class="fila">
+    <h2>Volumen</h2>
+    <button id="cerrar" class="secundario">Cerrar</button>
+  </div>
+  <dl id="resumen"></dl>
+
+  <div class="fila">
+    <h2>Salud</h2>
+    <button id="revisar">Revisar</button>
+  </div>
+  <div id="salud"><p class="nota">Sin revisar todavía.</p></div>
+
+  <h2>Pendiente de subir</h2>
+  <div id="pendiente"><p class="nota">Consultando…</p></div>
+</section>
+
+<script src="app.js"></script>
+</body>
+</html>

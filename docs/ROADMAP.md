@@ -228,7 +228,25 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       quita el arreglo**
 
 ## v0.3 — "¿Lo puede usar alguien que no sea yo?"
-- [ ] GUI de escritorio (Tauri): asistente de volumen, salud, cola de subida
+- [x] GUI de escritorio en Tauri, **sin Node**. El frontend es HTML, CSS y JavaScript a mano:
+      Tauri no obliga a usar un empaquetador, y meter npm traería un segundo ecosistema de
+      dependencias a un proyecto que acaba de fijar `Cargo.lock` precisamente para no tenerlas
+      sueltas. También deja la construcción y CI con una sola herramienta
+- [x] Enseña lo que a la línea de órdenes le cuesta enseñar: topología, proveedores, margen de
+      caídas, sobrecoste, reparto, salud del volumen y —lo que más se malinterpreta— **qué hay
+      escrito solo en esta máquina** y todavía sin subir
+- [x] La salud reparte los trozos en tres categorías **excluyentes**, y el orden importa: un
+      trozo sin fragmentos suficientes ya no se lee, y llamarlo «degradado» sería el peor error
+      de esa pantalla, porque degradado invita a esperar y perdido a actuar. Con algún
+      proveedor sin enumerar se dice que las cifras son un mínimo y no una medida
+- [x] La frase de paso se escribe en la ventana, no sale del proceso, no se guarda y el campo
+      se vacía en cuanto deja de hacer falta. Al cerrar el volumen se suelta la clave derivada
+- [x] Las capacidades de Tauri quedan en lo mínimo: sin sistema de ficheros, sin red y sin
+      shell desde el webview. Todo lo que hace falta pasa por las órdenes de este binario, que
+      ya sabe lo que puede tocar
+- [ ] Asistente de creación de volumen. Es la parte que toca credenciales de nube, y merece
+      pensarse aparte: un formulario que las guarda mal es peor que no tener formulario
+- [ ] Montar y desmontar desde la ventana
 - [ ] **Estimador de coste mensual** por topología y proveedor
 - [ ] Indicador honesto de "guardado localmente" vs "a salvo en la nube"
 
