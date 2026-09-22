@@ -32,7 +32,7 @@ use fuser::{
 use libredisk_core::tree::{Kind, Volume};
 use tokio::runtime::Handle;
 
-use crate::capacidad::Capacidad;
+use crate::capacidad::{Capacidad, DESCONOCIDO};
 
 /// Nombre con el que aparece en `mount` y en `df`.
 const NOMBRE_FS: &str = "libredisk";
@@ -713,11 +713,11 @@ impl fuser::Filesystem for LibreDiskFuse {
         // lo que ocupa el volumen: `statfs` tiene sitio para dos cifras y aqui hay tres. El
         // desglose esta en `libredisk espacio`.
         //
-        // Sin medida todavia se declara un terabyte, que es lo que hacen los sistemas de
-        // ficheros de red cuando no pueden saberlo. Cero seria peor: significa disco lleno, y
-        // ningun programa volveria a intentar escribir.
-        const TERA: u64 = 1 << 40;
-        let (total, libre) = self.capacidad.leer().unwrap_or((TERA, TERA));
+        // Sin medida todavia se declara lo mismo que declara el adaptador de Windows: un
+        // numero deliberadamente absurdo. El terabyte fijo que habia aqui antes era peor
+        // precisamente por ser creible: un tamano que se confunde con una medida es mas
+        // enganoso que uno que se ve a la legua que no lo es.
+        let (total, libre) = self.capacidad.leer().unwrap_or((DESCONOCIDO, DESCONOCIDO));
         let bloques = |bytes: u64| bytes / BLOQUE as u64;
         reply.statfs(
             bloques(total),
