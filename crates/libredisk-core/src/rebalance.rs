@@ -197,7 +197,7 @@ impl ChunkStore {
     ) -> Result<Ampliado, CoreError> {
         // Volver a lanzarlo tras una interrupcion no debe repetir el trabajo hecho.
         let ya = join_all(nuevos.iter().enumerate().map(|(j, b)| {
-            let clave = chunk.id.shard_key(cuantos_antes + j);
+            let clave = chunk.id.shard_key(self.reparto(), cuantos_antes + j);
             async move { b.exists(&clave).await.unwrap_or(false) }
         }))
         .await;
@@ -228,7 +228,7 @@ impl ChunkStore {
                 return None;
             }
             let indice = cuantos_antes + j;
-            let clave = chunk.id.shard_key(indice);
+            let clave = chunk.id.shard_key(self.reparto(), indice);
             let datos = todos[indice].clone();
             Some(async move {
                 let n = datos.len() as u64;
@@ -248,6 +248,170 @@ impl ChunkStore {
             }
         }
         Ok(Ampliado::Escritos { cuantos, bytes })
+    }
+}
+
+/// Lo que paso al reescribir el volumen en un reparto nuevo.
+#[derive(Debug, Default, Clone)]
+pub struct InformeReparto {
+    pub trozos: usize,
+    /// Los que ya estaban enteros en el reparto nuevo, de una ejecucion anterior.
+    pub ya_estaban: usize,
+    pub fragmentos: usize,
+    pub bytes: u64,
+    pub fallidos: Vec<(ChunkId, String)>,
+}
+
+impl InformeReparto {
+    pub fn completo(&self) -> bool {
+        self.fallidos.is_empty()
+    }
+}
+
+impl ChunkStore {
+    /// Reescribe cada trozo con otra topologia, en un **reparto nuevo**.
+    ///
+    /// Lee con la topologia y el reparto de este almacen, y escribe con `destino` bajo
+    /// `reparto_nuevo`, que tiene que ser distinto del actual. Los fragmentos viejos no se
+    /// tocan: viven en claves distintas y son los que sostienen el volumen mientras esto
+    /// corre, que puede ser horas.
+    ///
+    /// `todos` son **todos** los proveedores del volumen nuevo, viejos y nuevos, en el orden
+    /// en que va a declararlos la cabecera.
+    ///
+    /// No toca la cabecera. Publicarla es lo que hace efectivo el cambio, y solo debe hacerse
+    /// con el informe completo: con un trozo a medias, el volumen nuevo no se podria leer
+    /// entero.
+    pub async fn reescribir_reparto(
+        &self,
+        destino: Layout,
+        reparto_nuevo: u32,
+        todos: &[Arc<dyn Backend>],
+        trozos: &[ChunkRef],
+    ) -> Result<InformeReparto, CoreError> {
+        if reparto_nuevo == self.reparto() {
+            return Err(CoreError::Rebalanceo(format!(
+                "el reparto nuevo tiene que ser distinto del actual ({reparto_nuevo}), o lo \
+                 escrito pisaria lo que se esta leyendo"
+            )));
+        }
+        if todos.len() != destino.shard_count() {
+            return Err(CoreError::Rebalanceo(format!(
+                "{destino} necesita {} proveedores y se han dado {}",
+                destino.shard_count(),
+                todos.len()
+            )));
+        }
+
+        let mut vistos = std::collections::BTreeSet::new();
+        let unicos: Vec<&ChunkRef> = trozos
+            .iter()
+            .filter(|c| vistos.insert(c.id.clone()))
+            .collect();
+
+        let mut informe = InformeReparto {
+            trozos: unicos.len(),
+            ..Default::default()
+        };
+
+        for lote in unicos.chunks(A_LA_VEZ) {
+            let trabajos = lote
+                .iter()
+                .map(|c| self.reescribir_uno(destino, reparto_nuevo, todos, c));
+            for (chunk, resultado) in lote.iter().zip(join_all(trabajos).await) {
+                match resultado {
+                    Ok(Ampliado::YaEstaba) => informe.ya_estaban += 1,
+                    Ok(Ampliado::Escritos { cuantos, bytes }) => {
+                        informe.fragmentos += cuantos;
+                        informe.bytes += bytes;
+                    }
+                    Err(e) => informe.fallidos.push((chunk.id.clone(), e.to_string())),
+                }
+            }
+        }
+        Ok(informe)
+    }
+
+    async fn reescribir_uno(
+        &self,
+        destino: Layout,
+        reparto_nuevo: u32,
+        todos: &[Arc<dyn Backend>],
+        chunk: &ChunkRef,
+    ) -> Result<Ampliado, CoreError> {
+        let ya = join_all(todos.iter().enumerate().map(|(i, b)| {
+            let clave = chunk.id.shard_key(reparto_nuevo, i);
+            async move { b.exists(&clave).await.unwrap_or(false) }
+        }))
+        .await;
+        if ya.iter().all(|x| *x) {
+            return Ok(Ampliado::YaEstaba);
+        }
+
+        // Con el blob sellado original, no volviendo a cifrar: el nonce es aleatorio y un
+        // sellado nuevo daria otros bytes. Aqui no romperia nada --se reescribe todo-- pero
+        // el trozo dejaria de ser el mismo objeto y la deduplicacion por contenido se
+        // perderia.
+        let (sellado, _) = self.recover(chunk).await?;
+        let nuevos = libredisk_raid::split(destino, &sellado)?;
+
+        let subidas = todos
+            .iter()
+            .enumerate()
+            .zip(ya)
+            .filter_map(|((i, b), y)| if y { None } else { Some((i, b)) })
+            .map(|(i, b)| {
+                let clave = chunk.id.shard_key(reparto_nuevo, i);
+                let datos = nuevos[i].clone();
+                async move {
+                    let n = datos.len() as u64;
+                    b.put(&clave, datos).await.map(|()| n)
+                }
+            });
+
+        let mut cuantos = 0;
+        let mut bytes = 0;
+        for r in join_all(subidas).await {
+            match r {
+                Ok(n) => {
+                    cuantos += 1;
+                    bytes += n;
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(Ampliado::Escritos { cuantos, bytes })
+    }
+
+    /// Borra los fragmentos de un reparto que ya no vale.
+    ///
+    /// Va aparte y despues de publicar la cabecera **a proposito**: hasta ese momento son los
+    /// unicos que sostienen el volumen. Perder esta pasada no rompe nada, solo deja espacio
+    /// ocupado que se puede recuperar volviendo a lanzarla.
+    pub async fn olvidar_reparto(
+        &self,
+        viejo: u32,
+        cuantos: usize,
+        todos: &[Arc<dyn Backend>],
+        trozos: &[ChunkRef],
+    ) -> usize {
+        let mut vistos = std::collections::BTreeSet::new();
+        let unicos: Vec<&ChunkRef> = trozos
+            .iter()
+            .filter(|c| vistos.insert(c.id.clone()))
+            .collect();
+
+        let mut borrados = 0;
+        for lote in unicos.chunks(A_LA_VEZ) {
+            let trabajos = lote.iter().flat_map(|c| {
+                todos.iter().take(cuantos).enumerate().map(move |(i, b)| {
+                    let clave = c.id.shard_key(viejo, i);
+                    async move { b.delete(&clave).await.is_ok() }
+                })
+            });
+            borrados += join_all(trabajos).await.into_iter().filter(|x| *x).count();
+        }
+        borrados
     }
 }
 
@@ -415,12 +579,12 @@ mod tests_ampliar {
 
         let claves: Vec<String> = trozos
             .iter()
-            .flat_map(|c| (0..3).map(move |i| c.id.shard_key(i)))
+            .flat_map(|c| (0..3).map(move |i| c.id.shard_key(0, i)))
             .collect();
         let mut sellados = Vec::new();
         for (i, b) in bs.iter().enumerate() {
             for c in &trozos {
-                sellados.push(b.get(&c.id.shard_key(i)).await.unwrap());
+                sellados.push(b.get(&c.id.shard_key(0, i)).await.unwrap());
             }
         }
 
@@ -437,7 +601,7 @@ mod tests_ampliar {
         let mut despues = Vec::new();
         for (i, b) in bs.iter().enumerate() {
             for c in &trozos {
-                despues.push(b.get(&c.id.shard_key(i)).await.unwrap());
+                despues.push(b.get(&c.id.shard_key(0, i)).await.unwrap());
             }
         }
         assert_eq!(sellados, despues, "se toco algun fragmento que ya estaba");
@@ -503,5 +667,145 @@ mod tests_ampliar {
             .await
             .unwrap_err();
         assert!(e.to_string().contains("proveedores mas"), "{e}");
+    }
+
+    /// Reescribir en otro reparto **no toca** los fragmentos del viejo.
+    ///
+    /// Es lo que sostiene el volumen durante las horas que tarda: mientras la cabecera no
+    /// cambie, se sigue leyendo con la topologia vieja y sus fragmentos.
+    #[tokio::test]
+    async fn el_reparto_viejo_sigue_intacto_mientras_se_escribe_el_nuevo() {
+        let antes = Layout::ReedSolomon { k: 2, m: 1 };
+        let datos: Vec<u8> = (0..30_000u32).map(|i| (i % 251) as u8).collect();
+        let (bs, v) = volumen_con(antes, &datos).await;
+        let (trozos, _) = v.walk().await;
+
+        let antiguos = fragmentos(&bs, &trozos, 0, 3).await;
+
+        let mut todos = bs.clone();
+        todos.push(proveedor("proveedor-3"));
+        let destino = Layout::ReedSolomon { k: 3, m: 1 };
+
+        let informe = v
+            .store()
+            .reescribir_reparto(destino, 1, &todos, &trozos)
+            .await
+            .unwrap();
+        assert!(informe.completo(), "{:?}", informe.fallidos);
+        assert!(informe.fragmentos > 0);
+
+        assert_eq!(
+            antiguos,
+            fragmentos(&bs, &trozos, 0, 3).await,
+            "se toco algun fragmento del reparto viejo"
+        );
+
+        // Y el volumen se sigue leyendo con la topologia vieja, que es lo que pasaria si esto
+        // se interrumpiera aqui.
+        let raiz = v.root().clone();
+        let vieja = Volume::at(store_sobre(&bs, antes), raiz.clone());
+        assert_eq!(vieja.read_at("/dato.bin", 0, 100_000).await.unwrap(), datos);
+
+        // Con el reparto nuevo tambien, que es lo que se publicaria.
+        let nueva = Volume::at(store_sobre(&todos, destino).with_reparto(1), raiz);
+        assert_eq!(nueva.read_at("/dato.bin", 0, 100_000).await.unwrap(), datos);
+    }
+
+    /// Y con el reparto nuevo se gana el espacio prometido: `rs(3,1)` sobre cuatro tolera una
+    /// caida, igual que `rs(2,1)` sobre tres, pero con un sobrecoste menor.
+    #[tokio::test]
+    async fn tras_reescribir_se_sobrevive_a_la_caida_prometida() {
+        let antes = Layout::ReedSolomon { k: 2, m: 1 };
+        let datos: Vec<u8> = (0..30_000u32).map(|i| (i % 241) as u8).collect();
+        let (bs, v) = volumen_con(antes, &datos).await;
+        let (trozos, _) = v.walk().await;
+        let raiz = v.root().clone();
+
+        let mut todos = bs.clone();
+        todos.push(proveedor("proveedor-3"));
+        let destino = Layout::ReedSolomon { k: 3, m: 1 };
+        v.store()
+            .reescribir_reparto(destino, 1, &todos, &trozos)
+            .await
+            .unwrap();
+
+        let mutilados: Vec<Arc<dyn Backend>> = todos
+            .iter()
+            .enumerate()
+            .map(|(i, b)| {
+                if i == 1 {
+                    proveedor(b.name())
+                } else {
+                    Arc::clone(b)
+                }
+            })
+            .collect();
+        let v2 = Volume::at(store_sobre(&mutilados, destino).with_reparto(1), raiz);
+        assert_eq!(v2.read_at("/dato.bin", 0, 100_000).await.unwrap(), datos);
+    }
+
+    /// Olvidar el reparto viejo libera el espacio y no toca el nuevo.
+    #[tokio::test]
+    async fn olvidar_el_reparto_viejo_deja_el_nuevo_entero() {
+        let antes = Layout::ReedSolomon { k: 2, m: 1 };
+        let datos: Vec<u8> = (0..20_000u32).map(|i| (i % 233) as u8).collect();
+        let (bs, v) = volumen_con(antes, &datos).await;
+        let (trozos, _) = v.walk().await;
+        let raiz = v.root().clone();
+
+        let mut todos = bs.clone();
+        todos.push(proveedor("proveedor-3"));
+        let destino = Layout::ReedSolomon { k: 3, m: 1 };
+        v.store()
+            .reescribir_reparto(destino, 1, &todos, &trozos)
+            .await
+            .unwrap();
+
+        let borrados = v.store().olvidar_reparto(0, 3, &todos, &trozos).await;
+        assert!(borrados > 0, "no borro ningun fragmento viejo");
+        for c in &trozos {
+            for (i, b) in bs.iter().enumerate() {
+                assert!(
+                    !b.exists(&c.id.shard_key(0, i)).await.unwrap(),
+                    "quedo un fragmento del reparto viejo"
+                );
+            }
+        }
+
+        let v2 = Volume::at(store_sobre(&todos, destino).with_reparto(1), raiz);
+        assert_eq!(v2.read_at("/dato.bin", 0, 100_000).await.unwrap(), datos);
+    }
+
+    /// Reescribir sobre el mismo reparto pisaria lo que se esta leyendo.
+    #[tokio::test]
+    async fn no_se_puede_reescribir_sobre_el_reparto_actual() {
+        let antes = Layout::ReedSolomon { k: 2, m: 1 };
+        let (bs, v) = volumen_con(antes, b"algo").await;
+        let mut todos = bs.clone();
+        todos.push(proveedor("proveedor-3"));
+        let (trozos, _) = v.walk().await;
+
+        let e = v
+            .store()
+            .reescribir_reparto(Layout::ReedSolomon { k: 3, m: 1 }, 0, &todos, &trozos)
+            .await
+            .unwrap_err();
+        assert!(e.to_string().contains("distinto del actual"), "{e}");
+    }
+
+    /// Los fragmentos de `cuantos` proveedores para un reparto dado.
+    async fn fragmentos(
+        bs: &[Arc<dyn Backend>],
+        trozos: &[ChunkRef],
+        reparto: u32,
+        cuantos: usize,
+    ) -> Vec<Option<Vec<u8>>> {
+        let mut out = Vec::new();
+        for (i, b) in bs.iter().take(cuantos).enumerate() {
+            for c in trozos {
+                out.push(b.get(&c.id.shard_key(reparto, i)).await.ok());
+            }
+        }
+        out
     }
 }

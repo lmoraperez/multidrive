@@ -135,8 +135,26 @@ impl ChunkId {
     ///
     /// Se antepone un prefijo de dos caracteres del hash porque muchos almacenes degradan
     /// al acumular millones de objetos en un mismo "directorio".
-    pub fn shard_key(&self, index: usize) -> String {
-        format!("{SHARD_PREFIX}{}/{}.{index:03}", &self.0[..2], self.0)
+    ///
+    /// `reparto` distingue como esta repartido el trozo. Cambiar la topologia de forma que
+    /// los fragmentos se muevan --subir `k` en Reed-Solomon-- obliga a escribir los nuevos
+    /// **sin destruir los viejos**, porque el volumen se sigue leyendo mientras tanto. Un
+    /// reparto distinto son claves distintas, asi que las dos versiones conviven hasta que la
+    /// cabecera decide cual vale.
+    ///
+    /// El reparto 0 no lleva marca, y no por ahorrar bytes: es el formato que ya existia, y
+    /// los volumenes creados antes de que esto existiera tienen que seguir abriendose.
+    pub fn shard_key(&self, reparto: u32, index: usize) -> String {
+        let marca = if reparto == 0 {
+            String::new()
+        } else {
+            format!(".r{reparto}")
+        };
+        format!(
+            "{SHARD_PREFIX}{}/{}{marca}.{index:03}",
+            &self.0[..2],
+            self.0
+        )
     }
 }
 
@@ -224,6 +242,8 @@ impl ScrubReport {
 #[derive(Clone)]
 pub struct ChunkStore {
     layout: Layout,
+    /// Que reparto de fragmentos es el bueno. Ver [`ChunkId::shard_key`].
+    reparto: u32,
     backends: Vec<Arc<dyn Backend>>,
     key: MasterKey,
     /// Cache de lectura en memoria. Sin ella cada operacion del sistema de ficheros va a la
@@ -265,6 +285,7 @@ impl ChunkStore {
         }
         Ok(Self {
             layout,
+            reparto: 0,
             backends,
             key,
             cache: None,
@@ -275,6 +296,17 @@ impl ChunkStore {
 
     pub fn layout(&self) -> Layout {
         self.layout
+    }
+
+    /// Que reparto de fragmentos usa este almacen.
+    pub fn reparto(&self) -> u32 {
+        self.reparto
+    }
+
+    /// Fija el reparto. Lo dice la cabecera del volumen.
+    pub fn with_reparto(mut self, reparto: u32) -> Self {
+        self.reparto = reparto;
+        self
     }
 
     /// Activa una cache de lectura de `bytes` de capacidad.
@@ -485,7 +517,7 @@ impl ChunkStore {
 
         let writes = shards.into_iter().enumerate().map(|(i, shard)| {
             let backend = &self.backends[i];
-            let key = id.shard_key(i);
+            let key = id.shard_key(self.reparto, i);
             async move { (i, backend.put(&key, shard).await) }
         });
 
@@ -613,7 +645,7 @@ impl ChunkStore {
     /// Revisa que fragmentos siguen vivos, sin descargarlos.
     pub async fn scrub(&self, chunk: &ChunkRef) -> ChunkHealth {
         let checks = self.backends.iter().enumerate().map(|(i, backend)| {
-            let key = chunk.id.shard_key(i);
+            let key = chunk.id.shard_key(self.reparto, i);
             async move { (i, backend.exists(&key).await.unwrap_or(false)) }
         });
 
@@ -667,7 +699,7 @@ impl ChunkStore {
             .map(|chunk| {
                 let (mut present, mut missing) = (Vec::new(), Vec::new());
                 for (i, vistas) in presentes.iter().enumerate() {
-                    if vistas.contains(&chunk.id.shard_key(i)) {
+                    if vistas.contains(&chunk.id.shard_key(self.reparto, i)) {
                         present.push(i);
                     } else {
                         missing.push(i);
@@ -718,7 +750,7 @@ impl ChunkStore {
 
         let writes = health.missing.iter().map(|&i| {
             let backend = &self.backends[i];
-            let key = chunk.id.shard_key(i);
+            let key = chunk.id.shard_key(self.reparto, i);
             let shard = shards[i].clone();
             async move { (i, backend.put(&key, shard).await) }
         });
@@ -735,7 +767,7 @@ impl ChunkStore {
 
     async fn fetch_shards(&self, id: &ChunkId) -> Vec<Option<Vec<u8>>> {
         let reads = self.backends.iter().enumerate().map(|(i, backend)| {
-            let key = id.shard_key(i);
+            let key = id.shard_key(self.reparto, i);
             async move { (i, backend.get(&key).await.ok()) }
         });
 
@@ -760,7 +792,7 @@ mod tests {
     /// Simula que un proveedor desaparece: borra todos sus fragmentos.
     async fn tirar_proveedor(store: &ChunkStore, chunk: &ChunkRef, index: usize) {
         store.backends[index]
-            .delete(&chunk.id.shard_key(index))
+            .delete(&chunk.id.shard_key(0, index))
             .await
             .unwrap();
     }
@@ -797,7 +829,7 @@ mod tests {
         let report = s.put(&secreto).await.unwrap();
 
         for (i, backend) in s.backends.iter().enumerate() {
-            let fragmento = backend.get(&report.chunk.id.shard_key(i)).await.unwrap();
+            let fragmento = backend.get(&report.chunk.id.shard_key(0, i)).await.unwrap();
             assert!(
                 !fragmento
                     .windows(26)
@@ -898,10 +930,10 @@ mod tests {
         let s = store(Layout::ReedSolomon { k: 4, m: 2 });
         let chunk = s.put(&datos(20_000)).await.unwrap().chunk;
 
-        let original = s.backends[3].get(&chunk.id.shard_key(3)).await.unwrap();
+        let original = s.backends[3].get(&chunk.id.shard_key(0, 3)).await.unwrap();
         tirar_proveedor(&s, &chunk, 3).await;
         s.repair(&chunk).await.unwrap();
-        let regenerado = s.backends[3].get(&chunk.id.shard_key(3)).await.unwrap();
+        let regenerado = s.backends[3].get(&chunk.id.shard_key(0, 3)).await.unwrap();
 
         assert_eq!(
             regenerado, original,
@@ -924,7 +956,7 @@ mod tests {
 
         // Un proveedor devuelve basura con el tamano correcto.
         s.backends[0]
-            .put(&chunk.id.shard_key(0), vec![0xFF; chunk.sealed_len])
+            .put(&chunk.id.shard_key(0, 0), vec![0xFF; chunk.sealed_len])
             .await
             .unwrap();
 

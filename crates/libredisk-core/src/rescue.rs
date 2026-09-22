@@ -266,7 +266,11 @@ fn candidatas(layout: libredisk_raid::Layout, tam: usize) -> Vec<usize> {
 /// Saca el identificador de una clave `chunks/<2 hex>/<64 hex>.<indice>`.
 fn id_de_clave(clave: &str) -> Option<ChunkId> {
     let fichero = clave.rsplit('/').next()?;
-    let (hash, _indice) = fichero.rsplit_once('.')?;
+    // Por el **primer** punto, no por el ultimo: un reparto distinto mete una marca en
+    // medio (`<hash>.r2.003`) y cortar por el ultimo devolveria `<hash>.r2`, que no es un
+    // identificador. El hash son 64 hexadecimales y no lleva puntos, asi que el primero
+    // siempre lo delimita.
+    let (hash, _resto) = fichero.split_once('.')?;
     ChunkId::parse(hash)
 }
 

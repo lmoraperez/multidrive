@@ -298,11 +298,16 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       pegado al número de la variable y no a la posición: si dependiera del orden, quitar el
       segundo de tres renombraría al tercero y cada fragmento se leería del sitio equivocado
       sin que la cabecera se enterase
-- [ ] Añadir un proveedor para **más espacio**: `rs(k,m)` pasa a `rs(k+1,m)`. Cambian las
-      fronteras del reparto, así que hay que releer y volver a subir el volumen entero, y hace
-      falta un esquema de **dos generaciones** de claves de fragmento para escribir lo nuevo
-      sin destruir lo viejo mientras el volumen se sigue leyendo. Hoy la orden existe y se
-      niega, explicando por qué
+- [x] Añadir un proveedor para **más espacio**: `rs(k,m)` pasa a `rs(k+1,m)`. Cambian las
+      fronteras del reparto, así que hay que releer y volver a subir el volumen entero, y por
+      eso se escribe en un **reparto nuevo**: la clave de fragmento lleva una marca (`.r2.`) y
+      las dos versiones conviven. Mientras la cabecera no cambie, el volumen se lee con la
+      vieja y sus fragmentos, que nadie ha tocado. El reparto 0 no lleva marca, para que los
+      volúmenes creados antes de que esto existiera se sigan abriendo
+- [x] **El reparto viejo no se borra hasta comprobar que el nuevo está entero.** Que una
+      subida no diera error dice que se escribió, no que esté ahí, y lo que se iba a borrar es
+      lo único que quedaría si no lo estuviera. Se enumera y se cuenta antes de destruir la
+      red de seguridad; si falta algo, no se borra nada y se dice
 - [ ] Retirar un proveedor
 - [ ] Instantáneas y retención
 - [ ] macOS (FSKit o NFS loopback; macFUSE tiene problemas de licencia)

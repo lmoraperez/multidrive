@@ -478,7 +478,7 @@ async fn demo(spec: &str, kib: usize, dir: &str) -> Result<()> {
     for i in 0..layout.shard_count() {
         let path = base
             .join(format!("proveedor-{i}"))
-            .join(chunk.id.shard_key(i));
+            .join(chunk.id.shard_key(0, i));
         let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
         println!("  proveedor-{i}  {size:>8} bytes");
     }
