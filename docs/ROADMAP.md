@@ -235,6 +235,25 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       múltiplo de *k*, y el tag de XChaCha20-Poly1305 desambigua. Se añade también
       `libredisk header export`/`import`, que es el respaldo que de verdad importa: la
       cabecera lleva la sal, y sin sal no hay clave
+- [x] Montaje FUSE en Linux. `libredisk mount /ruta/vacia`, con las mismas reglas que el lado
+      de Windows: bloquear en los hilos del kernel es correcto porque no son del runtime, y
+      escribir se acumula por descriptor y se materializa al cerrar. La diferencia que lo
+      cambia todo es que **FUSE habla de inodos y WinFsp de rutas**, así que hay una tabla que
+      traduce en los dos sentidos y que renombrar tiene que mover entera: si no, renombrar una
+      carpeta dejaría a sus hijos apuntando a una ruta que ya no existe. Compila, pasa la
+      suite y clippy en Linux
+- [x] Y **no hay que traducir mayúsculas**: en Linux el sistema distingue y el árbol también.
+      Haber dejado esa traducción en la capa de montaje de Windows, y no más abajo, es lo que
+      hace que el adaptador de FUSE no tenga que saber nada del asunto
+- [ ] **Montar de verdad, todavía sin conseguir.** En el contenedor de `libredisk.chambaya.net`
+      existe `/dev/fuse` y se abre en lectura y escritura, pero `fusermount3` —el ayudante
+      setuid que reparte el descriptor a los procesos sin privilegios— no ve el socket que se
+      le pasa: *«file descriptor N is not a socket»*. **No es del adaptador ni de la
+      biblioteca**: se reproduce con un programa de diez líneas y también desde Python, con
+      descriptores 0 y 4, y un hijo normal sí hereda el socket. Es un contenedor LXC **sin
+      privilegios** (`uid_map: 0 100000 65536`), que es la pista más probable. Queda por
+      probar el montaje como root, que evita `fusermount3` entero porque `fuser` intenta
+      primero el `mount(2)` directo
 - [ ] Rebalanceo al añadir/retirar un proveedor
 - [ ] Instantáneas y retención
 - [ ] macOS (FSKit o NFS loopback; macFUSE tiene problemas de licencia)

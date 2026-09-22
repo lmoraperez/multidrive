@@ -20,6 +20,10 @@ winfsp = "0.13"
 [target.'cfg(windows)'.build-dependencies]
 winfsp = "0.13"
 
+[target."cfg(unix)".dependencies]
+fuser = { version = "0.18.0", default-features = false }
+libc = "0.2.189"
+
 [dev-dependencies]
 libredisk-backend.workspace = true
 libredisk-crypto.workspace = true
