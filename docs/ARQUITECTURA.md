@@ -109,6 +109,45 @@ sigue aceptando para no romper a quien ya lo tenga escrito, pero caduca en una h
 volumen configurado con él deja de abrirse esa misma tarde. Ofrecerlo en un formulario sería
 ofrecer una trampa.
 
+#### Conectar una cuenta
+
+OneDrive y Google Drive no se configuran tecleando credenciales: se pulsa conectar, se abre
+el navegador en la página del proveedor, el usuario entra en su cuenta y da permiso. Es el
+flujo de código de autorización con redirección a `localhost`, el que usan las aplicaciones
+de escritorio:
+
+1. LibreDisk abre un servidor en `127.0.0.1`, con el puerto que le dé el sistema. Los dos
+   proveedores admiten cualquier puerto de loopback sin declararlo por adelantado, justamente
+   para esto; fijar uno sería fallar el día que estuviera ocupado.
+2. Manda el navegador a la página del proveedor diciéndole que al terminar redirija a ese
+   puerto.
+3. **Las credenciales del usuario no pasan por LibreDisk.** Van del navegador al proveedor.
+   Aquí solo llega un código de un solo uso.
+4. Ese código se canjea por un token de refresco, que es lo único que se guarda.
+
+Se manda un reto **PKCE** aunque la aplicación lleve secreto y por tanto no sea obligatorio.
+El motivo es concreto: el redirector es `localhost`, así que cualquier otro programa de la
+máquina puede quedarse escuchando en un puerto y recoger el código. Sin PKCE le bastaría con
+eso; con PKCE, el código no sirve sin un valor que solo conoce este proceso y que nunca viaja
+por el navegador. Al volver se comprueba también el `state`, que es lo que impide que un
+programa ajeno empuje un código suyo al puerto y consiga que se conecte *su* cuenta.
+
+El token de refresco **no pasa por la página**: se queda en el estado del proceso hasta que
+se guarda, y se borra de memoria en cuanto está en el fichero. Que la página sea nuestra y
+corra en el mismo proceso no es motivo para pasear por ella acceso permanente a una cuenta.
+
+A Google se le pide `drive.file`, o sea **solo los ficheros que LibreDisk cree**, que es todo
+lo que necesita: crea su propia carpeta y todo lo que hay dentro. Pedir el Drive entero sería
+pedir permiso sobre las fotos del usuario para guardar en una carpeta, y además Google lo
+clasifica como ámbito restringido, lo que obliga a una evaluación de seguridad anual de
+terceros. El ámbito de OneDrive no se elige: es `offline_access Files.ReadWrite`, **el mismo
+que OpenDAL usa al renovar**, y pedir aquí otro daría un token que deja de valer en la
+primera renovación.
+
+Lo que falta para que esto sea de verdad un botón y nada más: una aplicación de LibreDisk
+registrada en Google y en Azure. Mientras no la haya, el ID y el secreto de *alguna*
+aplicación hay que pegarlos una vez, y eso sigue siendo un paso de desarrollador.
+
 #### Se prueba antes de guardar
 
 Añadir un proveedor escribe, lee, compara y borra un objeto pequeño, y solo si eso sale bien

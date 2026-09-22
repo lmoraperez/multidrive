@@ -492,6 +492,8 @@ function pintarProveedor(p) {
  * luego mira otra pestaña no debería tener que pegarlo otra vez.
  */
 const tecleado = new Map();
+/** Tipos cuya cuenta ya se ha conectado por navegador en esta sesion. */
+const conectado = new Set();
 let tipos = [];
 
 async function prepararAlta() {
@@ -522,6 +524,7 @@ function pintarFormularioProveedor() {
   if (!t) return;
 
   tecleado.clear();
+  conectado.delete(t.clave);
   const partes = [nota(t.explicacion)];
 
   if (t.hueco) {
@@ -533,6 +536,36 @@ function pintarFormularioProveedor() {
   }
 
   for (const c of t.campos) {
+    if (c.navegador) {
+      // No es una caja de texto: es un botón. Nadie debería teclear un token de 200
+      // caracteres, y el token tampoco pasa por esta página: se queda en el proceso.
+      const boton = document.createElement("button");
+      boton.type = "button";
+      boton.className = "secundario";
+      boton.textContent = `Conectar con ${t.etiqueta}`;
+      const aviso = nota("");
+      aviso.hidden = true;
+      boton.addEventListener("click", async () => {
+        boton.disabled = true;
+        aviso.hidden = false;
+        aviso.textContent = "Abriendo el navegador. Entra en tu cuenta y da permiso…";
+        try {
+          aviso.textContent = await invoke("conectar_nube", {
+            tipo: t.clave,
+            campos: campos(),
+          });
+          conectado.add(t.clave);
+        } catch (err) {
+          aviso.textContent = String(err);
+        } finally {
+          boton.disabled = false;
+        }
+      });
+      partes.push(boton, aviso);
+      if (c.ayuda) partes.push(nota(c.ayuda));
+      continue;
+    }
+
     const etiqueta = document.createElement("label");
     etiqueta.htmlFor = `campo-${c.clave}`;
     etiqueta.textContent = c.etiqueta + (c.obligatorio ? "" : " (opcional)");
@@ -589,12 +622,21 @@ $("probar-proveedor").addEventListener("click", async () => {
 $("guardar-proveedor").addEventListener("click", async () => {
   const boton = $("guardar-proveedor");
   boton.disabled = true;
+  // Sin la cuenta conectada no hay token que guardar, y el proveedor fallaria la prueba
+  // con un error de credenciales que no dice lo que de verdad falta.
+  const tipo = tipoElegido();
+  if (tipo?.campos.some((c) => c.navegador) && !conectado.has(tipo.clave)) {
+    resultado("Antes hay que conectar la cuenta con el botón de arriba.", true);
+    boton.disabled = false;
+    return;
+  }
   resultado("Probando antes de guardar…");
   try {
     const g = await invoke("guardar_proveedor", {
       tipo: $("tipo-proveedor").value,
       campos: campos(),
     });
+    conectado.delete($("tipo-proveedor").value);
     let texto = `Guardado como «${g.nombre}» en ${g.fichero}.`;
     if (g.hay_volumen) {
       // Configurar no es meterlo en el volumen, y son cosas de coste muy distinto. Decir

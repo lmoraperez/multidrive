@@ -31,6 +31,12 @@ pub struct Campo {
     /// No se ensena al teclearlo ni se imprime en ninguna parte.
     pub secreto: bool,
     pub obligatorio: bool,
+    /// Lo consigue el flujo del navegador, no el usuario tecleando.
+    ///
+    /// Sigue siendo obligatorio: para cuando se guarda tiene que estar. Lo que cambia es
+    /// **quien lo pone**, y por tanto que la interfaz ensene un boton en vez de una caja de
+    /// texto. Nadie deberia teclear un token de 200 caracteres.
+    pub navegador: bool,
     /// Campos que solo valen acompanados: o estan todos los del grupo o ninguno.
     ///
     /// Medio grupo es un error y no un descuido que se pueda ignorar: un `S3_ACCESS_KEY_ID`
@@ -48,6 +54,7 @@ impl Campo {
             ejemplo: "",
             secreto: false,
             obligatorio: true,
+            navegador: false,
             grupo: None,
         }
     }
@@ -63,12 +70,69 @@ impl Campo {
         self.obligatorio = false;
         self
     }
+    /// No se teclea: lo trae el flujo del navegador.
+    const fn del_navegador(mut self) -> Self {
+        self.navegador = true;
+        self
+    }
     const fn en_grupo(mut self, grupo: &'static str) -> Self {
         self.grupo = Some(grupo);
         self.obligatorio = false;
         self
     }
 }
+
+/// Lo que hace falta para hablar OAuth2 con un proveedor.
+///
+/// Vive en el catalogo y no repartido por el codigo porque lo usan tres sitios: el flujo del
+/// navegador que consigue el token, la consulta de cupo que lo gasta, y `live` al construir
+/// el proveedor. Tres copias de una URL son tres copias que acaban discrepando.
+#[derive(Debug, Clone, Copy)]
+pub struct Oauth {
+    /// Donde se manda el navegador para que el usuario de permiso.
+    pub autorizar: &'static str,
+    /// Donde se canjea el codigo por tokens, y donde se renuevan despues.
+    ///
+    /// Es **el mismo** que usa OpenDAL para renovar. Si aqui valiera otro, un token que
+    /// sirve para escribir podria no servir para renovarse, y el fallo pareceria de permisos.
+    pub token: &'static str,
+    /// Que se pide poder hacer.
+    pub ambito: &'static str,
+    /// Donde preguntar cuanto espacio queda.
+    pub cuota: &'static str,
+    /// Parametros que este proveedor exige en la URL de autorizacion y los demas no.
+    pub extra: &'static [(&'static str, &'static str)],
+}
+
+/// Google pide dos cosas para devolver un token de refresco, y sin las dos devuelve solo uno
+/// de acceso que caduca en una hora:
+///
+/// - `access_type=offline`, que es lo que significa "quiero poder renovar".
+/// - `prompt=consent`, porque si el usuario ya habia dado permiso antes, Google **no vuelve a
+///   mandar el token de refresco**. Sin esto, reconectar una cuenta ya conectada da un token
+///   que muere esa tarde.
+const GDRIVE_OAUTH: Oauth = Oauth {
+    autorizar: "https://accounts.google.com/o/oauth2/v2/auth",
+    token: "https://oauth2.googleapis.com/token",
+    // Solo los ficheros que crea LibreDisk, que es todo lo que necesita: crea su propia
+    // carpeta y todo lo que hay dentro. Pedir el Drive entero seria pedir permiso sobre las
+    // fotos del usuario para guardar en una carpeta, y ademas Google lo clasifica como
+    // ambito restringido, que exige una evaluacion de seguridad anual de terceros.
+    ambito: "https://www.googleapis.com/auth/drive.file",
+    cuota: "https://www.googleapis.com/drive/v3/about?fields=storageQuota",
+    extra: &[("access_type", "offline"), ("prompt", "consent")],
+};
+
+/// `offline_access` es lo que pide el token de refresco, y `Files.ReadWrite` es **el ambito
+/// exacto que OpenDAL usa al renovar**: pedir aqui uno distinto daria un token que deja de
+/// valer en la primera renovacion.
+const ONEDRIVE_OAUTH: Oauth = Oauth {
+    autorizar: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+    token: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+    ambito: "offline_access Files.ReadWrite",
+    cuota: "https://graph.microsoft.com/v1.0/me/drive?$select=quota",
+    extra: &[("response_mode", "query")],
+};
 
 /// Una clase de proveedor.
 #[derive(Debug, Clone, Copy)]
@@ -79,6 +143,8 @@ pub struct Tipo {
     /// Que es, y sobre todo que sacrificio trae. Se ensena antes de elegirlo.
     pub explicacion: &'static str,
     pub campos: &'static [Campo],
+    /// Si se conecta por navegador, con que datos.
+    pub oauth: Option<&'static Oauth>,
 }
 
 const CAMPOS_FS: &[Campo] = &[Campo::nuevo(
@@ -96,16 +162,17 @@ const CAMPOS_FS: &[Campo] = &[Campo::nuevo(
 const CAMPOS_OAUTH: &[Campo] = &[
     Campo::nuevo(
         "REFRESH_TOKEN",
-        "Token de refresco",
-        "El que no caduca. Con el, el programa renueva el acceso solo.",
+        "Cuenta conectada",
+        "Lo consigue el boton de conectar: se abre el navegador, entras en tu cuenta y das \n         permiso. No se teclea nada.",
     )
-    .secreto(),
+    .secreto()
+    .del_navegador(),
     Campo::nuevo(
         "CLIENT_ID",
         "ID de la aplicacion",
-        "De la aplicacion que registraste en la consola del proveedor.",
+        "De una aplicacion registrada en la consola del proveedor, no de tu cuenta. Hace \n         falta mientras LibreDisk no tenga la suya propia; el dia que la tenga, estos dos \n         campos desapareceran y solo quedara el boton de conectar.",
     ),
-    Campo::nuevo("CLIENT_SECRET", "Secreto de la aplicacion", "De la misma.").secreto(),
+    Campo::nuevo("CLIENT_SECRET", "Secreto de la aplicacion", "De la misma aplicacion.").secreto(),
     Campo::nuevo(
         "ROOT",
         "Carpeta dentro de la cuenta",
@@ -172,20 +239,24 @@ pub const TIPOS: &[Tipo] = &[
                       consume presupuesto de redundancia como si fuera un proveedor de \
                       verdad.",
         campos: CAMPOS_FS,
+        oauth: None,
     },
     Tipo {
         clave: "ONEDRIVE",
         etiqueta: "OneDrive",
-        explicacion: "Personal o de empresa. Hace falta registrar una aplicacion y conseguir \
-                      un token de refresco: el procedimiento esta en \
-                      docs/PRUEBAS-PROVEEDORES.md.",
+        explicacion: "Personal o de empresa. Se conecta desde el navegador: pulsas conectar, \
+                      entras en tu cuenta y das permiso.",
         campos: CAMPOS_OAUTH,
+        oauth: Some(&ONEDRIVE_OAUTH),
     },
     Tipo {
         clave: "GDRIVE",
         etiqueta: "Google Drive",
-        explicacion: "Mismo procedimiento que OneDrive, en la consola de Google Cloud.",
+        explicacion: "Igual que OneDrive: se conecta desde el navegador. LibreDisk solo pide \
+                      permiso sobre los ficheros que el mismo cree, no sobre el resto de tu \
+                      Drive.",
         campos: CAMPOS_OAUTH,
+        oauth: Some(&GDRIVE_OAUTH),
     },
     Tipo {
         clave: "S3",
@@ -193,12 +264,14 @@ pub const TIPOS: &[Tipo] = &[
         explicacion: "Cualquier servicio compatible con S3. No declara cupo: se factura por \
                       lo que ocupa, asi que no se llena.",
         campos: CAMPOS_S3,
+        oauth: None,
     },
     Tipo {
         clave: "WEBDAV",
         etiqueta: "WebDAV (Nextcloud)",
         explicacion: "Un Nextcloud propio o cualquier servidor WebDAV.",
         campos: CAMPOS_WEBDAV,
+        oauth: None,
     },
 ];
 
