@@ -536,6 +536,10 @@ function pintarFormularioProveedor() {
   }
 
   for (const c of t.campos) {
+    // Lo que identifica a la aplicación no se pide si el programa ya lo trae dentro:
+    // pedirle a alguien el ID de una aplicación que no es suya es pedirle un dato que no
+    // tiene.
+    if (c.aplicacion && t.aplicacion_propia) continue;
     if (c.navegador) {
       // No es una caja de texto: es un botón. Nadie debería teclear un token de 200
       // caracteres, y el token tampoco pasa por esta página: se queda en el proceso.

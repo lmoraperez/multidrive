@@ -622,6 +622,10 @@ struct CampoJson {
     ejemplo: String,
     secreto: bool,
     obligatorio: bool,
+    /// No se teclea: lo trae el boton de conectar.
+    navegador: bool,
+    /// Identifica a la aplicacion y no al usuario: puede venir dentro del programa.
+    aplicacion: bool,
     /// Los de un mismo grupo van todos o ninguno. La ventana lo dice antes de enviar.
     grupo: Option<String>,
 }
@@ -632,6 +636,12 @@ struct TipoJson {
     etiqueta: String,
     explicacion: String,
     campos: Vec<CampoJson>,
+    /// `true` si esta copia de LibreDisk trae dentro las credenciales de la aplicacion.
+    ///
+    /// Cuando es asi, la ventana no pide el ID ni el secreto: identifican a LibreDisk y no
+    /// al usuario, y pedirle a alguien el ID de una aplicacion que no es suya es pedirle un
+    /// dato que no tiene.
+    aplicacion_propia: bool,
     /// La ranura que le tocaria si se anadiera ahora: `gdrive`, `gdrive2`...
     ///
     /// Se ensena antes de guardar porque **ese es el nombre con el que el volumen lo va a
@@ -653,6 +663,7 @@ fn tipos_de_proveedor() -> Vec<TipoJson> {
             clave: t.clave.to_string(),
             etiqueta: t.etiqueta.to_string(),
             explicacion: t.explicacion.to_string(),
+            aplicacion_propia: libredisk_backend::aplicacion::configurada(t.clave).is_some(),
             hueco: live::hueco_libre_configurado(t)
                 .ok()
                 .flatten()
@@ -667,6 +678,8 @@ fn tipos_de_proveedor() -> Vec<TipoJson> {
                     ejemplo: c.ejemplo.to_string(),
                     secreto: c.secreto,
                     obligatorio: c.obligatorio,
+                    navegador: c.navegador,
+                    aplicacion: c.aplicacion,
                     grupo: c.grupo.map(str::to_string),
                 })
                 .collect(),
@@ -691,21 +704,32 @@ async fn conectar_nube(
         .oauth
         .ok_or("este tipo de proveedor no se conecta por navegador")?;
 
-    // Hacen falta antes de abrir el navegador: sin ellos, el proveedor rechaza la peticion
-    // con un error que el usuario lee en una pestana y no aqui.
-    let falta = |c: &str| campos.get(c).is_none_or(|v| v.trim().is_empty());
-    if falta("CLIENT_ID") || falta("CLIENT_SECRET") {
+    // La aplicacion que trae el programa, si la trae; lo tecleado gana, porque quien lo
+    // escribe esta diciendo "usa la mia".
+    let puesto = |c: &str| {
+        campos
+            .get(c)
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    };
+    let de_la_app = libredisk_backend::aplicacion::configurada(&tipo);
+    let (Some(client_id), Some(client_secret)) = (
+        puesto("CLIENT_ID").or_else(|| de_la_app.as_ref().map(|a| a.client_id.clone())),
+        puesto("CLIENT_SECRET").or_else(|| de_la_app.as_ref().map(|a| a.client_secret.clone())),
+    ) else {
+        // Hacen falta antes de abrir el navegador: sin ellos el proveedor rechaza la
+        // peticion, y el usuario leeria el error en una pestana y no aqui.
         return Err(
-            "faltan el ID y el secreto de la aplicacion. Son de la aplicacion que registraste \
-             en la consola del proveedor, no de tu cuenta"
+            "esta copia de LibreDisk no trae aplicacion registrada, asi que hace falta el ID \
+             y el secreto de una. Son de la aplicacion, no de tu cuenta"
                 .into(),
         );
-    }
+    };
 
     let conectada = libredisk_backend::oauth::conectar(
         oauth,
-        &campos["CLIENT_ID"],
-        &campos["CLIENT_SECRET"],
+        &client_id,
+        &client_secret,
         &libredisk_backend::oauth::abrir_en_navegador,
     )
     .await
