@@ -28,25 +28,38 @@ los que usen esa versión. Por eso se puede sustituir sin recompilar (ver más a
 
 ## Google Drive
 
+Todo esto vive bajo **Plataforma de autenticación de Google** (*Google Auth Platform*), en
+`console.cloud.google.com/auth/overview`. **No** está en «APIs y servicios → Pantalla de
+consentimiento», que es a donde mandan casi todas las guías que se encuentran por ahí:
+Google lo reorganizó y lo repartió en cuatro secciones.
+
+Lo que más despista: **los ámbitos ya no están en la pantalla de consentimiento**, están en
+«Acceso a los datos» como sección aparte.
+
 1. En [Google Cloud Console](https://console.cloud.google.com/), crea un proyecto.
-2. Habilita la **Google Drive API**.
-3. Configura la pantalla de consentimiento: tipo **externo**, nombre de la aplicación, correo
-   de contacto y **enlace a una política de privacidad**. `libredisk.chambaya.net` ya está
-   publicado y sirve para alojarla.
-4. En los ámbitos, añade **`.../auth/drive.file`** y **solo ese**. Es el que LibreDisk pide, y
-   es el que evita la evaluación de seguridad anual de terceros que Google exige para los
-   ámbitos amplios como `.../auth/drive`.
-5. Crea credenciales de **ID de cliente de OAuth**, tipo **Aplicación de escritorio**.
+2. Habilita la **Google Drive API** (esto sí sigue en «APIs y servicios → Biblioteca»).
+3. **Marca** (*Branding*): nombre de la aplicación, correo de asistencia y **enlace a una
+   política de privacidad**. `libredisk.chambaya.net` ya está publicado y sirve para alojarla.
+4. **Público** (*Audience*): tipo **externo**. Mientras esté «en pruebas» solo entran las
+   cuentas que añadas como usuarios de prueba.
+5. **Acceso a los datos** (*Data Access*) → «Añadir o quitar ámbitos»: añade
+   **`.../auth/drive.file`** y **solo ese**. Es el que LibreDisk pide, y es el que evita la
+   evaluación de seguridad anual de terceros que Google exige para los ámbitos amplios como
+   `.../auth/drive`.
+6. **Clientes** (*Clients*) → «Crear cliente» → Tipo de aplicación: **Aplicación de
+   escritorio**.
 
    > **Tiene que ser «Aplicación de escritorio», no «Aplicación web».** Solo ese tipo admite
    > redirección a un puerto cualquiera de `127.0.0.1`, que es lo que necesita el flujo. Un
    > cliente web exige declarar cada redirección por adelantado, y el puerto lo elige el
    > sistema en cada ejecución.
 
-6. Mientras el proyecto esté «en pruebas», solo entran las cuentas que añadas como usuarios de
-   prueba. Al publicarlo, Google pide una revisión de marca —no de seguridad, al ser un ámbito
-   no restringido— para quitar el aviso de «aplicación sin verificar» y el límite de usuarios.
+El cliente va el último a propósito: las tres secciones anteriores definen lo que verá el
+usuario cuando lo pulse.
 
+Al publicar el proyecto, Google pide una revisión de marca —no de seguridad, al ser un ámbito
+no restringido— para quitar el aviso de «aplicación sin verificar» y el límite de usuarios de
+prueba.
 ## OneDrive
 
 1. En [Azure Portal](https://portal.azure.com/) → Microsoft Entra ID → **Registros de
