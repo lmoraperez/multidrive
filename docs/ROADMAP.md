@@ -228,6 +228,16 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       quita el arreglo**
 
 ## v0.3 — "¿Lo puede usar alguien que no sea yo?"
+- [x] **La unidad montada ya no dice 7,9 EB.** Windows y `df` recibían un número fijo y
+      enorme, con un comentario que decía que no había forma honesta de dar un tamaño: la
+      había dejado de haber en cuanto se supo el cupo de cada proveedor. Ahora declara el del
+      proveedor más apretado por `shards_needed`, que es la misma función que usa el motor
+      para leer. Comprobado sobre el volumen real de las dos nubes: **15,00 GiB de tamaño y
+      3,46 GiB libres**, porque Drive va al 79 %
+- [x] Y sin pagar una petición por repintado, que era el motivo real del número falso: mide
+      una tarea de fondo cada cinco minutos y deja el resultado en dos enteros atómicos que
+      el sistema lee sin bloquear. Mientras no hay medida se vuelve al número enorme a
+      propósito —un cero significaría «disco lleno» y ningún programa reintentaría escribir
 - [x] **Probado contra dos nubes reales de punta a punta.** Volumen `mirror:2` sobre las
       cuentas de OneDrive y Google Drive: crear, subir 20 MiB, bajarlos y comprobar el
       SHA-256 —idéntico—, enumerar y medir. Cifras y método en

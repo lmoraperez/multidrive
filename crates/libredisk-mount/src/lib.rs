@@ -13,6 +13,8 @@
 //! Lo que **no** se diferencia es el nucleo: no hay ni un `cfg` de sistema operativo por
 //! debajo de esta capa.
 
+mod capacidad;
+
 #[cfg(windows)]
 mod windows;
 

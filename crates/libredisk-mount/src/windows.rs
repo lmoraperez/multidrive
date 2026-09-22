@@ -26,6 +26,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use anyhow::{Context as _, Result};
 use libredisk_core::tree::{Kind, Volume};
 use tokio::runtime::Handle;
+
+use crate::capacidad::{Capacidad, DESCONOCIDO};
 use winfsp::U16CStr;
 use winfsp::filesystem::{
     DirBuffer, DirInfo, DirMarker, FileInfo, FileSecurity, FileSystemContext, OpenFileInfo,
@@ -177,6 +179,8 @@ impl Abierto {
 /// El sistema de ficheros: un volumen mas la forma de esperar a sus operaciones.
 pub struct LibreDiskFs {
     volumen: Arc<RwLock<Volume>>,
+    /// El tamano que se le declara a Windows, medido de fondo. Ver [`crate::capacidad`].
+    capacidad: Capacidad,
     rt: Handle,
     solo_lectura: bool,
     creado: u64,
@@ -657,11 +661,18 @@ impl FileSystemContext for LibreDiskFs {
     }
 
     fn get_volume_info(&self, out_volume_info: &mut VolumeInfo) -> winfsp::Result<()> {
-        // No hay forma honesta de dar un tamano: depende de la cuota de cada proveedor y de
-        // la topologia. Se declara algo grande, que es lo que hacen los sistemas de ficheros
-        // de red cuando no lo saben.
-        out_volume_info.total_size = u64::MAX / 2;
-        out_volume_info.free_size = u64::MAX / 2;
+        // Dos cargas atomicas, sin red y sin cerrojos: Windows pregunta esto cada vez que
+        // repinta una ventana, y aqui no se puede esperar a nadie. Quien mide es la tarea de
+        // fondo de `crate::capacidad`.
+        //
+        // Lo que se declara es el tamano de **las cuentas** sobre las que vive el volumen, no
+        // lo que ocupa el volumen: en esas cuentas puede haber fotos del usuario, y Windows
+        // solo tiene dos numeros donde caben tres cifras. Lo ocupado que ensena el Explorador
+        // es, por tanto, lo ocupado en las cuentas. El desglose de las tres esta en la
+        // ventana de LibreDisk y en `libredisk espacio`.
+        let (total, libre) = self.capacidad.leer().unwrap_or((DESCONOCIDO, DESCONOCIDO));
+        out_volume_info.total_size = total;
+        out_volume_info.free_size = libre;
         out_volume_info.set_volume_label(NOMBRE_FS);
         Ok(())
     }
@@ -771,11 +782,21 @@ pub fn montar(volumen: Arc<RwLock<Volume>>, punto: &str, solo_lectura: bool) -> 
         .read_only_volume(solo_lectura)
         .file_info_timeout(CACHE_MS);
 
+    // El tamano de la unidad se mide de fondo. Aqui no se puede preguntar: el Explorador lo
+    // pide en cada repintado, y una peticion por nube en cada uno seria una ventana que se
+    // queda pensando.
+    let store = volumen
+        .read()
+        .unwrap_or_else(|p| p.into_inner())
+        .store()
+        .clone();
+
     let fs = LibreDiskFs {
         volumen,
         rt: Handle::current(),
         solo_lectura,
         creado: ahora_filetime(),
+        capacidad: Capacidad::arrancar(store),
     };
 
     let mut host: FileSystemHost<LibreDiskFs, FineGuard> = FileSystemHost::new_with_options(
@@ -875,7 +896,7 @@ mod tests_mayusculas {
         let key = MasterKey::derive_with("frase", b"sal-de-prueba-16", 8, 1).unwrap();
         let store = ChunkStore::new(Layout::Concat, backends, key).unwrap();
 
-        let (mut v, _) = Volume::create(store).await.unwrap();
+        let (mut v, _) = Volume::create(store.clone()).await.unwrap();
         for ruta in rutas {
             v.write_file(ruta, &b"x"[..]).await.unwrap();
         }
@@ -885,6 +906,7 @@ mod tests_mayusculas {
             rt: Handle::current(),
             solo_lectura: false,
             creado: 0,
+            capacidad: Capacidad::arrancar(store),
         }
     }
 

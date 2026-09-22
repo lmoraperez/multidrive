@@ -32,6 +32,8 @@ use fuser::{
 use libredisk_core::tree::{Kind, Volume};
 use tokio::runtime::Handle;
 
+use crate::capacidad::Capacidad;
+
 /// Nombre con el que aparece en `mount` y en `df`.
 const NOMBRE_FS: &str = "libredisk";
 
@@ -184,6 +186,8 @@ struct Abierto {
 /// El sistema de ficheros.
 pub struct LibreDiskFuse {
     volumen: Arc<RwLock<Volume>>,
+    /// El tamano que se le declara al sistema, medido de fondo. Ver [`crate::capacidad`].
+    capacidad: Capacidad,
     rt: Handle,
     solo_lectura: bool,
     inodos: Mutex<Inodos>,
@@ -702,12 +706,29 @@ impl fuser::Filesystem for LibreDiskFuse {
     }
 
     fn statfs(&self, _req: &Request, _ino: INodeNo, reply: ReplyStatfs) {
-        // No hay un tamano real que declarar: la capacidad es la suma de lo que quede en unas
-        // cuantas nubes, y preguntarselo costaria una peticion por proveedor en cada `df`.
-        // Se declara un espacio grande y fijo, que es lo que hacen los sistemas de ficheros
-        // de red cuando no pueden saberlo.
-        const TERA: u64 = (1 << 40) / BLOQUE as u64;
-        reply.statfs(TERA, TERA, TERA, 0, 0, BLOQUE, 255, BLOQUE);
+        // Dos cargas atomicas, sin red: `statfs` se llama en cada `df` y en cada copia con
+        // barra de progreso. Quien mide es la tarea de fondo de `crate::capacidad`.
+        //
+        // Lo que se declara es el tamano de **las cuentas** sobre las que vive el volumen, no
+        // lo que ocupa el volumen: `statfs` tiene sitio para dos cifras y aqui hay tres. El
+        // desglose esta en `libredisk espacio`.
+        //
+        // Sin medida todavia se declara un terabyte, que es lo que hacen los sistemas de
+        // ficheros de red cuando no pueden saberlo. Cero seria peor: significa disco lleno, y
+        // ningun programa volveria a intentar escribir.
+        const TERA: u64 = 1 << 40;
+        let (total, libre) = self.capacidad.leer().unwrap_or((TERA, TERA));
+        let bloques = |bytes: u64| bytes / BLOQUE as u64;
+        reply.statfs(
+            bloques(total),
+            bloques(libre),
+            bloques(libre),
+            0,
+            0,
+            BLOQUE,
+            255,
+            BLOQUE,
+        );
     }
 }
 
@@ -785,8 +806,17 @@ pub fn montar(volumen: Arc<RwLock<Volume>>, punto: &str, solo_lectura: bool) -> 
         MountOption::RW
     });
 
+    // El tamano se mide de fondo. Aqui no se puede preguntar: `statfs` se llama en cada `df`
+    // y en cada barra de progreso de un gestor de ficheros.
+    let store = volumen
+        .read()
+        .unwrap_or_else(|p| p.into_inner())
+        .store()
+        .clone();
+
     let fs = LibreDiskFuse {
         volumen,
+        capacidad: Capacidad::arrancar(store),
         rt: Handle::current(),
         solo_lectura,
         inodos: Mutex::new(Inodos::nuevo()),
