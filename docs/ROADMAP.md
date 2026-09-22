@@ -264,21 +264,20 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       dentro, y `rmdir` sobre un directorio no vacío responde *Directory not empty*, que es lo
       que hace que `rm -r` baje primero en vez de rendirse. El sincronizador subió solo y al
       desmontar acabó lo que quedaba. Caché al 93 % de aciertos
-- [x] El job `fuse` de CI **pasa**: en un runner de GitHub los seis tests montan y se ejecutan
-      **sin privilegios**, o sea pasando por `fusermount3`, que es justo el camino que falla en
-      el contenedor. El adaptador vale en una máquina Linux normal
-- [ ] Eso deja el fallo acotado al contenedor, pero **no cierra del todo la causa**: el runner
-      puede traer un `libfuse` más antiguo que el 3.18.2 de allí, y entonces lo que se descarta
-      es «el adaptador», no «esa versión de libfuse». El job imprime `fusermount3 --version` a
-      propósito: si coincide con 3.18.2, queda cerrado. Si no, para cerrarlo hace falta un
-      Linux normal con esa misma versión
-- [ ] En ese contenedor **hace falta root para montar**, y no por el adaptador: `fusermount3`
-      —el ayudante setuid que reparte el descriptor a los procesos sin privilegios— no ve el
-      socket que se le pasa. Se reproduce con un programa de diez líneas y también desde
-      Python, con descriptores 0 y 4, mientras que un hijo no setuid sí hereda el socket. Es
-      un LXC **sin privilegios** (`uid_map: 0 100000 65536`), que es la pista más probable.
-      Como root no hace falta el ayudante —`fuser` hace el `mount(2)` directo— y así es
-      como se probó.
+- [x] El job `fuse` de CI **pasa**: los seis tests montan **sin privilegios** en un runner de
+      GitHub, o sea pasando por `fusermount3`. El adaptador vale
+- [x] Y su log dio el dato que faltaba: el runner es ubuntu-24.04 con **`fusermount3` 3.14.0**
+      y el del servidor es **3.18.2**. Eso movió la sospecha de sitio, y dos pruebas más la
+      cerraron. **Como root falla igual**, y ahí la transición setuid no hace nada porque ya
+      se es root. **Por un descriptor alto (100) falla igual y con el mismo mensaje**, cuando
+      si los estuviera cerrando diría que el `fstat` falló, no que no es un socket.
+      Conclusión: **no es el LXC ni el setuid, es ese `fusermount3`.** La hipótesis del
+      contenedor, que estuvo escrita aquí un día entero y en tres mensajes, era falsa
+- [ ] Queda un cabo, y es de honestidad: solo hay **una** máquina con 3.18.2, así que «esa
+      versión» y «esa máquina» no se pueden separar del todo. Haría falta un Ubuntu 26.04 que
+      no fuera ese contenedor. No bloquea nada: con 3.14 monta sin privilegios y con 3.18.2
+      monta como root, porque `fuser` intenta antes el `mount(2)` directo y ahí el ayudante no
+      pinta nada
 - [ ] Rebalanceo al añadir/retirar un proveedor
 - [ ] Instantáneas y retención
 - [ ] macOS (FSKit o NFS loopback; macFUSE tiene problemas de licencia)

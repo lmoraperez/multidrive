@@ -115,9 +115,10 @@ punta: leer y escribir con el contenido intacto, renombrar carpetas con cosas de
 códigos de error que `rm -r` necesita para no rendirse. Lo comprueba CI en cada cambio,
 montando de verdad.
 
-> En un contenedor **LXC sin privilegios** hace falta root para montar. No es cosa del
-> adaptador: su `fusermount3` no acepta el descriptor que se le pasa, y como root ese ayudante
-> no hace falta. El detalle está en [docs/ROADMAP.md](docs/ROADMAP.md).
+> **Con `fusermount3` 3.18.2 hace falta root para montar**, y no es cosa del adaptador: ese
+> ayudante no acepta el descriptor que se le pasa. Como root no hace falta, porque se monta
+> con `mount(2)` directo. Con 3.14.0 monta sin privilegios, que es lo que comprueba CI. El
+> detalle, y lo que queda sin cerrar, en [docs/ROADMAP.md](docs/ROADMAP.md).
 
 
 ## Estructura
