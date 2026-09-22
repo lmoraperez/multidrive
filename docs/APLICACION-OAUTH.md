@@ -15,6 +15,30 @@ Confundirlas es lo que hacía que el formulario pidiera cosas de desarrollador:
 Sin aplicación registrada, cada usuario tiene que registrar una suya, que es el estado del
 que venimos.
 
+## Qué proveedores necesitan esto
+
+Solo dos de los cinco, y solo uno da trabajo de verdad:
+
+| Proveedor | ¿Registro? | |
+|---|---|---|
+| Carpeta local | No | No hay nadie a quien pedirle permiso |
+| S3 (B2, R2, Wasabi, MinIO) | **No** | El usuario se genera una clave en su propia consola |
+| WebDAV / Nextcloud | **No** | Usuario y contraseña, mejor una de aplicación |
+| OneDrive | Sí, en Azure | Sin evaluación de ámbitos ni tope de usuarios |
+| Google Drive | Sí | Revisión de marca, política publicada, tope de 100 usuarios hasta verificar |
+
+El motivo de fondo: **OAuth existe para servicios donde el usuario entra con su contraseña y
+el programa no debe verla nunca.** S3 y WebDAV no funcionan así — entregan una credencial que
+el usuario puede pasar directamente, porque esa credencial ya es suya y no es la identidad de
+una aplicación. Ahí no hay tercero, así que no hay nada que registrar ni que verificar.
+
+Dicho de otro modo: **el coste es por proveedor OAuth, no por proveedor**. Si algún día se
+añade Dropbox, Box o pCloud, cada uno traerá su propio registro; añadir otro compatible con
+S3 no trae ninguno.
+
+En el código esto no está escrito aparte: un tipo necesita registro exactamente cuando su
+entrada del catálogo tiene `oauth: Some(...)`.
+
 ## El secreto no es secreto, y eso está bien
 
 Va dentro de un binario que se distribuye, así que cualquiera puede sacarlo. No es un
