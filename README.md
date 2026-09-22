@@ -54,7 +54,9 @@ no se guarda en ninguna parte**. Ver [docs/SERVICIO.md](docs/SERVICIO.md).
 
 ## Probarlo
 
-Requiere Rust estable (edición 2024).
+Requiere Rust estable (edición 2024). La ventana de escritorio usa el webview del sistema:
+en Windows ya viene (WebView2), y en Linux hacen falta sus cabeceras
+—`libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev pkg-config` en Debian y derivados—.
 
 ```sh
 cargo test --workspace          # 218 tests
