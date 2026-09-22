@@ -278,7 +278,32 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       no fuera ese contenedor. No bloquea nada: con 3.14 monta sin privilegios y con 3.18.2
       monta como root, porque `fuser` intenta antes el `mount(2)` directo y ahí el ayudante no
       pinta nada
-- [ ] Rebalanceo al añadir/retirar un proveedor
+- [x] Añadir un proveedor para **más seguridad**: `rs(k,m)` pasa a `rs(k,m+1)` sin mover ni un
+      fragmento de los que ya hay. Se apoya en una propiedad que no se da por supuesta y tiene
+      tres tests propios: ampliar la paridad no cambia los fragmentos anteriores, porque los
+      de datos dependen solo de `k` y los de paridad que ya existían salen iguales de la matriz
+      nueva. `libredisk providers add --mas-seguridad`
+- [x] Y **se puede interrumpir sin consecuencias**, que es lo que lo hace usable en algo que
+      tarda horas: mientras la cabecera no cambie, el volumen se lee con la topología vieja y
+      los fragmentos viejos, que no se han tocado. Lo único a medias son fragmentos de paridad
+      que todavía no lee nadie. Volver a lanzarlo se salta los que ya están. **La cabecera es
+      el único punto de compromiso**, y no se publica si falla un solo trozo: prometer una
+      redundancia que no está es peor que no ampliar
+- [x] Probado de punta a punta: volumen `rs(2,1)` sobre tres directorios, se añade el cuarto,
+      **se destruyen dos proveedores enteros** y el fichero vuelve byte a byte idéntico. Antes
+      de ampliar, perder dos lo dejaba ilegible, y hay un test que lo comprueba en ese orden:
+      sin esa mitad, el test pasaría igual aunque ampliar no hiciera nada
+- [x] Proveedores de directorio local numerados (`FS1_ROOT`, `FS2_ROOT`…), que es lo que
+      permite montar un volumen con redundancia de verdad sin tocar ninguna nube. El nombre va
+      pegado al número de la variable y no a la posición: si dependiera del orden, quitar el
+      segundo de tres renombraría al tercero y cada fragmento se leería del sitio equivocado
+      sin que la cabecera se enterase
+- [ ] Añadir un proveedor para **más espacio**: `rs(k,m)` pasa a `rs(k+1,m)`. Cambian las
+      fronteras del reparto, así que hay que releer y volver a subir el volumen entero, y hace
+      falta un esquema de **dos generaciones** de claves de fragmento para escribir lo nuevo
+      sin destruir lo viejo mientras el volumen se sigue leyendo. Hoy la orden existe y se
+      niega, explicando por qué
+- [ ] Retirar un proveedor
 - [ ] Instantáneas y retención
 - [ ] macOS (FSKit o NFS loopback; macFUSE tiene problemas de licencia)
 

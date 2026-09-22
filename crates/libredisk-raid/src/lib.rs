@@ -353,4 +353,63 @@ mod tests {
             }
         ));
     }
+
+    /// Anadir paridad **no cambia la que ya habia**, ni los fragmentos de datos.
+    ///
+    /// De esto depende que se pueda anadir un proveedor sin reescribir el volumen entero: si
+    /// se cumple, pasar de `rs(k,m)` a `rs(k,m+1)` es calcular un fragmento nuevo y subirlo, y
+    /// mientras tanto el volumen se sigue leyendo con la topologia vieja. Si no se cumpliera,
+    /// habria que reescribir cada trozo y no habria forma de hacerlo sin una ventana en la que
+    /// el volumen no se pueda leer.
+    ///
+    /// Es una propiedad de como `reed-solomon-erasure` construye su matriz, no algo que
+    /// prometa su API. Por eso se comprueba aqui: si un dia cambia, esto falla antes de que
+    /// corrompa el volumen de nadie.
+    #[test]
+    fn ampliar_la_paridad_no_toca_los_fragmentos_que_ya_estaban() {
+        let datos: Vec<u8> = (0..10_000u32).map(|i| (i % 251) as u8).collect();
+
+        let antes = split(Layout::ReedSolomon { k: 4, m: 2 }, &datos).unwrap();
+        let despues = split(Layout::ReedSolomon { k: 4, m: 3 }, &datos).unwrap();
+
+        assert_eq!(antes.len(), 6);
+        assert_eq!(despues.len(), 7);
+        for i in 0..6 {
+            assert_eq!(
+                antes[i], despues[i],
+                "el fragmento {i} cambio al ampliar la paridad"
+            );
+        }
+    }
+
+    /// Y lo mismo saltando varios de golpe, que es lo que pasa al anadir dos proveedores.
+    #[test]
+    fn ampliar_la_paridad_de_dos_en_dos_tampoco() {
+        let datos: Vec<u8> = (0..7_777u32).map(|i| (i % 97) as u8).collect();
+
+        let antes = split(Layout::ReedSolomon { k: 3, m: 1 }, &datos).unwrap();
+        let despues = split(Layout::ReedSolomon { k: 3, m: 3 }, &datos).unwrap();
+
+        for i in 0..antes.len() {
+            assert_eq!(antes[i], despues[i], "el fragmento {i} cambio");
+        }
+    }
+
+    /// Cambiar `k`, en cambio, **si** mueve todo: las fronteras del reparto se desplazan.
+    ///
+    /// Es la diferencia entre anadir un proveedor para tener mas seguridad --barato-- y
+    /// anadirlo para tener mas sitio --reescribir el volumen entero--. Conviene que este
+    /// escrito en un test y no solo en la documentacion.
+    #[test]
+    fn cambiar_k_si_mueve_todos_los_fragmentos() {
+        let datos: Vec<u8> = (0..10_000u32).map(|i| (i % 251) as u8).collect();
+
+        let antes = split(Layout::ReedSolomon { k: 4, m: 2 }, &datos).unwrap();
+        let despues = split(Layout::ReedSolomon { k: 5, m: 2 }, &datos).unwrap();
+
+        assert_ne!(
+            antes[0], despues[0],
+            "con otro k, hasta el primer fragmento es distinto"
+        );
+    }
 }
