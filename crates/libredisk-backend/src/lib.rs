@@ -268,6 +268,22 @@ pub trait Backend: Send + Sync {
     ///
     /// Por defecto, [`Cuota::MUDA`]: un proveedor que no implemente esto no declara nada, y
     /// eso es lo que se muestra. Devolver ceros seria decir que esta vacio.
+    /// Un identificador opaco de la cuenta detras de este proveedor.
+    ///
+    /// Sirve para detectar que **dos proveedores son la misma cuenta**, que es una situacion
+    /// que destruye la promesa del volumen sin que se note: un `mirror:2` sobre dos veces la
+    /// misma cuenta dice que aguanta una caida y no aguanta ninguna.
+    ///
+    /// `None` significa **no se sabe**, no "es distinta". Un bucket S3 o una carpeta local no
+    /// tienen una cuenta que preguntar, y dos carpetas pueden estar en el mismo disco sin que
+    /// nadie aqui pueda decirlo.
+    ///
+    /// No es el correo: es un identificador opaco. Para comparar sirve igual y asi no hay que
+    /// guardar ni imprimir la direccion de nadie.
+    async fn identidad(&self) -> Result<Option<String>, BackendError> {
+        Ok(None)
+    }
+
     async fn cuota(&self) -> Result<Cuota, BackendError> {
         Ok(Cuota::MUDA)
     }
@@ -518,6 +534,10 @@ impl Backend for OpendalBackend {
 
     async fn cuota(&self) -> Result<Cuota, BackendError> {
         self.medidor.medir(&self.name).await
+    }
+
+    async fn identidad(&self) -> Result<Option<String>, BackendError> {
+        self.medidor.identidad(&self.name).await
     }
 }
 

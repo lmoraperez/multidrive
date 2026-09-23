@@ -528,9 +528,28 @@ function pintarFormularioProveedor() {
   const partes = [nota(t.explicacion)];
 
   if (t.hueco) {
-    // El nombre con el que el volumen lo va a conocer para siempre. Ver `gdrive2` es lo que
+    // El nombre con el que el volumen lo va a conocer para siempre. Ver «gdrive2» es lo que
     // le dice a alguien que su primera cuenta de Drive sigue ahí y no se va a pisar.
-    partes.push(nota(`Se guardará con el nombre «${t.hueco}».`));
+    const yaHay = t.ocupadas ?? 0;
+    partes.push(
+      nota(
+        yaHay === 0
+          ? `Se guardará con el nombre «${t.hueco}».`
+          : `Ya tienes ${yaHay} de este tipo. Esta se guardará como «${t.hueco}», ` +
+            `aparte de ${t.nombres.join(", ")}.`,
+      ),
+    );
+    if (t.oauth) {
+      // Que se puede repetir el tipo no es evidente: el formulario se ve igual, y quien no
+      // lo sepa no lo intenta.
+      partes.push(
+        nota(
+          "Puedes añadir varias cuentas del mismo servicio: el navegador te dejará elegir " +
+            "cuál. Repetir la misma cuenta no sirve —se vería como dos proveedores pero " +
+            "caería a la vez—, así que se comprueba y se rechaza.",
+        ),
+      );
+    }
   } else {
     partes.push(nota("No quedan ranuras libres de este tipo."));
   }

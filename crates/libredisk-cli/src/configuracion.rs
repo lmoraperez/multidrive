@@ -162,6 +162,14 @@ pub async fn add(tipo: &str) -> Result<()> {
         Err(e) => bail!("no se guarda nada porque el proveedor no responde: {e}"),
     }
 
+    if let Ok(Some(otro)) = live::ya_configurada(t, &backend).await {
+        bail!(
+            "esa cuenta ya esta configurada como '{otro}'.\n\
+             Dos proveedores sobre la misma cuenta no son redundancia: se verian como dos,\n\
+             pero el dia que se pierda la cuenta se pierden los dos a la vez."
+        );
+    }
+
     let fichero = config::fichero_de_usuario()
         .context("no se sabe donde vive la configuracion de este usuario")?;
     config::guardar(

@@ -604,6 +604,8 @@ mod tests {
             token: Box::leak(token.to_string().into_boxed_str()),
             ambito: "un.ambito",
             cuota: "http://127.0.0.1:1/cuota",
+            identidad: "http://127.0.0.1:1/identidad",
+            campo_identidad: &["id"],
             extra: &[("access_type", "offline")],
         }
     }

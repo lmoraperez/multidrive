@@ -260,6 +260,24 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       y si alguien abusa lo pagan todos los de esa versión
 - [x] `libredisk config ver` dice si esta copia trae aplicación registrada. Es lo que decide
       si al usuario se le piden dos datos de desarrollador o solo se le pide pulsar un botón
+- [x] **Varias cuentas del mismo servicio, de verdad.** Ya cabían por las ranuras numeradas,
+      pero faltaban las dos cosas que hacen que sirvan: que el navegador deje **elegir** la
+      cuenta, y que no se pueda meter la misma dos veces
+- [x] `prompt=select_account` en los dos. Google llevaba solo `prompt=consent`, que enseña la
+      pantalla de permisos pero **usa la sesión que ya esté abierta**; OneDrive no llevaba
+      `prompt` ninguno. Añadir una segunda cuenta habría reconectado la primera sin avisar
+- [x] **Se rechaza añadir una cuenta que ya está.** No es cosmético: dos proveedores sobre la
+      misma cuenta se ven como dos, cuentan como dos al elegir topología y se anuncian como
+      «aguanta perder uno», pero el día que se pierda esa cuenta se pierden las dos copias a
+      la vez. La ventana estaría prometiendo una redundancia que no existe. Comprobado contra
+      una cuenta real: intentar repetirla se rechaza nombrando cuál era
+- [x] Se compara un **identificador opaco**, no el correo: `permissionId` en Drive y el id de
+      la unidad en Graph. Para comparar sirve igual y así no hay que guardar ni imprimir la
+      dirección de nadie. Un proveedor que no conteste no bloquea el alta — negarse a añadir
+      uno porque otro está caído sería peor que el riesgo que se evita
+- [x] La ventana dice cuántas hay ya de ese tipo, con qué nombre se guardará la nueva y que
+      las anteriores no se pisan. Los nombres son `gdrive`, `gdrive1`, `gdrive2`… — la primera
+      sin número, que es la convención con la que nacieron las carpetas locales
 - [x] **`libredisk volume destroy`**, que no existía: no había forma de retirar un volumen.
       Borra sus fragmentos, su raíz y su cabecera, y **solo eso** — si guardaste otras cosas
       en esa carpeta siguen donde estaban, comprobado con un test contra carpetas locales

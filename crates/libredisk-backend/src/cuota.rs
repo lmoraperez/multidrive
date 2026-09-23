@@ -104,43 +104,64 @@ fn red(nombre: &str, detalle: impl std::fmt::Display) -> BackendError {
 /// pasa la comprobacion y llega caducado al servidor.
 const MARGEN: Duration = Duration::from_secs(60);
 
-async fn nube(
+/// El token de acceso de esta nube, del cache si sigue valiendo.
+async fn token_de(
     nombre: &str,
     cual: Nube,
     creds: &OauthCreds,
     cache: &Mutex<Option<(String, Instant)>>,
-) -> Result<Cuota, BackendError> {
-    let token = match creds {
+) -> Result<String, BackendError> {
+    match creds {
         // Un token de acceso suelto no se renueva: es lo que hay, y caduca en una hora.
-        OauthCreds::Acceso(t) => t.clone(),
+        OauthCreds::Acceso(t) => Ok(t.clone()),
         OauthCreds::Refresco {
             refresh_token,
             client_id,
             client_secret,
         } => {
             let mut guardado = cache.lock().await;
-            match guardado
+            if let Some((t, _)) = guardado
                 .as_ref()
                 .filter(|(_, hasta)| *hasta > Instant::now())
             {
-                Some((t, _)) => t.clone(),
-                None => {
-                    let (t, dura) =
-                        refrescar(nombre, cual, refresh_token, client_id, client_secret).await?;
-                    *guardado = Some((t.clone(), Instant::now() + dura.saturating_sub(MARGEN)));
-                    t
-                }
+                return Ok(t.clone());
             }
+            let (t, dura) =
+                refrescar(nombre, cual, refresh_token, client_id, client_secret).await?;
+            *guardado = Some((t.clone(), Instant::now() + dura.saturating_sub(MARGEN)));
+            Ok(t)
         }
-    };
+    }
+}
 
+/// Una peticion autenticada contra la nube, devolviendo el cuerpo.
+///
+/// Lo comparten la consulta de cupo y la de identidad, que son dos preguntas distintas a la
+/// misma API con el mismo token.
+async fn pedir(
+    nombre: &str,
+    url: &str,
+    cual: Nube,
+    creds: &OauthCreds,
+    cache: &Mutex<Option<(String, Instant)>>,
+) -> Result<String, BackendError> {
+    let token = token_de(nombre, cual, creds, cache).await?;
     let respuesta = cliente()
-        .get(cual.datos().cuota)
+        .get(url)
         .bearer_auth(&token)
         .send()
         .await
         .map_err(|e| red(nombre, e))?;
-    let cuerpo = exigir_ok(nombre, respuesta).await?;
+    exigir_ok(nombre, respuesta).await
+}
+
+async fn nube(
+    nombre: &str,
+    cual: Nube,
+    creds: &OauthCreds,
+    cache: &Mutex<Option<(String, Instant)>>,
+) -> Result<Cuota, BackendError> {
+    let cuerpo = pedir(nombre, cual.datos().cuota, cual, creds, cache).await?;
     let json: serde_json::Value = serde_json::from_str(&cuerpo).map_err(|e| red(nombre, e))?;
 
     match cual {
@@ -357,6 +378,36 @@ async fn exigir_ok(nombre: &str, r: reqwest::Response) -> Result<String, Backend
     ))
 }
 
+// De quien es la cuenta
+// ---------------------------------------------------------------------------------------
+
+impl Medidor {
+    /// Un identificador opaco de la cuenta, o `None` si este proveedor no tiene tal cosa.
+    ///
+    /// Sirve para una sola cosa y es importante: **detectar que dos proveedores son la misma
+    /// cuenta**. Un `mirror:2` sobre dos veces la misma cuenta dice que aguanta una caida y
+    /// no aguanta ninguna, porque el dia que se pierda esa cuenta se pierden las dos copias.
+    /// Sin esta comprobacion, la interfaz prometeria una redundancia que no existe.
+    ///
+    /// Los que no son nubes OAuth devuelven `None`, y eso significa "no se sabe", no "son
+    /// distintos". Dos carpetas locales pueden estar en el mismo disco y nadie aqui puede
+    /// decirlo; ese aviso lo da la explicacion del tipo, no una comparacion.
+    pub(crate) async fn identidad(&self, nombre: &str) -> Result<Option<String>, BackendError> {
+        let Self::Nube { cual, creds, token } = self else {
+            return Ok(None);
+        };
+        let datos = cual.datos();
+        let cuerpo = pedir(nombre, datos.identidad, *cual, creds, token).await?;
+        let json: serde_json::Value = serde_json::from_str(&cuerpo).map_err(|e| red(nombre, e))?;
+
+        let mut actual = &json;
+        for paso in datos.campo_identidad {
+            actual = &actual[*paso];
+        }
+        Ok(actual.as_str().map(str::to_string))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,3 +485,5 @@ mod tests {
         );
     }
 }
+
+// ---------------------------------------------------------------------------------------
