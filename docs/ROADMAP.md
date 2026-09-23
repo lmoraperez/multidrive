@@ -260,6 +260,22 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       y si alguien abusa lo pagan todos los de esa versión
 - [x] `libredisk config ver` dice si esta copia trae aplicación registrada. Es lo que decide
       si al usuario se le piden dos datos de desarrollador o solo se le pide pulsar un botón
+- [x] **`libredisk volume destroy`**, que no existía: no había forma de retirar un volumen.
+      Borra sus fragmentos, su raíz y su cabecera, y **solo eso** — si guardaste otras cosas
+      en esa carpeta siguen donde estaban, comprobado con un test contra carpetas locales
+- [x] Confirmar no es teclear `--si`: hay que escribir los nombres de los proveedores, que es
+      lo que obliga a mirar la lista de lo que se va a borrar. Y antes enseña el recuento real
+      de fragmentos y bytes, que cuesta una enumeración y convierte «se va a borrar el
+      volumen» en una cifra que se puede mirar
+- [x] Se niega si un proveedor no se deja enumerar, y se niega si los proveedores
+      configurados no son los del volumen. Las dos por lo mismo: retirarlo a medias y decir
+      que terminó dejaría fragmentos sueltos que ya nadie podría identificar
+- [x] **Arreglada una fuga de credenciales en los mensajes de error.** El error de OpenDAL
+      trae la URL entera de la petición, y Google pone el token de refresco y el
+      `client_secret` en la propia URL: cualquier fallo de renovación los publicaba en
+      registros, capturas e informes de fallo. Ahora se redactan por **nombre del parámetro**
+      y no por aspecto del valor — adivinar qué parece un secreto es una carrera que se
+      pierde. Lo encontró un borrado real, y lo fija un test con el texto exacto que apareció
 - [x] **Comprobado contra una cuenta real que el permiso mínimo basta.** Con la aplicación
       propia y un único ámbito `drive.file` —solo los ficheros que LibreDisk crea— funciona
       todo: crear volumen, subir, bajar con el SHA-256 idéntico, enumerar y medir. No era
