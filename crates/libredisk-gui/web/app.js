@@ -661,11 +661,21 @@ $("guardar-proveedor").addEventListener("click", async () => {
   }
 });
 
-$("plegar-alta").addEventListener("click", async () => {
-  const cuerpo = $("alta-cuerpo");
-  cuerpo.hidden = !cuerpo.hidden;
-  $("plegar-alta").textContent = cuerpo.hidden ? "Mostrar" : "Ocultar";
+// Abrir y cerrar el alta. El botón de fuera dice lo que hace —«Añadir un proveedor»— y
+// desaparece mientras el formulario está abierto, porque entonces ya no hay nada que añadir
+// a lo que invitar: lo que hay es un formulario a medio rellenar.
+$("abrir-alta").addEventListener("click", async () => {
+  $("abrir-alta").hidden = true;
+  $("alta-cuerpo").hidden = false;
   // Se prepara al abrirlo y no al arrancar: consultar qué ranura queda libre lee la
   // configuración, y no hay por qué pagarlo si nadie va a añadir nada.
-  if (!cuerpo.hidden) await prepararAlta();
+  await prepararAlta();
+});
+
+$("cerrar-alta").addEventListener("click", () => {
+  $("alta-cuerpo").hidden = true;
+  $("abrir-alta").hidden = false;
+  // Lo tecleado se suelta al cerrar: ahí puede haber un secreto de aplicación, y no tiene
+  // por qué seguir en memoria porque alguien haya dejado el formulario a medias.
+  tecleado.clear();
 });

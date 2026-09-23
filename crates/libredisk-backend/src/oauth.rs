@@ -259,21 +259,69 @@ async fn canjear(
 
 /// Abre la direccion en el navegador que tenga puesto el usuario.
 ///
-/// Sin dependencias: son tres ordenes del sistema. La direccion lleva `&`, que en `cmd` es
-/// un separador de ordenes, y por eso va como **un solo argumento** —Rust lo entrecomilla— y
-/// detras de un titulo vacio, que es lo que `start` espera para no confundir la direccion con
-/// el titulo de la ventana.
+/// **En Windows no se pasa por `cmd`**, y eso no es una preferencia de estilo: es un fallo
+/// que costo una pantalla de "Acceso bloqueado" de Google. La version anterior hacia
+/// `cmd /C start "" <url>` confiando en que Rust entrecomillaria el argumento. Rust solo
+/// entrecomilla lo que lleva espacios, y una direccion no lleva; asi que `cmd` veia el `&`
+/// --que para el separa ordenes-- y **cortaba la direccion por el primer parametro**. Google
+/// recibia `?client_id=...` a secas y contestaba `Required parameter is missing:
+/// response_type`.
+///
+/// `ShellExecuteW` es la llamada del sistema que hay debajo de "abrir con el programa
+/// asociado". No hay linea de ordenes que reinterpretar, asi que esa clase de fallo
+/// desaparece en vez de quedar arreglada con mejores comillas.
+#[cfg(windows)]
 pub fn abrir_en_navegador(url: &str) -> Result<(), String> {
-    let salida = if cfg!(windows) {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", url])
-            .spawn()
-    } else if cfg!(target_os = "macos") {
-        std::process::Command::new("open").arg(url).spawn()
-    } else {
-        std::process::Command::new("xdg-open").arg(url).spawn()
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let ancho = |s: &str| -> Vec<u16> {
+        std::ffi::OsStr::new(s)
+            .encode_wide()
+            .chain(Some(0))
+            .collect()
     };
-    salida.map(|_| ()).map_err(|e| e.to_string())
+    let operacion = ancho("open");
+    let fichero = ancho(url);
+
+    // SEGURIDAD: los dos vectores acaban en cero y viven durante toda la llamada. El resto de
+    // punteros son opcionales y van nulos, que es lo que la documentacion pide para abrir
+    // algo sin parametros ni directorio de trabajo.
+    let r = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            operacion.as_ptr(),
+            fichero.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+
+    // La documentacion lo dice asi de raro: devuelve un valor **mayor que 32** si salio bien,
+    // y un codigo de error si no. No es un puntero aunque lo parezca por el tipo.
+    if r as isize > 32 {
+        Ok(())
+    } else {
+        Err(format!("ShellExecuteW devolvio {}", r as isize))
+    }
+}
+
+#[cfg(not(windows))]
+pub fn abrir_en_navegador(url: &str) -> Result<(), String> {
+    // Aqui el argumento va en el vector de argumentos del proceso, sin interprete de por
+    // medio, asi que la direccion llega entera.
+    let programa = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(programa)
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------------------

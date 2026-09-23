@@ -158,3 +158,6 @@ select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 #campos-proveedor .nota { margin-top: 4px; }
 #resultado-proveedor { white-space: pre-wrap; }
 #alta { margin-top: 30px; }
+/* El boton de abrir el alta ocupa el ancho: es una accion de la pantalla, no un detalle
+   al lado de un titulo. */
+#abrir-alta { width: 100%; }
