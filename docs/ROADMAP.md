@@ -260,10 +260,23 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       y si alguien abusa lo pagan todos los de esa versión
 - [x] `libredisk config ver` dice si esta copia trae aplicación registrada. Es lo que decide
       si al usuario se le piden dos datos de desarrollador o solo se le pide pulsar un botón
-- [ ] Registrar la aplicación en Google Cloud y en Azure. Es lo único que falta para que otra
-      persona pueda probar LibreDisk sin tocar ninguna consola. Los pasos exactos, incluido
-      por qué el cliente tiene que ser de escritorio y no web, están en
-      [APLICACION-OAUTH.md](APLICACION-OAUTH.md)
+- [x] **Comprobado contra una cuenta real que el permiso mínimo basta.** Con la aplicación
+      propia y un único ámbito `drive.file` —solo los ficheros que LibreDisk crea— funciona
+      todo: crear volumen, subir, bajar con el SHA-256 idéntico, enumerar y medir. No era
+      obvio, porque la biblioteca resuelve rutas buscando carpetas por nombre. Cifras en
+      [VIABILIDAD.md §10](VIABILIDAD.md#10-el-permiso-mínimo-de-google-basta)
+- [x] Y comprobado que **no ve lo que no creó**: apuntada a la carpeta de un volumen hecho
+      por otra aplicación, responde que ahí no hay nada. Es la verificación directa de lo que
+      promete la política de privacidad, no una promesa
+- [x] Aplicación registrada en **Google Cloud**, cliente de tipo escritorio, y política de
+      privacidad publicada en libredisk.chambaya.net
+- [ ] Registrar la aplicación en **Azure** para OneDrive. Los pasos están en
+      [APLICACION-OAUTH.md](APLICACION-OAUTH.md); es bastante menos trámite que Google, porque
+      Microsoft no exige evaluación de ámbitos ni pone tope de usuarios
+- [ ] Meter las credenciales en la construcción que se distribuya, para que el binario las
+      lleve dentro en vez de leerlas de un fichero de pruebas
+- [ ] Publicar el proyecto en Google y pasar la revisión de marca, que es lo que quita el
+      aviso de «aplicación sin verificar» y el tope de 100 usuarios
 - [x] **Se pueden añadir proveedores desde la ventana.** Elegir tipo, rellenar los campos y
       «Probar y guardar»: escribe, lee, compara y borra contra el proveedor, y **solo si eso
       sale bien** escribe la configuración. Guardar primero y descubrir después que las
