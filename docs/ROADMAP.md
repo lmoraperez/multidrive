@@ -309,8 +309,10 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       Microsoft no exige evaluación de ámbitos ni pone tope de usuarios
 - [ ] Meter las credenciales en la construcción que se distribuya, para que el binario las
       lleve dentro en vez de leerlas de un fichero de pruebas
-- [ ] Publicar el proyecto en Google y pasar la revisión de marca, que es lo que quita el
-      aviso de «aplicación sin verificar» y el tope de 100 usuarios
+- [ ] Publicar el proyecto en Google, que es lo que quita el tope de cuentas de prueba.
+      **No hace falta pasar verificación**: `drive.file` esta clasificado como ámbito no
+      sensible, y los no sensibles no la exigen. Es consecuencia directa de haber pedido el
+      permiso mínimo
 - [x] **Se pueden añadir proveedores desde la ventana.** Elegir tipo, rellenar los campos y
       «Probar y guardar»: escribe, lee, compara y borra contra el proveedor, y **solo si eso
       sale bien** escribe la configuración. Guardar primero y descubrir después que las

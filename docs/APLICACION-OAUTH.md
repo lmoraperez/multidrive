@@ -25,7 +25,7 @@ Solo dos de los cinco, y solo uno da trabajo de verdad:
 | S3 (B2, R2, Wasabi, MinIO) | **No** | El usuario se genera una clave en su propia consola |
 | WebDAV / Nextcloud | **No** | Usuario y contraseña, mejor una de aplicación |
 | OneDrive | Sí, en Azure | Sin evaluación de ámbitos ni tope de usuarios |
-| Google Drive | Sí | Revisión de marca, política publicada, tope de 100 usuarios hasta verificar |
+| Google Drive | Sí | Política publicada. Sin verificación, por usar solo un ámbito no sensible |
 
 El motivo de fondo: **OAuth existe para servicios donde el usuario entra con su contraseña y
 el programa no debe verla nunca.** S3 y WebDAV no funcionan así — entregan una credencial que
@@ -81,9 +81,26 @@ Lo que más despista: **los ámbitos ya no están en la pantalla de consentimien
 El cliente va el último a propósito: las tres secciones anteriores definen lo que verá el
 usuario cuando lo pulse.
 
-Al publicar el proyecto, Google pide una revisión de marca —no de seguridad, al ser un ámbito
-no restringido— para quitar el aviso de «aplicación sin verificar» y el límite de usuarios de
-prueba.
+### Mientras esté «en pruebas», solo entran los probadores
+
+Un proyecto recién creado nace en estado **en pruebas**, y ahí Google rechaza a cualquier
+cuenta que no esté en la lista de usuarios de prueba, con un `Error 403: access_denied` y el
+texto «la app se está probando y solo los verificadores aprobados por los desarrolladores
+pueden acceder a ella».
+
+Para probar con una cuenta concreta: **Público → Usuarios de prueba** y añadirla. Hay un tope
+de cuentas de prueba.
+
+### Publicar: no hace falta verificación
+
+`drive.file` está clasificado por Google como ámbito **no sensible**, y su documentación dice
+que los ámbitos no sensibles **no obligan a pasar el proceso de verificación**. Así que para
+que cualquiera pueda usar LibreDisk basta con **Público → Publicar aplicación**: no hay
+revisión que esperar ni tope de usuarios.
+
+Esto es consecuencia directa de haber elegido el permiso mínimo. Con el ámbito amplio `drive`
+—que es *restringido*— habría hecho falta además una evaluación de seguridad anual de
+terceros.
 ## OneDrive
 
 1. En [Azure Portal](https://portal.azure.com/) → Microsoft Entra ID → **Registros de
