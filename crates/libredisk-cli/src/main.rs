@@ -172,6 +172,18 @@ enum VolumeCmd {
         #[arg(long, default_value = "rs:4,2")]
         layout: String,
     },
+    /// Retira el volumen de los proveedores: borra sus fragmentos, su raiz y su cabecera.
+    ///
+    /// No se puede deshacer y no hay papelera. Sin `--confirmar` solo ensena que se borraria.
+    Destroy {
+        /// Los nombres de los proveedores separados por comas, tal y como los lista la
+        /// propia orden al ensenar lo que va a borrar.
+        ///
+        /// Se piden escritos aparte a proposito: obliga a mirar la lista antes de
+        /// confirmarla, y un `--si` suelto se teclea sin leer.
+        #[arg(long)]
+        confirmar: Option<String>,
+    },
     /// Topologia, proveedores y generacion actual.
     Status,
 }
@@ -286,6 +298,7 @@ async fn main() -> Result<()> {
         Command::Check { pasadas } => check(pasadas).await,
         Command::Volume(VolumeCmd::Create { layout }) => volumen::create(&layout).await,
         Command::Volume(VolumeCmd::Status) => volumen::status().await,
+        Command::Volume(VolumeCmd::Destroy { confirmar }) => volumen::destroy(confirmar).await,
         Command::Ls { path } => volumen::ls(&path).await,
         Command::Put {
             local,

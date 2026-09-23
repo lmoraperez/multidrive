@@ -20,11 +20,103 @@ mod cuota;
 pub mod live;
 pub mod oauth;
 
+/// Quita de un texto cualquier cosa que parezca una credencial.
+///
+/// Existe por un fallo real, encontrado borrando un volumen: al fallar una renovación de
+/// token, el error de OpenDAL trae **la URL entera de la petición**, y Google pone el token
+/// de refresco, el `client_id` y el `client_secret` en la propia URL. Ese texto va a parar a
+/// registros, a capturas de pantalla y a informes de fallo.
+///
+/// Se redacta **por nombre del parámetro y no por aspecto del valor**. Adivinar qué parece un
+/// secreto es una carrera que se pierde: los formatos cambian, y el día que un proveedor
+/// emita un token que parezca inocente se publicaría entero. La lista de nombres, en cambio,
+/// es corta y la fijan los estándares.
+///
+/// Se mantiene el nombre del parámetro y se sustituye solo el valor. Sin el nombre, un error
+/// de credenciales sería indistinguible de cualquier otro, y diagnosticar «falta algo» sin
+/// saber qué es peor que no tener el mensaje.
+pub fn sin_secretos(texto: &str) -> String {
+    /// Nombres que nunca se imprimen. Los fijan OAuth2 (RFC 6749) y las APIs que usamos.
+    const SECRETOS: &[&str] = &[
+        "refresh_token",
+        "client_secret",
+        "access_token",
+        "id_token",
+        "code",
+        "code_verifier",
+        "password",
+        "Authorization",
+        "X-Amz-Signature",
+        "X-Amz-Credential",
+    ];
+
+    let mut out = texto.to_string();
+    for nombre in SECRETOS {
+        out = redactar_parametro(&out, nombre);
+    }
+    out
+}
+
+/// Sustituye `nombre=<valor>` por `nombre=<redactado>`, alli donde aparezca.
+///
+/// Reconoce las tres formas en que un mismo error puede traer lo mismo: `nombre=valor` en
+/// una URL, `"nombre": "valor"` en un JSON y `nombre: valor` en un volcado de cabeceras.
+///
+/// Dos cosas que parecen detalles y no lo son, las dos destapadas por tests:
+///
+/// - **Se exige un `=` o un `:` detras del nombre.** Sin eso, la palabra «code» dentro de una
+///   frase normal se comia el resto de la frase.
+/// - **Entre comillas, el valor llega hasta la comilla de cierre.** Cortarlo en el primer
+///   espacio dejaba fuera la mitad: `"Bearer ya29.abc"` se quedaba en
+///   `"<redactado> ya29.abc"`, que es justo lo que se queria evitar.
+fn redactar_parametro(texto: &str, nombre: &str) -> String {
+    let mut out = String::with_capacity(texto.len());
+    let mut resto = texto;
+
+    while let Some(i) = resto.find(nombre) {
+        let (antes, desde) = resto.split_at(i);
+        let tras_nombre = &desde[nombre.len()..];
+        out.push_str(antes);
+        out.push_str(nombre);
+        resto = tras_nombre;
+
+        let mut p = tras_nombre;
+        // La comilla que cierra el nombre en un JSON: `"access_token"`.
+        p = p.strip_prefix('"').unwrap_or(p);
+        // Y aqui si hace falta una asignacion de verdad.
+        let Some(tras_signo) = p.strip_prefix(['=', ':']) else {
+            continue;
+        };
+        p = tras_signo.trim_start_matches(' ');
+
+        let entrecomillado = p.starts_with('"');
+        let valor = p.strip_prefix('"').unwrap_or(p);
+        let fin = if entrecomillado {
+            valor.find('"').unwrap_or(valor.len())
+        } else {
+            valor
+                .find(['&', '"', ' ', ',', '}', '\n', '\r'])
+                .unwrap_or(valor.len())
+        };
+
+        // Se reconstruye todo lo que habia entre el nombre y el valor, para que el mensaje
+        // siga leyendose igual salvo por el valor.
+        out.push_str(&tras_nombre[..tras_nombre.len() - p.len()]);
+        if entrecomillado {
+            out.push('"');
+        }
+        out.push_str("<redactado>");
+        resto = &valor[fin..];
+    }
+    out.push_str(resto);
+    out
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum BackendError {
     #[error("el objeto '{0}' no existe en el proveedor")]
     NotFound(String),
-    #[error("no se pudo configurar el proveedor '{name}': {source}")]
+    #[error("no se pudo configurar el proveedor '{name}': {}", sin_secretos(&source.to_string()))]
     Config {
         name: String,
         source: Box<opendal::Error>,
@@ -40,7 +132,9 @@ pub enum BackendError {
     Cuota { name: String, detalle: String },
     #[error("no se pudo conectar la cuenta: {detalle}")]
     Oauth { detalle: String },
-    #[error("fallo de E/S en el proveedor '{name}' sobre '{key}': {source}")]
+    // El error de OpenDAL trae la URL de la peticion, y Google pone las credenciales en la
+    // propia URL. Sin redactar, cualquier fallo de renovacion publica el token de refresco.
+    #[error("fallo de E/S en el proveedor '{name}' sobre '{key}': {}", sin_secretos(&source.to_string()))]
     Io {
         name: String,
         key: String,
@@ -424,6 +518,88 @@ impl Backend for OpendalBackend {
 
     async fn cuota(&self) -> Result<Cuota, BackendError> {
         self.medidor.medir(&self.name).await
+    }
+}
+
+#[cfg(test)]
+mod redaccion {
+    use super::*;
+
+    /// El caso real que destapo el fallo: borrando un volumen, la renovacion de token fallo
+    /// y el error de OpenDAL trajo la URL entera. Google pone el token de refresco, el
+    /// `client_id` y el `client_secret` en la propia URL.
+    #[test]
+    fn el_error_que_publico_un_token_de_refresco_ya_no_lo_publica() {
+        let real = "fallo de E/S en el proveedor 'gdrive' sobre 'chunks/': Unexpected \
+                    (persistent) at list, context: { service_operation: RefreshAccessToken, \
+                    uri: https://oauth2.googleapis.com/token?refresh_token=1//0FINGIDO-esto-\
+                    no-es-un-token&client_id=000000000000-fingido.apps.google\
+                    usercontent.com&client_secret=FINGIDO-esto-no-es-un-secreto&grant_type=refresh_to\
+                    ken, response: Parts { status: 401 } }";
+        let limpio = sin_secretos(real);
+
+        assert!(!limpio.contains("1//0FINGIDO-esto-"), "{limpio}");
+        assert!(!limpio.contains("FINGIDO-esto-no-es-un-secreto"), "{limpio}");
+        // Lo que queda tiene que seguir sirviendo para diagnosticar: el proveedor, la
+        // operacion y el codigo de estado. Un mensaje redactado hasta la inutilidad obliga a
+        // volver a reproducir el fallo con los secretos puestos, que es peor.
+        assert!(limpio.contains("gdrive"), "{limpio}");
+        assert!(limpio.contains("RefreshAccessToken"), "{limpio}");
+        assert!(limpio.contains("401"), "{limpio}");
+        assert!(limpio.contains("refresh_token=<redactado>"), "{limpio}");
+    }
+
+    #[test]
+    fn se_redacta_en_json_igual_que_en_una_url() {
+        // El mismo error puede traer las dos formas mezcladas: la URL de la peticion y el
+        // cuerpo JSON de la respuesta.
+        let json = r#"{"access_token": "ya29.secreto", "expires_in": 3599}"#;
+        let limpio = sin_secretos(json);
+        assert!(!limpio.contains("ya29.secreto"), "{limpio}");
+        assert!(limpio.contains("expires_in"), "{limpio}");
+    }
+
+    #[test]
+    fn la_cabecera_de_autorizacion_tampoco_se_imprime() {
+        let limpio = sin_secretos("headers: {\"Authorization\": \"Bearer ya29.abc\"}");
+        assert!(!limpio.contains("ya29.abc"), "{limpio}");
+    }
+
+    #[test]
+    fn se_redacta_por_nombre_y_no_por_aspecto() {
+        // Adivinar que parece un secreto es una carrera que se pierde: el dia que un
+        // proveedor emita un token que parezca inocente se publicaria entero. Por eso lo que
+        // manda es el nombre del parametro.
+        let limpio = sin_secretos("client_secret=hola");
+        assert_eq!(limpio, "client_secret=<redactado>");
+    }
+
+    #[test]
+    fn el_nombre_del_parametro_sobrevive() {
+        // Sin el nombre, un error de credenciales seria indistinguible de cualquier otro.
+        assert!(sin_secretos("client_secret=x").starts_with("client_secret="));
+    }
+
+    #[test]
+    fn una_palabra_suelta_no_se_come_la_frase() {
+        // `code` aparece en frases normales. Sin exigir que detras venga una asignacion, se
+        // habria tragado media frase y el mensaje seria ilegible.
+        let frase = "el proveedor devolvio un code que no era valido";
+        assert_eq!(sin_secretos(frase), frase);
+    }
+
+    #[test]
+    fn varios_secretos_en_el_mismo_texto_caen_todos() {
+        let limpio = sin_secretos("a?refresh_token=uno&client_secret=dos&grant_type=tres");
+        assert!(!limpio.contains("uno"), "{limpio}");
+        assert!(!limpio.contains("dos"), "{limpio}");
+        assert!(limpio.contains("grant_type=tres"), "{limpio}");
+    }
+
+    #[test]
+    fn un_texto_sin_secretos_no_se_toca() {
+        let normal = "no se pudo conectar con el proveedor: se agoto el tiempo";
+        assert_eq!(sin_secretos(normal), normal);
     }
 }
 

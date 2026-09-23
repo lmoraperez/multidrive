@@ -1425,3 +1425,107 @@ pub async fn espacio(medir: bool) -> Result<()> {
     }
     Ok(())
 }
+
+/// Retira el volumen de los proveedores: borra sus fragmentos, su raiz y su cabecera.
+///
+/// **No se puede deshacer, y no hay papelera.** Por eso no basta con teclear la orden: hay
+/// que escribir aparte los nombres de los proveedores, que es lo que obliga a mirar la lista
+/// de lo que se va a borrar antes de confirmarla. Un `--si` suelto se teclea sin leer.
+///
+/// Solo toca **lo que es del volumen**: el prefijo de fragmentos, el puntero de raiz y la
+/// cabecera. Si el usuario guarda otras cosas en esa misma carpeta —cosa que la
+/// documentacion desaconseja pero nadie impide— se quedan donde estan. Borrar todo lo que
+/// hubiera debajo seria mas facil de escribir y mucho peor de explicar.
+pub async fn destroy(confirmacion: Option<String>) -> Result<()> {
+    let backends = proveedores()?;
+    let nombres: Vec<String> = backends
+        .iter()
+        .map(|b| Backend::name(b.as_ref()).to_string())
+        .collect();
+
+    let header = header::read(&backends)
+        .await?
+        .context("no hay ningun volumen en estos proveedores")?;
+
+    // Los configurados tienen que ser los del volumen. Sin esto se podria retirar media
+    // mitad --por ejemplo si un proveedor se quedo fuera de la configuracion-- y la orden
+    // diria que termino, dejando la otra mitad como basura que ya nadie sabe de quien era.
+    header.check_backends(&backends).context(
+        "los proveedores configurados no son los del volumen. No se borra nada: retirarlo a \
+         medias dejaria fragmentos sueltos que ya nadie podria identificar",
+    )?;
+
+    println!("Se va a RETIRAR el volumen de:");
+    for n in &nombres {
+        println!("  {n}");
+    }
+    println!();
+    println!("  topologia     {}", header.layout);
+    println!("  proveedores   {}", header.backends.join(", "));
+
+    // Contar antes de borrar. Cuesta una enumeracion por proveedor, y es lo que convierte
+    // "se va a borrar el volumen" en una cifra que se puede mirar antes de decir que si.
+    let mut total = 0usize;
+    let mut bytes = 0u64;
+    for b in &backends {
+        match b.list(libredisk_core::SHARD_PREFIX).await {
+            Ok(objetos) => {
+                total += objetos.len();
+                bytes += objetos.iter().map(|o| o.bytes).sum::<u64>();
+            }
+            Err(e) => {
+                // Un proveedor que no se deja enumerar no se puede limpiar, y decir "hecho"
+                // dejando fragmentos detras seria mentir sobre algo irreversible.
+                bail!(
+                    "no se pudo enumerar '{}': {e}\nNo se borra nada: sin poder mirarlo \
+                     entero, el recuento de abajo seria falso.",
+                    Backend::name(b.as_ref())
+                );
+            }
+        }
+    }
+    println!("  fragmentos    {total} ({})", tamano(bytes));
+    println!();
+
+    let esperado = nombres.join(",");
+    match confirmacion.as_deref() {
+        Some(dado) if dado == esperado => {}
+        _ => {
+            println!("Esto NO se puede deshacer y no hay papelera.");
+            println!("Si es lo que quieres, repite la orden confirmando los proveedores:");
+            println!();
+            println!("  libredisk volume destroy --confirmar {esperado}");
+            return Ok(());
+        }
+    }
+
+    let mut borrados = 0usize;
+    for b in &backends {
+        let nombre = Backend::name(b.as_ref()).to_string();
+        // Los fragmentos primero y la cabecera **la ultima**: si esto se corta a la mitad, un
+        // volumen sin fragmentos pero con cabecera se diagnostica --`scrub` dira que falta
+        // todo--, mientras que fragmentos sin cabecera son basura anonima que ya nadie sabe
+        // de quien era.
+        let objetos = b.list(libredisk_core::SHARD_PREFIX).await?;
+        for o in &objetos {
+            b.delete(&o.clave).await?;
+            borrados += 1;
+        }
+        b.delete(libredisk_core::tree::ROOT_KEY).await?;
+        b.delete(libredisk_core::header::HEADER_KEY).await?;
+        println!(
+            "  {nombre}: {} fragmento(s), raiz y cabecera",
+            objetos.len()
+        );
+    }
+
+    println!();
+    println!(
+        "retirado      {borrados} fragmento(s) en {} proveedor(es)",
+        backends.len()
+    );
+    println!();
+    println!("La carpeta sigue existiendo en cada proveedor, vacia de lo que era del volumen.");
+    println!("Si guardaste ahi otras cosas, siguen donde estaban.");
+    Ok(())
+}
