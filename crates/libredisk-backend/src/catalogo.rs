@@ -112,17 +112,32 @@ pub struct Oauth {
     pub ambito: &'static str,
     /// Donde preguntar cuanto espacio queda.
     pub cuota: &'static str,
+    /// Donde preguntar **de quien es la cuenta**, y por que camino del JSON viene.
+    ///
+    /// Se usa para una sola cosa, y es importante: detectar que dos proveedores son la misma
+    /// cuenta. Un `mirror:2` sobre dos veces la misma cuenta dice que aguanta una caida y no
+    /// aguanta ninguna, porque el dia que se pierda esa cuenta se pierden las dos copias.
+    ///
+    /// Se pide un identificador opaco y no el correo. Sirve igual para comparar, y asi no hay
+    /// que guardar ni imprimir la direccion de nadie.
+    pub identidad: &'static str,
+    pub campo_identidad: &'static [&'static str],
     /// Parametros que este proveedor exige en la URL de autorizacion y los demas no.
     pub extra: &'static [(&'static str, &'static str)],
 }
 
-/// Google pide dos cosas para devolver un token de refresco, y sin las dos devuelve solo uno
-/// de acceso que caduca en una hora:
+/// Google pide tres cosas, y cada una arregla un fallo distinto:
 ///
-/// - `access_type=offline`, que es lo que significa "quiero poder renovar".
+/// - `access_type=offline`, que es lo que significa "quiero poder renovar". Sin el solo da un
+///   token de acceso que caduca en una hora.
+/// - `prompt=select_account`, que es lo que deja **elegir de que cuenta se trata**. Sin el,
+///   Google usa la sesion que ya haya abierta, y anadir una segunda cuenta acabaria
+///   conectando otra vez la primera.
 /// - `prompt=consent`, porque si el usuario ya habia dado permiso antes, Google **no vuelve a
-///   mandar el token de refresco**. Sin esto, reconectar una cuenta ya conectada da un token
-///   que muere esa tarde.
+///   mandar el token de refresco**.
+///
+/// Los dos `prompt` van juntos en el mismo parametro separados por un espacio, que es como lo
+/// define el estandar.
 const GDRIVE_OAUTH: Oauth = Oauth {
     autorizar: "https://accounts.google.com/o/oauth2/v2/auth",
     token: "https://oauth2.googleapis.com/token",
@@ -132,18 +147,32 @@ const GDRIVE_OAUTH: Oauth = Oauth {
     // ambito restringido, que exige una evaluacion de seguridad anual de terceros.
     ambito: "https://www.googleapis.com/auth/drive.file",
     cuota: "https://www.googleapis.com/drive/v3/about?fields=storageQuota",
-    extra: &[("access_type", "offline"), ("prompt", "consent")],
+    // `permissionId` es el identificador estable del usuario en Drive. Se pide en vez del
+    // correo porque para comparar sirve igual y no hay que guardar la direccion de nadie.
+    identidad: "https://www.googleapis.com/drive/v3/about?fields=user(permissionId)",
+    campo_identidad: &["user", "permissionId"],
+    extra: &[
+        ("access_type", "offline"),
+        ("prompt", "select_account consent"),
+    ],
 };
 
 /// `offline_access` es lo que pide el token de refresco, y `Files.ReadWrite` es **el ambito
 /// exacto que OpenDAL usa al renovar**: pedir aqui uno distinto daria un token que deja de
 /// valer en la primera renovacion.
+///
+/// `prompt=select_account` por lo mismo que en Google: sin el, anadir una segunda cuenta
+/// reconectaria la que ya estuviera abierta en el navegador.
 const ONEDRIVE_OAUTH: Oauth = Oauth {
     autorizar: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
     token: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
     ambito: "offline_access Files.ReadWrite",
     cuota: "https://graph.microsoft.com/v1.0/me/drive?$select=quota",
-    extra: &[("response_mode", "query")],
+    // El identificador de la unidad, que es distinto para cada cuenta y no dice nada de quien
+    // es. Se pide con el ambito que ya tenemos, sin anadir permisos sobre el perfil.
+    identidad: "https://graph.microsoft.com/v1.0/me/drive?$select=id",
+    campo_identidad: &["id"],
+    extra: &[("response_mode", "query"), ("prompt", "select_account")],
 };
 
 /// Una clase de proveedor.

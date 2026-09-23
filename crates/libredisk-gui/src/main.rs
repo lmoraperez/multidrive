@@ -642,6 +642,14 @@ struct TipoJson {
     /// al usuario, y pedirle a alguien el ID de una aplicacion que no es suya es pedirle un
     /// dato que no tiene.
     aplicacion_propia: bool,
+    /// Si se conecta por navegador. La ventana lo usa para decir que caben varias cuentas.
+    oauth: bool,
+    /// Las que ya hay configuradas de este tipo, por nombre.
+    ///
+    /// Se ensenan al anadir otra porque es lo que hace evidente que no se pisan: quien ve
+    /// «aparte de gdrive» entiende que la primera sigue donde estaba.
+    nombres: Vec<String>,
+    ocupadas: usize,
     /// La ranura que le tocaria si se anadiera ahora: `gdrive`, `gdrive2`...
     ///
     /// Se ensena antes de guardar porque **ese es el nombre con el que el volumen lo va a
@@ -657,32 +665,47 @@ struct TipoJson {
 /// campos es un formulario que acaba pidiendo algo que el motor ya no lee.
 #[tauri::command]
 fn tipos_de_proveedor() -> Vec<TipoJson> {
+    // Los ya configurados, una vez, para no preguntar por la configuracion una vez por tipo.
+    let configurados: Vec<String> = live::configurados()
+        .map(|v| v.iter().map(|b| Backend::name(b).to_string()).collect())
+        .unwrap_or_default();
+
     catalogo::TIPOS
         .iter()
-        .map(|t| TipoJson {
-            clave: t.clave.to_string(),
-            etiqueta: t.etiqueta.to_string(),
-            explicacion: t.explicacion.to_string(),
-            aplicacion_propia: libredisk_backend::aplicacion::configurada(t.clave).is_some(),
-            hueco: live::hueco_libre_configurado(t)
-                .ok()
-                .flatten()
-                .map(|r| live::nombre_de_ranura(&r)),
-            campos: t
-                .campos
+        .map(|t| {
+            let mios: Vec<String> = configurados
                 .iter()
-                .map(|c| CampoJson {
-                    clave: c.clave.to_string(),
-                    etiqueta: c.etiqueta.to_string(),
-                    ayuda: c.ayuda.to_string(),
-                    ejemplo: c.ejemplo.to_string(),
-                    secreto: c.secreto,
-                    obligatorio: c.obligatorio,
-                    navegador: c.navegador,
-                    aplicacion: c.aplicacion,
-                    grupo: c.grupo.map(str::to_string),
-                })
-                .collect(),
+                .filter(|n| live::es_ranura_de(n, t.clave))
+                .cloned()
+                .collect();
+            TipoJson {
+                clave: t.clave.to_string(),
+                etiqueta: t.etiqueta.to_string(),
+                explicacion: t.explicacion.to_string(),
+                aplicacion_propia: libredisk_backend::aplicacion::configurada(t.clave).is_some(),
+                oauth: t.oauth.is_some(),
+                ocupadas: mios.len(),
+                nombres: mios,
+                hueco: live::hueco_libre_configurado(t)
+                    .ok()
+                    .flatten()
+                    .map(|r| live::nombre_de_ranura(&r)),
+                campos: t
+                    .campos
+                    .iter()
+                    .map(|c| CampoJson {
+                        clave: c.clave.to_string(),
+                        etiqueta: c.etiqueta.to_string(),
+                        ayuda: c.ayuda.to_string(),
+                        ejemplo: c.ejemplo.to_string(),
+                        secreto: c.secreto,
+                        obligatorio: c.obligatorio,
+                        navegador: c.navegador,
+                        aplicacion: c.aplicacion,
+                        grupo: c.grupo.map(str::to_string),
+                    })
+                    .collect(),
+            }
         })
         .collect()
 }
@@ -823,6 +846,17 @@ async fn guardar_proveedor(
     libredisk_backend::conformance::prueba_rapida(&backend)
         .await
         .map_err(|e| format!("no se guarda nada porque el proveedor no responde: {e}"))?;
+
+    // Y que no sea una cuenta que ya esta. Dos proveedores sobre la misma cuenta se ven como
+    // dos, cuentan como dos al elegir topologia y se anuncian como «aguanta perder uno»;
+    // pero el dia que se pierda esa cuenta se pierden las dos copias a la vez.
+    if let Ok(Some(otro)) = libredisk_backend::live::ya_configurada(t, &backend).await {
+        return Err(format!(
+            "esa cuenta ya esta configurada como «{otro}». Dos proveedores sobre la misma \
+             cuenta no son redundancia: se verian como dos, pero el dia que se pierda la \
+             cuenta se pierden los dos a la vez. Conecta una cuenta distinta."
+        ));
+    }
 
     let fichero = config::fichero_de_usuario()
         .ok_or("no se sabe donde vive la configuracion de este usuario")?;

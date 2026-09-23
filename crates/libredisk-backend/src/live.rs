@@ -13,7 +13,7 @@
 
 use crate::catalogo;
 use crate::config::Config;
-use crate::{BackendError, OauthCreds, OpendalBackend};
+use crate::{Backend, BackendError, OauthCreds, OpendalBackend};
 
 const PREFIJO: &str = "LIBREDISK_";
 
@@ -345,6 +345,54 @@ fn pareja(
     }
 }
 
+/// Comprueba que la cuenta que se va a anadir no este ya configurada.
+///
+/// **Es la comprobacion que evita prometer una redundancia que no existe.** Dos proveedores
+/// sobre la misma cuenta se ven como dos en la ventana, cuentan como dos al elegir topologia
+/// y se anuncian como "aguanta perder uno"; pero el dia que se pierda esa cuenta se pierden
+/// las dos copias a la vez. El usuario habria pagado el doble de espacio por cero margen.
+///
+/// Se pregunta al proveedor nuevo y a los ya configurados **del mismo tipo**, porque una
+/// cuenta de Drive y una de OneDrive nunca van a coincidir y preguntarselo seria gastar
+/// peticiones.
+///
+/// Un `None` no se trata como "distinta": es "no se sabe", y no se bloquea por ello. Los
+/// proveedores sin cuenta que preguntar --una carpeta local, un bucket-- pueden estar
+/// duplicados sin que nadie aqui pueda detectarlo, y eso se avisa en otro sitio.
+pub async fn ya_configurada(
+    tipo: &catalogo::Tipo,
+    nuevo: &dyn Backend,
+) -> Result<Option<String>, BackendError> {
+    let Some(mia) = nuevo.identidad().await? else {
+        return Ok(None);
+    };
+
+    for b in configurados()? {
+        if !es_ranura_de(b.name(), tipo.clave) {
+            continue;
+        }
+        // Si uno de los ya configurados no contesta, no se puede decir que sea otra cuenta.
+        // Se deja pasar en vez de bloquear: negarse a anadir un proveedor porque otro esta
+        // caido seria peor que el riesgo que se intenta evitar.
+        if let Ok(Some(suya)) = b.identidad().await
+            && suya == mia
+        {
+            return Ok(Some(b.name().to_string()));
+        }
+    }
+    Ok(None)
+}
+
+/// Si ese nombre de proveedor es una ranura de ese tipo: `gdrive`, `gdrive2`, `gdrive17`.
+pub fn es_ranura_de(nombre: &str, tipo: &str) -> bool {
+    let tipo = tipo.to_lowercase();
+    match nombre.strip_prefix(&tipo) {
+        Some("") => true,
+        Some(resto) => resto.chars().all(|c| c.is_ascii_digit()),
+        None => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -367,6 +415,38 @@ mod tests {
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
         move |clave: &str| mapa.get(clave).cloned()
+    }
+
+    /// El orden y los nombres exactos de las ranuras, que es lo que el usuario acaba viendo
+    /// y lo que la cabecera guarda para siempre.
+    ///
+    /// La primera **no lleva numero**: `gdrive`, `gdrive1`, `gdrive2`. Es la convencion con
+    /// la que nacieron las carpetas locales y cambiarla ahora reescribiria la configuracion
+    /// de quien ya la tenga.
+    #[test]
+    fn la_primera_ranura_no_lleva_numero_y_las_demas_empiezan_en_uno() {
+        let primeras: Vec<String> = ranuras("GDRIVE").take(4).collect();
+        assert_eq!(primeras, ["GDRIVE", "GDRIVE1", "GDRIVE2", "GDRIVE3"]);
+        let nombres: Vec<String> = primeras.iter().map(|r| nombre_de_ranura(r)).collect();
+        assert_eq!(nombres, ["gdrive", "gdrive1", "gdrive2", "gdrive3"]);
+    }
+
+    /// Las ranuras de un tipo se reconocen por el nombre, que es lo que tiene la cabecera.
+    #[test]
+    fn se_reconoce_que_ranuras_son_del_mismo_tipo() {
+        for (nombre, es) in [
+            ("gdrive", true),
+            ("gdrive2", true),
+            ("gdrive17", true),
+            ("onedrive", false),
+            // La trampa: empieza igual pero no es una ranura numerada. Si esto se colara,
+            // la comprobacion de cuenta repetida preguntaria al proveedor equivocado.
+            ("gdrive-viejo", false),
+            ("gdrivex", false),
+            ("fs", false),
+        ] {
+            assert_eq!(es_ranura_de(nombre, "GDRIVE"), es, "{nombre}");
+        }
     }
 
     /// Lo que de verdad desbloquea numerar todos los tipos y no solo las carpetas.
