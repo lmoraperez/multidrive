@@ -592,7 +592,51 @@ No es un fallo de OneDrive ni hay nada que arreglar: es que las dos cifras se mi
 momentos distintos y por sistemas distintos. Lo que no se puede hacer es restarlas y
 presentar el resultado como si fuera una medida.
 
-## 10. Honestidad sobre el rendimiento
+## 10. El permiso mínimo de Google basta
+
+Fecha: 2026-09-22. Aplicación propia registrada en Google Cloud, cliente de tipo escritorio,
+con **un único ámbito: `drive.file`** — acceso solo a los ficheros que la propia aplicación
+crea. Cuenta real, volumen `concat` sobre Google Drive.
+
+Esto no era obvio. La biblioteca que usamos busca carpetas por nombre para resolver rutas, y
+con un permiso restringido eso solo funciona sobre lo que la aplicación haya creado ella
+misma. Si hubiera hecho falta el ámbito amplio `drive`, Google lo clasifica como restringido
+y exige una evaluación de seguridad anual de terceros.
+
+| Operación | Resultado |
+|---|---|
+| Renovar el token y leer el cupo de la cuenta | 1,3 s |
+| Crear el volumen | inmediato |
+| Subir 3,0 MiB | 19 s |
+| Bajarlo y comparar el SHA-256 | idéntico |
+| `ls` sobre la raíz | correcto |
+| Enumerar el volumen entero (`scrub`) | 6,6 s, 3 trozos, 0 degradados |
+| Medir lo que ocupa | 3,0 MiB |
+
+**Todo lo que LibreDisk hace cabe dentro de `drive.file`.**
+
+### 10.1 Y no ve lo que no creó
+
+La otra mitad, que es la que sostiene lo que promete la política de privacidad. Apuntando la
+aplicación nueva a `/libredisk-pruebas` —la carpeta donde vive el volumen de §9, creado por
+una aplicación **distinta** con permiso total— la respuesta es:
+
+```
+no hay ningun volumen en estos proveedores
+```
+
+No es que no sepa leerlo: es que **no lo ve**. Para esa aplicación esos ficheros no existen.
+Es la comprobación directa de que «solo los ficheros que LibreDisk crea» describe lo que pasa
+y no lo que nos gustaría que pasara.
+
+### 10.2 Lo que esto ahorra
+
+- No hace falta la evaluación de seguridad de terceros que Google exige para los ámbitos
+  restringidos, que es anual y cuesta miles de dólares.
+- La pantalla de permiso le pide al usuario algo proporcionado: acceso a lo que el programa
+  vaya a crear, no a todo su Drive. Quien la lea puede aceptar sin encogerse.
+
+## 11. Honestidad sobre el rendimiento
 
 Posicionarlo correctamente desde el README evita el 90% de las malas reseñas:
 
