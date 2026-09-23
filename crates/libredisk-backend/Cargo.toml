@@ -23,7 +23,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs", "sync
 # Para el espacio de un directorio local, que lo sabe el sistema operativo y no la red. Las
 # dos cajas ya estaban en el arbol por debajo; aqui solo se declaran como directas.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

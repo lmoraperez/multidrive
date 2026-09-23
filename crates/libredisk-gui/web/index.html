@@ -40,11 +40,16 @@
 <!-- Añadir proveedores. Va en su propia sección y visible siempre, porque se necesita
      tanto antes de crear el volumen como después, para ampliarlo. -->
 <section id="alta">
-  <div class="fila">
-    <h2>Añadir un proveedor</h2>
-    <button id="plegar-alta" class="secundario">Mostrar</button>
-  </div>
+  <!-- Un solo botón que dice lo que hace. Antes había un título «Añadir un proveedor» y al
+       lado un botón «Mostrar»: dos cosas diciendo una. -->
+  <button id="abrir-alta">Añadir un proveedor</button>
+
   <div id="alta-cuerpo" hidden>
+    <div class="fila">
+      <h2>Añadir un proveedor</h2>
+      <button id="cerrar-alta" class="secundario">Cancelar</button>
+    </div>
+
     <label for="tipo-proveedor">Tipo</label>
     <select id="tipo-proveedor"></select>
 
