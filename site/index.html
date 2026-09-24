@@ -60,6 +60,43 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .no2 h3{color:var(--muted)}
 .nota{font-size:14px;color:var(--muted);border-left:2px solid var(--line);padding-left:16px;margin:22px 0 0}
 footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
+
+/* El corro de proveedores. En pantalla ancha van en circulo alrededor del logotipo; por
+   debajo de 700 px el circulo se deshace en una rejilla, porque un circulo encogido deja el
+   texto ilegible y las placas encimadas. */
+.corro{position:relative;height:456px;margin:8px 0 6px}
+.orbita{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  border:1px dashed var(--line);border-radius:50%}
+.orbita.fuera{width:80%;height:88%}
+.orbita.dentro{width:31%;height:35%}
+.centro{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  background:var(--bg);padding:14px 20px;border-radius:16px}
+.centro svg{width:54px;height:54px}
+.centro b{font-size:18px;letter-spacing:-.02em}
+.centro em{font-style:normal;font-size:12px;color:var(--muted)}
+.nube{position:absolute;transform:translate(-50%,-50%);width:124px;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:12px 9px;text-align:center}
+.nube b{display:block;font-size:14px;font-weight:600;line-height:1.25}
+.nube span{display:block;font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35}
+.nube.probado{border-color:var(--accent)}
+.nube.probado b{color:var(--accent)}
+.nube.pronto{border-style:dashed;background:none}
+.nube.pronto b{color:var(--muted);font-weight:500}
+.leyenda{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:13.5px;color:var(--muted);
+  margin:10px 0 0;padding:0;list-style:none}
+.leyenda li{display:flex;align-items:center;gap:8px}
+.leyenda i{width:13px;height:13px;border-radius:4px;border:1px solid var(--line);
+  background:var(--panel);flex-shrink:0}
+.leyenda i.probado{border-color:var(--accent)}
+.leyenda i.pronto{border-style:dashed;background:none}
+@media (max-width:700px){
+  .corro{height:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:11px}
+  .orbita{display:none}
+  .centro,.nube{position:static;transform:none;width:auto}
+  .centro{grid-column:1/-1;flex-direction:row;justify-content:center;gap:12px;padding:2px 0 12px}
+}
 </style>
 </head>
 <body>
@@ -88,6 +125,47 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
   <p>Si RAID convirtió varios discos poco fiables en un volumen fiable, MultiDrive hace lo
   mismo con varias cuentas de nube: <strong>ningún proveedor tiene tus datos completos,
   ninguno puede leerlos, y la caída de uno no te deja sin volumen.</strong></p>
+</section>
+
+<section>
+  <h2>Con qué funciona</h2>
+  <p class="lead">Tus cuentas, las que ya tienes. MultiDrive no aloja nada: habla con ellas
+  directamente y las convierte en un volumen.</p>
+
+  <div class="corro">
+    <div class="orbita fuera"></div>
+    <div class="orbita dentro"></div>
+
+    <div class="centro">
+      <svg viewBox="0 0 48 48" role="img" aria-label="MultiDrive">
+        <polygon points="24,6 42,24 24,24" fill="var(--accent)" transform="translate(1.4,-1.4)"/>
+        <polygon points="42,24 24,42 24,24" fill="var(--fg)" transform="translate(1.4,1.4)"/>
+        <polygon points="24,42 6,24 24,24" fill="var(--fg)" transform="translate(-1.4,1.4)"/>
+        <polygon points="6,24 24,6 24,24" fill="var(--fg)" transform="translate(-1.4,-1.4)"/>
+      </svg>
+      <b>MultiDrive</b>
+      <em>un volumen</em>
+    </div>
+
+    <div class="nube probado" style="left:50%;top:7%"><b>Google Drive</b><span>probado</span></div>
+    <div class="nube probado" style="left:78.3%;top:19.6%"><b>OneDrive</b><span>probado</span></div>
+    <div class="nube" style="left:90%;top:50%"><b>Amazon S3</b><span>B2 · R2 · Wasabi · MinIO · Storj</span></div>
+    <div class="nube" style="left:78.3%;top:80.4%"><b>Nextcloud</b><span>y cualquier WebDAV</span></div>
+    <div class="nube" style="left:50%;top:91%"><b>Carpeta local</b><span>un disco o un NAS</span></div>
+    <div class="nube pronto" style="left:21.7%;top:80.4%"><b>Dropbox</b><span>en camino</span></div>
+    <div class="nube pronto" style="left:10%;top:50%"><b>Box</b><span>en camino</span></div>
+    <div class="nube pronto" style="left:21.7%;top:19.6%"><b>MEGA</b><span>en camino</span></div>
+  </div>
+
+  <ul class="leyenda">
+    <li><i class="probado"></i> Probado de punta a punta contra cuentas reales</li>
+    <li><i></i> Funciona hoy</li>
+    <li><i class="pronto"></i> En las próximas versiones</li>
+  </ul>
+
+  <p class="nota">Mezclar tipos es normal y es la gracia: un volumen puede vivir a la vez sobre
+  un Drive, un OneDrive y un cubo S3. Los nombres son marcas de sus dueños y aparecen aquí
+  solo para decir con qué habla MultiDrive; ninguno de ellos lo patrocina.</p>
 </section>
 
 <section>
