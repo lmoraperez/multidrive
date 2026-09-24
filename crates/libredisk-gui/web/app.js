@@ -578,14 +578,18 @@ function pintarFormularioProveedor() {
         boton.disabled = true;
         aviso.hidden = false;
         aviso.className = "nota";
-        aviso.textContent = "Abriendo el navegador. Entra en tu cuenta y da permiso…";
+        let parar = contando(aviso, "Abriendo el navegador. Entra en tu cuenta y da permiso…");
         try {
           await invoke("conectar_nube", { tipo: t.clave, campos: campos() });
           conectado.add(t.clave);
           // Y se guarda sin pedir otro clic. Conectar la cuenta es lo que configura el
           // proveedor; obligar a pulsar un segundo botón era trabajo que no aportaba nada.
           // `guardar_proveedor` sigue probando antes de escribir, como siempre.
-          aviso.textContent = "Conectada. Comprobando que escribe y lee…";
+          parar();
+          parar = contando(
+            aviso,
+            "Conectada. Comprobando contra la nube que escribe, lee y borra; puede tardar medio minuto…",
+          );
           await guardado(
             await invoke("guardar_proveedor", { tipo: t.clave, campos: campos() }),
           );
@@ -596,6 +600,7 @@ function pintarFormularioProveedor() {
           aviso.className = "aviso mal";
           aviso.textContent = String(err);
         } finally {
+          parar();
           boton.disabled = false;
         }
       });
@@ -638,6 +643,25 @@ function campos() {
   return out;
 }
 
+/**
+ * Enseña un mensaje con los segundos corriendo, y devuelve cómo pararlo.
+ *
+ * Existe porque una línea de texto quieta no distingue «trabajando» de «colgado». Contra una
+ * nube, guardar un proveedor son del orden de veinte o treinta segundos —escribir, leer,
+ * borrar, y de paso mirar si ya hay un volumen—, y durante todo ese rato la pantalla parecía
+ * muerta. Con el contador se ve que sigue.
+ */
+function contando(el, texto) {
+  const desde = Date.now();
+  const pintar = () => {
+    const s = Math.round((Date.now() - desde) / 1000);
+    el.textContent = s > 2 ? `${texto} (${s} s)` : texto;
+  };
+  pintar();
+  const id = setInterval(pintar, 1000);
+  return () => clearInterval(id);
+}
+
 function resultado(texto, mal = false) {
   const caja = $("resultado-proveedor");
   caja.className = mal ? "aviso mal" : "nota";
@@ -656,6 +680,7 @@ $("probar-proveedor").addEventListener("click", async () => {
   } catch (err) {
     resultado(String(err), true);
   } finally {
+    parar();
     boton.disabled = false;
   }
 });
@@ -663,7 +688,8 @@ $("probar-proveedor").addEventListener("click", async () => {
 $("guardar-proveedor").addEventListener("click", async () => {
   const boton = $("guardar-proveedor");
   boton.disabled = true;
-  resultado("Probando antes de guardar…");
+  const parar = contando($("resultado-proveedor"), "Comprobando contra el proveedor…");
+  $("resultado-proveedor").hidden = false;
   try {
     await guardado(
       await invoke("guardar_proveedor", {
