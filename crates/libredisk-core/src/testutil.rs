@@ -180,3 +180,10 @@ impl Backend for NoResponde {
         Err(BackendError::NotFound("el proveedor no responde".into()))
     }
 }
+
+/// Unos cuantos proveedores en memoria, sin contar llamadas.
+pub fn memoria(n: usize) -> Vec<Arc<dyn Backend>> {
+    (0..n)
+        .map(|i| Arc::new(OpendalBackend::memory(format!("p{i}")).unwrap()) as Arc<dyn Backend>)
+        .collect()
+}

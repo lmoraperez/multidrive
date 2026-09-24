@@ -48,9 +48,8 @@ impl Espacio {
 /// `cuotas` viene en el orden de los proveedores; cada elemento es lo que dijo ese, o un
 /// `Err` con el motivo si no se le pudo preguntar.
 pub fn combinar(layout: Layout, nombres: &[String], cuotas: &[Result<Cuota, String>]) -> Espacio {
-    let factor = layout.shards_needed() as u64;
-    let (mut min_total, mut min_libre) = (None::<u64>, None::<u64>);
     let mut sin_respuesta = Vec::new();
+    let mut declarados: Vec<(u64, u64)> = Vec::new();
 
     for (i, cuota) in cuotas.iter().enumerate() {
         let nombre = || nombres.get(i).cloned().unwrap_or_else(|| i.to_string());
@@ -59,22 +58,43 @@ pub fn combinar(layout: Layout, nombres: &[String], cuotas: &[Result<Cuota, Stri
             // que ocupa y no se llena. Se anota igualmente, porque sin el la cifra de arriba
             // no describe el volumen entero.
             Ok(c) => match (c.total, c.libre()) {
-                (Some(t), Some(l)) => {
-                    min_total = Some(min_total.map_or(t, |m: u64| m.min(t)));
-                    min_libre = Some(min_libre.map_or(l, |m: u64| m.min(l)));
-                }
+                (Some(t), Some(l)) => declarados.push((t, l)),
                 _ => sin_respuesta.push(nombre()),
             },
             Err(_) => sin_respuesta.push(nombre()),
         }
     }
 
+    if declarados.is_empty() {
+        return Espacio {
+            total: None,
+            libre: None,
+            sin_respuesta,
+        };
+    }
+
+    // `lineal` es la unica que **suma**: cada trozo va entero a un proveedor, asi que lo que
+    // aporta cada uno se acumula en vez de quedar limitado por el mas pequeno. Es toda su
+    // razon de ser, y por eso no cabe en la formula de las demas.
+    if layout.coloca_por_trozo() {
+        return Espacio {
+            total: Some(declarados.iter().map(|(t, _)| t).sum()),
+            libre: Some(declarados.iter().map(|(_, l)| l).sum()),
+            sin_respuesta,
+        };
+    }
+
+    // Las demas cortan cada trozo en partes iguales: manda el mas apretado, y lo que se saque
+    // de el se multiplica por cuantos fragmentos hacen falta para reconstruir un trozo.
+    let factor = layout.shards_needed() as u64;
+    let min_total = declarados.iter().map(|(t, _)| *t).min().unwrap_or(0);
+    let min_libre = declarados.iter().map(|(_, l)| *l).min().unwrap_or(0);
     Espacio {
         // Saturar y no desbordar: `rs(8,2)` sobre ocho cuentas de varios terabytes se acerca
         // al limite del entero, y darle la vuelta al contador convertiria un volumen enorme
         // en uno diminuto.
-        total: min_total.map(|t| t.saturating_mul(factor)),
-        libre: min_libre.map(|l| l.saturating_mul(factor)),
+        total: Some(min_total.saturating_mul(factor)),
+        libre: Some(min_libre.saturating_mul(factor)),
         sin_respuesta,
     }
 }
@@ -112,6 +132,56 @@ mod tests {
         assert_eq!(e.total, Some(20 * GIB));
         assert_eq!(e.libre, Some(15 * GIB));
         assert!(e.es_medida());
+    }
+
+    /// **El caso que motivo la topologia**, con los numeros de la pregunta que la pidio:
+    /// 15 GB aqui, 5 GB alla y 1 TB en otro lado.
+    ///
+    /// Las demas topologias dejan 1 TB sin tocar porque manda el mas pequeno. `lineal` suma.
+    #[test]
+    fn lineal_suma_lo_que_las_demas_desperdician() {
+        let cuotas = [cuota(15 * GIB, 0), cuota(5 * GIB, 0), cuota(1000 * GIB, 0)];
+        let n = nombres(3);
+
+        // Lo que hay: manda el de 5 GiB.
+        assert_eq!(
+            combinar(Layout::Mirror { n: 3 }, &n, &cuotas).libre,
+            Some(5 * GIB)
+        );
+        assert_eq!(
+            combinar(Layout::Stripe { n: 3 }, &n, &cuotas).libre,
+            Some(15 * GIB)
+        );
+
+        // Lineal: los tres aportan lo suyo.
+        assert_eq!(
+            combinar(Layout::Lineal { n: 3 }, &n, &cuotas).libre,
+            Some(1020 * GIB)
+        );
+    }
+
+    /// Y con proveedores iguales no aporta nada frente a `union`: ahi la gracia no esta.
+    #[test]
+    fn con_proveedores_iguales_lineal_y_union_dan_lo_mismo() {
+        let cuotas = [cuota(10 * GIB, 0), cuota(10 * GIB, 0)];
+        let n = nombres(2);
+        assert_eq!(
+            combinar(Layout::Lineal { n: 2 }, &n, &cuotas).libre,
+            combinar(Layout::Stripe { n: 2 }, &n, &cuotas).libre
+        );
+    }
+
+    /// Lo que no declara cupo se queda fuera de la suma, y se dice quien.
+    ///
+    /// Sumar solo lo que se sabe es lo correcto, pero entonces la cifra es un **suelo** y no
+    /// un techo, al reves que en las demas topologias. Quien la ensene tiene que decirlo.
+    #[test]
+    fn en_lineal_lo_que_no_se_sabe_se_queda_fuera_de_la_suma() {
+        let cuotas = [cuota(10 * GIB, 0), Ok(Cuota::MUDA)];
+        let e = combinar(Layout::Lineal { n: 2 }, &nombres(2), &cuotas);
+        assert_eq!(e.libre, Some(10 * GIB));
+        assert_eq!(e.sin_respuesta, vec!["p1"]);
+        assert!(!e.es_medida());
     }
 
     #[test]

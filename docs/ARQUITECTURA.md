@@ -62,6 +62,7 @@ stores (que no tienen escritura en sitio ni `rename` atómico).
 |---|---|---|---|
 | `concat` | 1 de 1 | nada | 1,0× |
 | `union(n)` | n de n | **nada** | 1,0× |
+| `lineal(n)` | 1 de 1, en el proveedor que le toque | **nada** | 1,0× |
 | `espejo(n)` | 1 de n | n−1 caídas | n× |
 | `rs(k,m)` | k de k+m | m caídas | (k+m)/k × |
 
@@ -367,17 +368,17 @@ libredisk scrub mivolumen        # verificar integridad
 libredisk rebuild mivolumen      # reconstruir tras perder un proveedor
 libredisk rescue --from-backends # reconstruir metadatos desde cero
 ```
-## Topología lineal: lo que hay contra lo que daría
+## `union` contra `lineal`
 
-Pendiente de decidir. Esta comparación existe porque la pregunta —«y si tengo 15 GB en un
-sitio y 1 TB en otro, ¿se suman?»— tiene hoy una respuesta decepcionante, y porque al
-analizarla salió que el asunto **no es solo de capacidad**.
+Esta comparación nació de una pregunta —«y si tengo 15 GB en un sitio y 1 TB en otro, ¿se
+suman?»— cuya respuesta era que no. Ahora `lineal` existe y la respuesta es que sí, y al
+analizarla salió que el asunto **no era solo de capacidad**.
 
 Las dos reparten sin redundancia. La diferencia es **cómo**: `union` corta cada trozo en n
 fragmentos iguales y pone uno en cada proveedor; lineal pone **cada trozo entero** en uno
 solo, elegido por una función de la propia identidad del trozo.
 
-| | `union:n` (lo que hay) | Lineal |
+| | `union:n` | `lineal:n` |
 |---|---|---|
 | **15 GB + 5 GB + 1 TB** | 15 GB | ≈ 1,02 TB |
 | Con n proveedores iguales | n × uno | n × uno (igual) |
@@ -386,40 +387,39 @@ solo, elegido por una función de la propia identidad del trozo.
 | Leer un trozo suelto | n peticiones, todas necesarias | **1 petición** |
 | Un fichero grande | ancho de banda repartido entre n | uno por fichero; el reparto es entre ficheros |
 | Coste de `scrub` | una enumeración por proveedor | **igual** |
-| `rescue` sin base de datos | funciona | **funciona**, si la colocación es determinista |
-| Añadir un proveedor | reescribe el volumen **entero** | mueve solo la fracción que cambia de sitio |
+| `rescue` sin base de datos | funciona | **funciona** |
+| Añadir un proveedor | reescribe el volumen **entero** | mueve solo su fracción (*todavía no implementado*) |
 
 Las tres últimas filas son las que cambian el análisis, y no las esperaba al empezar.
 
 ### Por qué `scrub` y `rescue` sobreviven
 
-La primera impresión fue que lineal rompía la propiedad de la que cuelga todo: que cada trozo
+La primera impresión, al analizarlo, fue que lineal rompía la propiedad de la que cuelga todo: que cada trozo
 esté en **todos** los proveedores en un índice fijo. Es lo que hace que `scrub` enumere una
 vez por proveedor y compare contra claves calculadas, y lo que permite que `rescue`
 reconstruya el árbol sin ninguna base de datos local.
 
-No la rompe **si la colocación se deriva del propio trozo** en vez de decidirse sobre la
+No la rompe, porque **la colocación se deriva del propio trozo** en vez de decidirse sobre la
 marcha. Con un reparto ponderado por capacidad —el trozo `x` va al proveedor que salga de una
 función de `x` y de los pesos—, sigue sin haber nada que apuntar: quien tenga el identificador
 del trozo sabe dónde está, igual que hoy sabe en qué índice está su fragmento. `scrub` calcula
 la clave **y** el proveedor esperado; `rescue` enumera y deriva los identificadores igual que
 ahora.
 
-Los pesos irían en la cabecera, fijados al crear. Si las cuentas cambian de tamaño despues, la
-colocación no se adapta sola: haría falta subir el número de reparto y reescribir, que es
-exactamente la maquinaria que ya existe para cambiar de topología.
+Los pesos van en la cabecera, fijados al crear. Si se recalcularan en cada arranque a partir
+de lo que cada nube declare en ese momento, un trozo escrito ayer se buscaría hoy en otro
+proveedor y el volumen se desmontaría solo. Cuando las cuentas cambien de tamaño habrá que
+reescribir el reparto a propósito, que es la maquinaria que ya existe para cambiar de
+topología.
 
-### Lo que hay que resolver antes de prometer nada
+### Lo que queda
 
-- **La función de colocación.** Tiene que repartir proporcionalmente a los pesos y, al añadir
-  un proveedor, mover solo la fracción que le toca y no reordenarlo todo. Es un problema
-  resuelto —reparto por *rendezvous* con pesos— pero hay que escribirlo y medirlo, no darlo
-  por hecho.
-- **El camino de lectura.** Hoy pide a todos y reconstruye con los que respondan. En lineal
-  hay que pedirle a uno concreto, y decidir qué se hace si ese no contesta: hoy eso es una
-  degradación y ahí sería un fallo.
-- **Los pesos en la cabecera.** Es un campo nuevo, y el formato en disco todavía puede
-  cambiar, pero conviene que entre con su marca de versión.
+- **Añadir un proveedor a un volumen lineal que ya existe.** Es lo que abarata el reparto por
+  máximo —se mueve la fracción que gana el recién llegado y nada más— pero el rebalanceo
+  todavía no sabe hacerlo: el camino que hay reescribe el volumen entero, así que de momento
+  se rechaza en vez de hacer lo caro fingiendo que es lo barato.
+- **Los pesos no se adaptan solos.** Se fijan al crear y viven en la cabecera. Si las cuentas
+  cambian de tamaño, hará falta reescribir el reparto a propósito.
 
 ### El aviso que no cambia
 

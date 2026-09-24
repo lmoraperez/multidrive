@@ -66,6 +66,18 @@ pub fn planear(antes: Layout, nuevos: usize, cambio: Cambio) -> Result<Layout, C
         // util no cambia nunca porque siempre es el de un proveedor.
         (Layout::Mirror { n }, _) => Layout::Mirror { n: n + nuevos },
 
+        // En lineal no hay que elegir: un proveedor mas es mas espacio y punto, porque no
+        // hay redundancia que ampliar. Y es barato --se mueve la fraccion que gana el nuevo,
+        // no el volumen entero-- pero **el rebalanceo todavia no sabe hacerlo**: el camino
+        // que hay reescribe todo, asi que de momento se rechaza en vez de hacer lo caro
+        // fingiendo que es lo barato.
+        (Layout::Lineal { .. }, _) => {
+            return Err(CoreError::Rebalanceo(
+                "anadir proveedores a un volumen lineal todavia no esta implementado: haria \n                 falta mover solo la fraccion que cambia de sitio, y el camino que hay \n                 reescribiria el volumen entero"
+                    .into(),
+            ));
+        }
+
         (Layout::ReedSolomon { k, m }, Cambio::MasSeguridad) => {
             Layout::ReedSolomon { k, m: m + nuevos }
         }

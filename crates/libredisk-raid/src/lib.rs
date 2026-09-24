@@ -6,6 +6,8 @@
 //! por eso las funciones de reensamblado reciben `Vec<Option<Vec<u8>>>` y no una lista
 //! compacta de los que sobrevivieron.
 
+pub mod reparto;
+
 use reed_solomon_erasure::ReedSolomon;
 use reed_solomon_erasure::galois_8::Field;
 
@@ -47,6 +49,22 @@ pub enum Layout {
     /// fragmento de paridad. Es su propia topologia, y tenerla aparte tiene la ventaja de que
     /// «sin redundancia» se lee en el nombre en vez de esconderse en un cero.
     Stripe { n: usize },
+    /// Cada trozo **entero** en un solo proveedor, elegido por [`crate::reparto`] a partir
+    /// del propio identificador del trozo.
+    ///
+    /// Es la unica topologia en la que **las capacidades desiguales se suman**: una cuenta de
+    /// 1 TB junto a otra de 5 GB aporta lo suyo, en vez de quedarse esperando a que la
+    /// pequena se llene. Las demas cortan cada trozo en partes iguales, asi que manda el
+    /// proveedor con menos sitio.
+    ///
+    /// No es `Stripe` con otro reparto: `Stripe` parte cada trozo entre todos --leer uno pide
+    /// `n` peticiones y perder un proveedor rompe **todos** los trozos-- y esta pone cada
+    /// trozo en uno solo, asi que leer es una peticion y perder un proveedor se lleva solo lo
+    /// que vivia ahi, que ademas se puede decir cual es.
+    ///
+    /// **No anade ni una caida de margen.** Perder un proveedor pierde el volumen, igual que
+    /// `Stripe`. Lo que mejora es el espacio, el coste de leer y el de ampliar.
+    Lineal { n: usize },
 }
 
 impl Layout {
@@ -55,6 +73,10 @@ impl Layout {
             Layout::Concat => Ok(()),
             Layout::Mirror { n } if n >= 1 => Ok(()),
             // Con uno solo no es un reparto, es `concat` con otro nombre.
+            Layout::Lineal { n } if (2..=256).contains(&n) => Ok(()),
+            Layout::Lineal { n } => Err(RaidError::InvalidLayout(format!(
+                "lineal necesita 2 <= n <= 256, se dio {n}"
+            ))),
             Layout::Stripe { n } if (2..=256).contains(&n) => Ok(()),
             Layout::Stripe { n } => Err(RaidError::InvalidLayout(format!(
                 "stripe necesita 2 <= n <= 256, se dio {n}"
@@ -76,6 +98,7 @@ impl Layout {
             Layout::Mirror { n } => n,
             Layout::ReedSolomon { k, m } => k + m,
             Layout::Stripe { n } => n,
+            Layout::Lineal { n } => n,
         }
     }
 
@@ -87,17 +110,51 @@ impl Layout {
             Layout::ReedSolomon { k, .. } => k,
             // Todos: sin paridad no hay nada que reconstruir.
             Layout::Stripe { n } => n,
+            // Uno: el trozo esta entero en un solo proveedor.
+            Layout::Lineal { .. } => 1,
         }
     }
 
     /// Cuantos proveedores pueden caerse sin perder datos.
+    ///
+    /// **No se deriva de los otros dos.** En `lineal`, «hace falta un fragmento de n» no
+    /// significa que sobren `n - 1`: significa que cada trozo esta en uno concreto, y si ese
+    /// se cae, ese trozo no esta en ninguna otra parte. La resta daria `n - 1` y seria la
+    /// mentira mas cara que puede decir esta funcion.
     pub fn tolerated_failures(&self) -> usize {
-        self.shard_count() - self.shards_needed()
+        match *self {
+            Layout::Concat => 0,
+            Layout::Mirror { n } => n - 1,
+            Layout::ReedSolomon { m, .. } => m,
+            Layout::Stripe { .. } => 0,
+            Layout::Lineal { .. } => 0,
+        }
     }
 
     /// Multiplicador de espacio ocupado respecto al tamano real de los datos.
     pub fn storage_overhead(&self) -> f64 {
-        self.shard_count() as f64 / self.shards_needed() as f64
+        match *self {
+            // Cada trozo se guarda una sola vez: no hay sobrecoste.
+            Layout::Concat | Layout::Stripe { .. } | Layout::Lineal { .. } => 1.0,
+            Layout::Mirror { n } => n as f64,
+            Layout::ReedSolomon { k, m } => (k + m) as f64 / k as f64,
+        }
+    }
+
+    /// Que fraccion del espacio contratado queda utilizable.
+    ///
+    /// Vive aqui y no en la interfaz porque sale de las mismas reglas que aplica el motor, y
+    /// dos sitios que lo calculen por su cuenta acaban discrepando.
+    pub fn aprovechado(&self) -> f64 {
+        1.0 / self.storage_overhead()
+    }
+
+    /// Si cada trozo va entero a un solo proveedor, elegido a partir de su identificador.
+    ///
+    /// Es lo que distingue a `lineal` de todo lo demas, y lo que obliga al almacen a decidir
+    /// **a donde** va cada fragmento en vez de mandar el fragmento `i` al proveedor `i`.
+    pub fn coloca_por_trozo(&self) -> bool {
+        matches!(self, Layout::Lineal { .. })
     }
 }
 
@@ -114,6 +171,7 @@ impl std::fmt::Display for Layout {
             Layout::Mirror { n } => write!(f, "espejo:{n}"),
             Layout::ReedSolomon { k, m } => write!(f, "rs:{k},{m}"),
             Layout::Stripe { n } => write!(f, "union:{n}"),
+            Layout::Lineal { n } => write!(f, "lineal:{n}"),
         }
     }
 }
@@ -129,6 +187,10 @@ impl std::str::FromStr for Layout {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let layout = match s.split_once(':') {
             None if s == "concat" => Layout::Concat,
+            Some(("lineal", n)) => Layout::Lineal {
+                n: n.parse()
+                    .map_err(|_| RaidError::InvalidLayout(format!("n invalido: {n}")))?,
+            },
             Some(("union" | "stripe", n)) => Layout::Stripe {
                 n: n.parse()
                     .map_err(|_| RaidError::InvalidLayout(format!("n invalido: {n}")))?,
@@ -177,7 +239,9 @@ fn trocear(data: &[u8], k: usize) -> Vec<Vec<u8>> {
 pub fn split(layout: Layout, data: &[u8]) -> Result<Vec<Vec<u8>>, RaidError> {
     layout.validate()?;
     match layout {
-        Layout::Concat => Ok(vec![data.to_vec()]),
+        // Los dos ponen el trozo entero en un proveedor; la diferencia esta en **cual**, y
+        // eso lo decide el almacen con `reparto::elegir`, no esta funcion.
+        Layout::Concat | Layout::Lineal { .. } => Ok(vec![data.to_vec()]),
         Layout::Mirror { n } => Ok(vec![data.to_vec(); n]),
         // Los mismos fragmentos de datos que haria Reed-Solomon con `k = n`, y ninguno mas.
         Layout::Stripe { n } => Ok(trocear(data, n)),
@@ -221,8 +285,10 @@ pub fn join(
     }
 
     match layout {
-        // Basta con el primero que haya llegado: todas las copias son identicas.
-        Layout::Concat | Layout::Mirror { .. } => {
+        // Basta con el primero que haya llegado. En espejo porque todas las copias son
+        // identicas; en concat y lineal porque solo hay una, y quien la pidio ya sabia a
+        // que proveedor.
+        Layout::Concat | Layout::Mirror { .. } | Layout::Lineal { .. } => {
             let mut data = shards
                 .into_iter()
                 .flatten()
@@ -565,10 +631,89 @@ mod tests {
         assert_eq!(l.to_string(), "union:6");
     }
 
-    /// Los fragmentos de datos son los mismos que haria Reed-Solomon con `k = n`.
+    /// **`lineal` no aguanta ninguna caida**, y eso no se puede derivar de los otros numeros.
     ///
-    /// De eso depende que el rescate sepa deducir la longitud sellada con la misma cuenta
-    /// para las dos topologias.
+    /// «Hace falta 1 fragmento de n» invita a restar y decir que sobran `n - 1`. Es falso:
+    /// cada trozo esta en un proveedor concreto, y si ese se cae, ese trozo no esta en
+    /// ninguna otra parte. Seria la mentira mas cara que puede decir esta funcion, porque el
+    /// usuario elige la topologia leyendo justo ese numero.
+    #[test]
+    fn lineal_no_aguanta_ninguna_caida_aunque_le_baste_un_fragmento() {
+        let l = Layout::Lineal { n: 6 };
+        assert_eq!(l.shards_needed(), 1);
+        assert_eq!(l.shard_count(), 6);
+        assert_eq!(
+            l.tolerated_failures(),
+            0,
+            "restar aqui daria 5 y seria mentira"
+        );
+    }
+
+    /// Y no desperdicia nada: cada trozo se guarda una sola vez.
+    #[test]
+    fn lineal_aprovecha_todo_el_espacio() {
+        let l = Layout::Lineal { n: 4 };
+        assert_eq!(l.storage_overhead(), 1.0);
+        assert_eq!(l.aprovechado(), 1.0);
+    }
+
+    /// El espejo sigue costando lo que cuesta, que es lo que compra el margen.
+    #[test]
+    fn el_espejo_sigue_costando_n_veces() {
+        let l = Layout::Mirror { n: 3 };
+        assert_eq!(l.storage_overhead(), 3.0);
+        assert_eq!(l.tolerated_failures(), 2);
+    }
+
+    #[test]
+    fn lineal_va_y_vuelve_por_su_nombre() {
+        let l: Layout = "lineal:5".parse().unwrap();
+        assert_eq!(l, Layout::Lineal { n: 5 });
+        assert_eq!(l.to_string(), "lineal:5");
+    }
+
+    /// Con uno solo no es un reparto: es `concat`.
+    #[test]
+    fn lineal_necesita_al_menos_dos() {
+        assert!("lineal:1".parse::<Layout>().is_err());
+        assert!("lineal:2".parse::<Layout>().is_ok());
+    }
+
+    /// El trozo va entero, sin cortar: un solo fragmento y con todos los bytes.
+    #[test]
+    fn lineal_no_corta_el_trozo() {
+        let datos: Vec<u8> = (0..1000u32).map(|i| i as u8).collect();
+        let fragmentos = split(Layout::Lineal { n: 4 }, &datos).unwrap();
+        assert_eq!(fragmentos.len(), 1, "uno solo, no uno por proveedor");
+        assert_eq!(fragmentos[0], datos);
+    }
+
+    /// Y se reconstruye con ese unico fragmento, aunque los demas huecos vengan vacios.
+    ///
+    /// El vector que recibe `join` es **posicional por proveedor**, igual que en el resto de
+    /// topologias: en lineal solo uno trae algo y los demas vienen a `None`, porque ahi
+    /// nunca hubo nada que traer. Es lo que permite que el resto del motor no tenga que
+    /// saber que esta topologia es distinta.
+    #[test]
+    fn lineal_se_reconstruye_con_el_unico_que_hay() {
+        let datos: Vec<u8> = (0..1000u32).map(|i| i as u8).collect();
+        let fragmentos = split(Layout::Lineal { n: 4 }, &datos).unwrap();
+
+        let mut recibidos = vec![None, None, None, None];
+        recibidos[2] = Some(fragmentos[0].clone());
+        assert_eq!(
+            join(Layout::Lineal { n: 4 }, recibidos, datos.len()).unwrap(),
+            datos
+        );
+    }
+
+    /// Y si el que lo tenia no contesta, no hay trozo. No hay de donde sacarlo.
+    #[test]
+    fn lineal_sin_su_proveedor_no_hay_nada_que_reconstruir() {
+        let vacios = vec![None, None, None, None];
+        assert!(join(Layout::Lineal { n: 4 }, vacios, 1000).is_err());
+    }
+
     #[test]
     fn stripe_trocea_igual_que_reed_solomon() {
         let datos: Vec<u8> = (0..7_777u32).map(|i| (i % 211) as u8).collect();
