@@ -55,3 +55,26 @@ sudo systemctl reload caddy   # reload, NO restart: no interrumpe nextcloud.cham
 ```
 
 > El `Caddyfile` también sirve Nextcloud en producción. Respaldar siempre antes de editarlo.
+
+## Regenerar los iconos de la marca
+
+Las fuentes están en [`marca/`](../marca): los `.svg` son el original y todo lo demás sale de
+ellos. Los `.png` se rasterizan desde `icono.svg` con Edge sin ventana, uno por tamaño:
+
+```sh
+msedge --headless --disable-gpu --hide-scrollbars --default-background-color=00000000 \
+       --window-size=256,256 --screenshot=marca/png/icono-256.png file:///…/icono-256.html
+```
+
+donde el HTML no es más que el `<svg>` con `width` y `height` puestos a ese tamaño y
+`body{margin:0}`. El `--default-background-color=00000000` es lo que conserva la
+transparencia de las esquinas redondeadas.
+
+El `.ico` es la unión de los de 16, 32, 48 y 256 px, con los PNG **dentro** del contenedor
+(lo que Windows llama un icono comprimido, admitido desde Vista). No hay herramienta para eso
+en el equipo, así que se escribe la cabecera a mano desde PowerShell: `ICONDIR` de 6 bytes,
+una `ICONDIRENTRY` de 16 por tamaño —con 0 donde va 256, que no cabe en un byte— y detrás los
+PNG tal cual.
+
+El ZIP que se descarga de `multidrive.net/marca.html` se arma con `Compress-Archive` a partir
+de esa misma carpeta, y se publica como un fichero más del sitio.
