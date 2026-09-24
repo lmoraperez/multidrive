@@ -5,10 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MultiDrive — Política de privacidad</title>
 <meta name="description" content="MultiDrive no recoge ningun dato. El programa se ejecuta en el equipo del usuario, cifra antes de subir y habla directamente con las cuentas de nube del propio usuario. No hay servidores intermedios.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0d1017">
 <style>
 :root{
-  --bg:#0e1116; --panel:#161b22; --line:#262d38;
-  --fg:#e6edf3; --muted:#8b949e; --accent:#4cc4a0; --warn:#d8a657;
+  --bg:#0d1017; --panel:#151a23; --line:#232b38;
+  --fg:#e8eef6; --muted:#8a94a6; --accent:#4c8ff0; --accent-suave:#7ab0f7; --warn:#d8a657;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -17,7 +21,8 @@ body{margin:0;background:var(--bg);color:var(--fg);
   -webkit-font-smoothing:antialiased}
 .wrap{max-width:820px;margin:0 auto;padding:0 20px}
 header{padding:72px 0 44px;border-bottom:1px solid var(--line)}
-a{color:var(--accent)}
+a{color:var(--accent);text-underline-offset:3px}
+a:hover{color:var(--accent-suave)}
 .volver{display:inline-block;font-size:14px;color:var(--muted);text-decoration:none;margin-bottom:26px}
 .volver:hover{color:var(--fg)}
 h1{margin:0 0 6px;font-size:clamp(30px,6vw,44px);letter-spacing:-.02em;line-height:1.08}
@@ -39,7 +44,7 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 <div class="wrap">
 
 <header>
-  <a class="volver" href="/">← MultiDrive</a>
+  <a class="volver" href="/"><svg viewBox="0 0 48 48" width="15" height="15" style="vertical-align:-2px;margin-right:7px" role="img" aria-hidden="true"><polygon points="24,6 42,24 24,24" fill="var(--accent)" transform="translate(1.4,-1.4)"/><polygon points="42,24 24,42 24,24" fill="currentColor" transform="translate(1.4,1.4)"/><polygon points="24,42 6,24 24,24" fill="currentColor" transform="translate(-1.4,1.4)"/><polygon points="6,24 24,6 24,24" fill="currentColor" transform="translate(-1.4,-1.4)"/></svg>MultiDrive</a>
   <h1>Política de privacidad</h1>
   <p class="tag">Última revisión: 22 de septiembre de 2026</p>
 </header>

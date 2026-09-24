@@ -1,0 +1,26 @@
+{
+  "nombre": "MultiDrive — azul señal",
+  "esquema": "oscuro",
+  "colores": {
+    "bg": { "hex": "#0d1017", "uso": "fondo de la página", "contraste_con_fg": 16.3 },
+    "panel": { "hex": "#151a23", "uso": "tarjetas y bloques de código" },
+    "line": { "hex": "#232b38", "uso": "separadores y bordes" },
+    "fg": { "hex": "#e8eef6", "uso": "texto", "contraste_con_bg": 16.3 },
+    "muted": { "hex": "#8a94a6", "uso": "texto secundario", "contraste_con_bg": 6.2 },
+    "accent": { "hex": "#4c8ff0", "uso": "títulos de sección, enlaces, la pieza de acento del logotipo", "contraste_con_bg": 5.9 },
+    "accent_suave": { "hex": "#7ab0f7", "uso": "enlace al pasar por encima" },
+    "aviso": { "hex": "#d8a657", "uso": "el distintivo «pre-alfa», y nada más" }
+  },
+  "tipografia": {
+    "familia": "ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
+    "logotipo": { "peso": 700, "interletra": "-0.03em" },
+    "titulo_de_seccion": { "tamano": "13px", "peso": 600, "interletra": "0.13em", "caja": "mayúsculas", "color": "accent" },
+    "monoespaciada": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+  },
+  "logotipo": {
+    "forma": "rombo partido en cuatro cuñas con separación de 1,1 unidades sobre una rejilla de 48",
+    "significado": "k piezas de datos y m de paridad formando una sola figura; la cuña superior derecha es la paridad",
+    "area_de_respeto": "media altura del rombo por cada lado",
+    "tamano_minimo": "16 px"
+  }
+}

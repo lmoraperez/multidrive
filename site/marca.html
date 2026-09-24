@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MultiDrive — Marca</title>
+<meta name="description" content="El logotipo, los colores y la tipografia de MultiDrive, con las fuentes para descargar: SVG, PNG, .ico y la paleta en CSS y JSON.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0d1017">
+<style>
+:root{
+  --bg:#0d1017; --panel:#151a23; --line:#232b38;
+  --fg:#e8eef6; --muted:#8a94a6; --accent:#4c8ff0; --accent-suave:#7ab0f7; --warn:#d8a657;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:820px;margin:0 auto;padding:0 20px}
+header{padding:72px 0 44px;border-bottom:1px solid var(--line)}
+a{color:var(--accent);text-underline-offset:3px}
+a:hover{color:var(--accent-suave)}
+.volver{display:inline-block;font-size:14px;color:var(--muted);text-decoration:none;margin-bottom:26px}
+.volver:hover{color:var(--fg)}
+h1{margin:0 0 6px;font-size:clamp(30px,6vw,44px);letter-spacing:-.02em;line-height:1.08}
+.tag{margin:0;font-size:16px;color:var(--muted)}
+section{padding:44px 0;border-bottom:1px solid var(--line)}
+h2{font-size:13px;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0 0 18px;font-weight:600}
+h3{font-size:15px;margin:0 0 8px;font-weight:600}
+p{margin:0 0 16px}
+.lead{font-size:18px}
+strong{font-weight:600}
+.nota{font-size:14px;color:var(--muted);border-left:2px solid var(--line);padding-left:16px;margin:22px 0 0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;
+  background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
+
+.muestra{display:grid;grid-template-columns:repeat(auto-fit,minmax(172px,1fr));gap:14px;margin-bottom:22px}
+.pieza{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px 18px;text-align:center}
+.pieza .caja{height:96px;display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.pieza .caja.clara{background:#e8eef6;border-radius:8px}
+.pieza b{display:block;font-size:14px;margin-bottom:3px}
+.pieza span{font-size:12.5px;color:var(--muted);line-height:1.5;display:block}
+
+.escala{display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap;background:var(--panel);
+  border:1px solid var(--line);border-radius:10px;padding:22px 24px}
+.escala figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:9px}
+.escala figcaption{font-size:11.5px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}
+
+.colores{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.color .swatch{height:62px;border-radius:9px;border:1px solid var(--line)}
+.color b{display:block;font-size:13.5px;margin:10px 0 2px}
+.color code{background:none;border:0;padding:0;font-size:12px;color:var(--muted)}
+.color span{display:block;font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:4px}
+
+.reglas{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
+.reglas ul{list-style:none;margin:0;padding:0;font-size:15px}
+.reglas li{padding:6px 0 6px 24px;position:relative;color:var(--muted)}
+.reglas li::before{content:"";position:absolute;left:0;top:13px;width:10px;height:10px;border-radius:50%}
+.si li::before{background:var(--accent)}
+.no li::before{border:1px solid var(--muted)}
+.si h3{color:var(--accent)}
+
+.descarga{display:inline-flex;align-items:center;gap:11px;background:var(--accent);color:#08101c;
+  font-weight:600;font-size:15px;text-decoration:none;border-radius:9px;padding:13px 20px}
+.descarga:hover{background:var(--accent-suave);color:#08101c}
+.contenido{font-size:14.5px;color:var(--muted);margin-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <a class="volver" href="/">← MultiDrive</a>
+  <h1>Marca</h1>
+  <p class="tag">El logotipo, los colores y cómo se usan. Con las fuentes, para no tener que recortar nada de una captura.</p>
+</header>
+
+<section>
+  <h2>El logotipo</h2>
+  <p class="lead">Un rombo partido en cuatro cuñas que no llegan a tocarse.</p>
+  <p>No es decoración: es lo que hace el programa. <strong>k</strong> piezas de datos y
+  <strong>m</strong> de paridad forman una sola figura, y la cuña de acento —la de arriba a la
+  derecha— es la paridad: lo que está de más para que se pueda perder algo sin perderlo todo.</p>
+
+  <div class="muestra">
+    <div class="pieza">
+      <div class="caja">
+        <svg viewBox="0 0 48 48" width="76" height="76" role="img" aria-label="Logotipo sobre fondo oscuro">
+          <polygon points="24,6 42,24 24,24" fill="#4c8ff0" transform="translate(1.4,-1.4)"/>
+          <polygon points="42,24 24,42 24,24" fill="#e8eef6" transform="translate(1.4,1.4)"/>
+          <polygon points="24,42 6,24 24,24" fill="#e8eef6" transform="translate(-1.4,1.4)"/>
+          <polygon points="6,24 24,6 24,24" fill="#e8eef6" transform="translate(-1.4,-1.4)"/>
+        </svg>
+      </div>
+      <b>logo.svg</b>
+      <span>Sobre fondo oscuro. El de casi todos los sitios</span>
+    </div>
+    <div class="pieza">
+      <div class="caja clara">
+        <svg viewBox="0 0 48 48" width="76" height="76" role="img" aria-label="Logotipo sobre fondo claro">
+          <polygon points="24,6 42,24 24,24" fill="#4c8ff0" transform="translate(1.4,-1.4)"/>
+          <polygon points="42,24 24,42 24,24" fill="#0d1017" transform="translate(1.4,1.4)"/>
+          <polygon points="24,42 6,24 24,24" fill="#0d1017" transform="translate(-1.4,1.4)"/>
+          <polygon points="6,24 24,6 24,24" fill="#0d1017" transform="translate(-1.4,-1.4)"/>
+        </svg>
+      </div>
+      <b>logo-claro.svg</b>
+      <span>Sobre fondo claro: la figura pasa a tinta</span>
+    </div>
+    <div class="pieza">
+      <div class="caja">
+        <svg viewBox="0 0 48 48" width="76" height="76" fill="#8a94a6" role="img" aria-label="Logotipo a un solo color">
+          <polygon points="24,6 42,24 24,24" transform="translate(1.4,-1.4)"/>
+          <polygon points="42,24 24,42 24,24" transform="translate(1.4,1.4)"/>
+          <polygon points="24,42 6,24 24,24" transform="translate(-1.4,1.4)"/>
+          <polygon points="6,24 24,6 24,24" transform="translate(-1.4,-1.4)"/>
+        </svg>
+      </div>
+      <b>logo-mono.svg</b>
+      <span>A un solo color. Sellos, serigrafía, impresión en negro</span>
+    </div>
+    <div class="pieza">
+      <div class="caja">
+        <svg viewBox="0 0 64 64" width="84" height="84" role="img" aria-label="Icono de aplicacion">
+          <rect width="64" height="64" rx="12" fill="#0d1017"/>
+          <g transform="translate(9.2,9.2) scale(0.95)">
+            <polygon points="24,6 42,24 24,24" fill="#4c8ff0" transform="translate(1.4,-1.4)"/>
+            <polygon points="42,24 24,42 24,24" fill="#e8eef6" transform="translate(1.4,1.4)"/>
+            <polygon points="24,42 6,24 24,24" fill="#e8eef6" transform="translate(-1.4,1.4)"/>
+            <polygon points="6,24 24,6 24,24" fill="#e8eef6" transform="translate(-1.4,-1.4)"/>
+          </g>
+        </svg>
+      </div>
+      <b>icono.svg</b>
+      <span>Con su cuadro. Favicon, aplicación, avatar</span>
+    </div>
+  </div>
+
+  <h3>Hasta dónde encoge</h3>
+  <div class="escala">
+    <figure>
+      <svg viewBox="0 0 48 48" width="64" height="64" role="img" aria-label="Logotipo a 64 px"><polygon points="24,6 42,24 24,24" fill="#4c8ff0" transform="translate(1.4,-1.4)"/><polygon points="42,24 24,42 24,24" fill="#e8eef6" transform="translate(1.4,1.4)"/><polygon points="24,42 6,24 24,24" fill="#e8eef6" transform="translate(-1.4,1.4)"/><polygon points="6,24 24,6 24,24" fill="#e8eef6" transform="translate(-1.4,-1.4)"/></svg>
+      <figcaption>64 px</figcaption>
+    </figure>
+    <figure>
+      <svg viewBox="0 0 48 48" width="32" height="32" role="img" aria-label="Logotipo a 32 px"><polygon points="24,6 42,24 24,24" fill="#4c8ff0" transform="translate(1.4,-1.4)"/><polygon points="42,24 24,42 24,24" fill="#e8eef6" transform="translate(1.4,1.4)"/><polygon points="24,42 6,24 24,24" fill="#e8eef6" transform="translate(-1.4,1.4)"/><polygon points="6,24 24,6 24,24" fill="#e8eef6" transform="translate(-1.4,-1.4)"/></svg>
+      <figcaption>32 px</figcaption>
+    </figure>
+    <figure>
+      <svg viewBox="0 0 48 48" width="16" height="16" role="img" aria-label="Logotipo a 16 px"><polygon points="24,6 42,24 24,24" fill="#4c8ff0" transform="translate(1.4,-1.4)"/><polygon points="42,24 24,42 24,24" fill="#e8eef6" transform="translate(1.4,1.4)"/><polygon points="24,42 6,24 24,24" fill="#e8eef6" transform="translate(-1.4,1.4)"/><polygon points="6,24 24,6 24,24" fill="#e8eef6" transform="translate(-1.4,-1.4)"/></svg>
+      <figcaption>16 px · el mínimo</figcaption>
+    </figure>
+  </div>
+  <p class="nota"><strong>16 px es el suelo.</strong> Por debajo, los huecos entre cuñas se
+  cierran y deja de ser un rombo partido para ser un rombo a secas. El área de respeto es media
+  altura del rombo por cada lado: ahí dentro no se mete nada.</p>
+</section>
+
+<section>
+  <h2>Los colores</h2>
+  <p>Paleta oscura a propósito: esto es una herramienta de sistema, no un panel de control. El
+  acento se usa <strong>solo</strong> en los títulos de sección, los enlaces y la cuña del
+  logotipo. Repartido por todas partes dejaría de ser un acento.</p>
+
+  <div class="colores">
+    <div class="color">
+      <div class="swatch" style="background:#0d1017"></div>
+      <b>Fondo</b><code>#0d1017</code>
+      <span>La página</span>
+    </div>
+    <div class="color">
+      <div class="swatch" style="background:#151a23"></div>
+      <b>Panel</b><code>#151a23</code>
+      <span>Tarjetas y bloques de código</span>
+    </div>
+    <div class="color">
+      <div class="swatch" style="background:#232b38"></div>
+      <b>Línea</b><code>#232b38</code>
+      <span>Separadores y bordes</span>
+    </div>
+    <div class="color">
+      <div class="swatch" style="background:#e8eef6"></div>
+      <b>Texto</b><code>#e8eef6</code>
+      <span>Contraste 16,3:1</span>
+    </div>
+    <div class="color">
+      <div class="swatch" style="background:#8a94a6"></div>
+      <b>Apagado</b><code>#8a94a6</code>
+      <span>Texto secundario · 6,2:1</span>
+    </div>
+    <div class="color">
+      <div class="swatch" style="background:#4c8ff0"></div>
+      <b>Acento</b><code>#4c8ff0</code>
+      <span>Títulos, enlaces, paridad · 5,9:1</span>
+    </div>
+    <div class="color">
+      <div class="swatch" style="background:#d8a657"></div>
+      <b>Aviso</b><code>#d8a657</code>
+      <span>Solo el distintivo «pre-alfa»</span>
+    </div>
+  </div>
+  <p class="nota">Los tres contrastes de texto pasan el nivel <strong>AA</strong> sobre el
+  fondo. Si alguien cambia un tono, hay que volver a medirlo: el número está ahí para que no
+  se dé por bueno de memoria.</p>
+</section>
+
+<section>
+  <h2>El nombre y la letra</h2>
+  <p><strong>MultiDrive</strong>, en una palabra, con la M y la D en mayúscula. Nunca
+  «Multidrive» ni «multi drive». En minúscula solo dentro de una orden del terminal, que es
+  como se escribe de verdad: <code>multidrive volume status</code>.</p>
+  <p>En el logotipo escrito, «Drive» va en acento y «Multi» en color de texto. La familia es la
+  del sistema —<code>ui-sans-serif</code>—, peso 700 y el interletraje apretado a
+  <code>-0.03em</code>. No hay ninguna fuente que comprar ni que cargar: es el mismo texto que
+  ya sabe pintar cualquier equipo.</p>
+</section>
+
+<section>
+  <h2>Qué sí y qué no</h2>
+  <div class="reglas">
+    <div class="si">
+      <h3>Sí</h3>
+      <ul>
+        <li>Usar el SVG siempre que se pueda: no se pixela nunca</li>
+        <li>El <code>icono.svg</code> cuando haga falta ponerlo sobre una foto o un color cualquiera: ya trae su fondo</li>
+        <li>Mantener la proporción y el área de respeto</li>
+        <li>El <code>logo-mono.svg</code> para una tinta, heredando el color del texto</li>
+      </ul>
+    </div>
+    <div class="no">
+      <h3>No</h3>
+      <ul>
+        <li>Cambiarle los colores a las cuñas ni quitarle el acento</li>
+        <li>Rotarlo, estirarlo o redondearle las puntas</li>
+        <li>Ponerle sombra, degradado o contorno</li>
+        <li>Recortarlo de una captura de pantalla pudiendo descargarlo</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Descargar</h2>
+  <p>Todo lo de esta página, en un solo fichero.</p>
+  <p>
+    <a class="descarga" href="/multidrive-marca.zip" download>
+      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/>
+      </svg>
+      multidrive-marca.zip · 30 KB
+    </a>
+  </p>
+  <p class="contenido">Dentro: el logotipo en sus cuatro versiones (<code>.svg</code>), el
+  icono rasterizado de 16 a 512 px (<code>.png</code>), el <code>.ico</code> de Windows con
+  sus cuatro tamaños dentro, la paleta en <code>.css</code> y en <code>.json</code>, y las
+  notas de uso.</p>
+  <p class="nota">Las fuentes viven en <a href="https://github.com/lmoraperez/multidrive/tree/main/marca" rel="noopener"><code>marca/</code></a>
+  dentro del repositorio. Si algo se ve mal, se arregla ahí y se vuelve a generar; la copia no
+  se retoca. El logotipo va bajo AGPL-3.0 como el resto del proyecto: si publicas un derivado,
+  cámbiale la marca, que quien lo vea sepa quién lo mantiene.</p>
+</section>
+
+<footer>
+  <div class="wrap" style="padding:0">
+    MultiDrive · AGPL-3.0 · <a href="/">Volver al proyecto</a> · <a href="/privacidad.html">Política de privacidad</a>
+  </div>
+</footer>
+
+</div>
+</body>
+</html>

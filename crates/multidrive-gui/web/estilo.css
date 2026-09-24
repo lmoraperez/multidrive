@@ -1,11 +1,12 @@
 /* Mismos colores que el sitio del proyecto, para que se reconozca como lo mismo. */
 :root {
-  --bg: #0e1116;
-  --panel: #161b22;
-  --line: #262d38;
-  --fg: #e6edf3;
-  --muted: #8b949e;
-  --accent: #4cc4a0;
+  --bg: #0d1017;
+  --panel: #151a23;
+  --line: #232b38;
+  --fg: #e8eef6;
+  --muted: #8a94a6;
+  --accent: #4c8ff0;
+  --accent-suave: #7ab0f7;
   --warn: #d8a657;
   --mal: #e06c75;
   color-scheme: dark;
@@ -32,6 +33,10 @@ body {
 
 h1 { margin: 0 0 2px; font-size: 26px; letter-spacing: -.02em; }
 h1 span { color: var(--accent); }
+
+/* El logotipo: el rombo y la palabra en la misma linea, alineados por el centro. */
+.logotipo { display: flex; align-items: center; gap: 11px; margin-bottom: 2px; }
+.logotipo svg { flex-shrink: 0; width: 30px; height: 30px; }
 h2 {
   font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
   color: var(--accent); margin: 26px 0 10px; font-weight: 600;

@@ -5,10 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MultiDrive — una sola unidad, muchas nubes</title>
 <meta name="description" content="MultiDrive agrega varios servicios de almacenamiento en la nube en un unico volumen con semantica RAID y cifrado de conocimiento cero. Pre-alfa: el nucleo funciona y esta verificado contra cuentas reales.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0d1017">
 <style>
 :root{
-  --bg:#0e1116; --panel:#161b22; --line:#262d38;
-  --fg:#e6edf3; --muted:#8b949e; --accent:#4cc4a0; --warn:#d8a657;
+  --bg:#0d1017; --panel:#151a23; --line:#232b38;
+  --fg:#e8eef6; --muted:#8a94a6; --accent:#4c8ff0; --accent-suave:#7ab0f7; --warn:#d8a657;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -21,6 +25,10 @@ header{padding:80px 0 56px;border-bottom:1px solid var(--line)}
   color:var(--warn);border:1px solid var(--warn);border-radius:99px;padding:3px 11px;margin-bottom:22px}
 h1{margin:0 0 6px;font-size:clamp(38px,8vw,62px);letter-spacing:-.03em;line-height:1.02}
 h1 span{color:var(--accent)}
+.logotipo{display:flex;align-items:center;gap:clamp(12px,2.4vw,20px)}
+.logotipo svg{flex-shrink:0;width:clamp(38px,7vw,58px);height:clamp(38px,7vw,58px)}
+a{color:var(--accent);text-underline-offset:3px}
+a:hover{color:var(--accent-suave)}
 .tag{margin:0;font-size:clamp(17px,3.4vw,21px);color:var(--muted)}
 section{padding:52px 0;border-bottom:1px solid var(--line)}
 h2{font-size:13px;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0 0 20px;font-weight:600}
@@ -59,7 +67,15 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 <header>
   <div class="badge">Pre-alfa · ya se monta</div>
-  <h1>Multi<span>Drive</span></h1>
+  <div class="logotipo">
+    <svg viewBox="0 0 48 48" role="img" aria-label="MultiDrive">
+      <polygon points="24,6 42,24 24,24" fill="var(--accent)" transform="translate(1.4,-1.4)"/>
+      <polygon points="42,24 24,42 24,24" fill="var(--fg)" transform="translate(1.4,1.4)"/>
+      <polygon points="24,42 6,24 24,24" fill="var(--fg)" transform="translate(-1.4,1.4)"/>
+      <polygon points="6,24 24,6 24,24" fill="var(--fg)" transform="translate(-1.4,-1.4)"/>
+    </svg>
+    <h1>Multi<span>Drive</span></h1>
+  </div>
   <p class="tag">Una sola unidad. Muchas nubes.</p>
 </header>
 
@@ -220,6 +236,7 @@ rs(k,m)     k de k+m                m caídas      (k+m)/k ×</code></pre>
     hay versión publicada y el formato en disco todavía puede cambiar.
     <br><br>
     <a href="/privacidad.html" style="color:var(--accent)">Política de privacidad</a>
+    · <a href="/marca.html" style="color:var(--accent)">Marca</a>
     · <a href="https://github.com/lmoraperez/multidrive" style="color:var(--accent)" rel="noopener">Código fuente</a>
   </div>
 </footer>

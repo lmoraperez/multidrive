@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="MultiDrive">
+  <title>MultiDrive</title>
+  <rect width="64" height="64" rx="12" fill="#0d1017"/>
+  <g transform="translate(9.2,9.2) scale(0.95)">
+    <polygon points="24,6 42,24 24,24" fill="#4c8ff0" transform="translate(1.4,-1.4)"/>
+    <polygon points="42,24 24,42 24,24" fill="#e8eef6" transform="translate(1.4,1.4)"/>
+    <polygon points="24,42 6,24 24,24" fill="#e8eef6" transform="translate(-1.4,1.4)"/>
+    <polygon points="6,24 24,6 24,24" fill="#e8eef6" transform="translate(-1.4,-1.4)"/>
+  </g>
+</svg>

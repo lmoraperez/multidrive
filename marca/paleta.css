@@ -1,0 +1,20 @@
+/* MultiDrive — paleta «azul señal».
+ *
+ * Oscura a proposito: es una herramienta de sistema, no un panel de control web. El acento
+ * es el 5 % de los pixeles y el 100 % de lo que se recuerda, asi que se usa **solo** para
+ * los titulos de seccion, los enlaces y la pieza de acento del logotipo. Un acento repartido
+ * por todas partes deja de ser un acento.
+ *
+ * Contraste sobre el fondo, medido: texto 16,3:1, apagado 6,2:1, acento 5,9:1. Los tres
+ * pasan AA para texto normal; no bajar ninguno sin volver a medir.
+ */
+:root {
+  --md-bg: #0d1017;      /* fondo de la pagina */
+  --md-panel: #151a23;   /* tarjetas, bloques de codigo */
+  --md-line: #232b38;    /* separadores y bordes */
+  --md-fg: #e8eef6;      /* texto */
+  --md-muted: #8a94a6;   /* texto secundario */
+  --md-accent: #4c8ff0;  /* titulos de seccion, enlaces, una pieza del logo */
+  --md-accent-suave: #7ab0f7; /* enlace al pasar por encima */
+  --md-aviso: #d8a657;   /* el distintivo «pre-alfa», y nada mas */
+}
