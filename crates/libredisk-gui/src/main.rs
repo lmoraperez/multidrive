@@ -867,10 +867,15 @@ async fn guardar_proveedor(
     // token de refresco en el proceso, mejor.
     estado.conectadas.lock().await.remove(&tipo);
 
+    // El cerrojo se suelta **antes** de preguntar por la cabecera, que es red y puede tardar
+    // segundos. Sostener un cerrojo a traves de un `await` es como nacen los bloqueos que
+    // solo aparecen cuando dos cosas coinciden.
+    let abierto_ahora = estado.abierto.lock().await.is_some();
+
     Ok(Guardado {
         nombre: live::nombre_de_ranura(&ranura),
         fichero: fichero.display().to_string(),
-        hay_volumen: estado.abierto.lock().await.is_some() || hay_volumen().await,
+        hay_volumen: abierto_ahora || hay_volumen().await,
     })
 }
 
