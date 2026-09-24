@@ -36,13 +36,13 @@ pub mod oauth;
 /// de credenciales sería indistinguible de cualquier otro, y diagnosticar «falta algo» sin
 /// saber qué es peor que no tener el mensaje.
 pub fn sin_secretos(texto: &str) -> String {
-    /// Nombres que nunca se imprimen. Los fijan OAuth2 (RFC 6749) y las APIs que usamos.
+    /// Nombres que nunca se imprimen, venga el valor detras de un `=` o de un `:`. Los fijan
+    /// OAuth2 (RFC 6749) y las APIs que usamos.
     const SECRETOS: &[&str] = &[
         "refresh_token",
         "client_secret",
         "access_token",
         "id_token",
-        "code",
         "code_verifier",
         "password",
         "Authorization",
@@ -50,11 +50,32 @@ pub fn sin_secretos(texto: &str) -> String {
         "X-Amz-Credential",
     ];
 
+    /// Los que solo se tachan en su forma de parametro, `nombre=valor`.
+    ///
+    /// El codigo de autorizacion de OAuth2 viaja siempre asi: en la URL de vuelta y en el
+    /// formulario del canje. Nunca llega como campo de un JSON. Pero `code` es ademas como
+    /// **Microsoft Graph llama al codigo de error** de sus respuestas, y tachar eso no esconde
+    /// ningun secreto: deja el mensaje sin lo unico que dice que ha pasado. Se vio en un error
+    /// real, que llego como `"code":"<redactado>"` y no explicaba nada.
+    const SOLO_PARAMETRO: &[&str] = &["code"];
+
     let mut out = texto.to_string();
     for nombre in SECRETOS {
-        out = redactar_parametro(&out, nombre);
+        out = redactar_parametro(&out, nombre, Forma::Cualquiera);
+    }
+    for nombre in SOLO_PARAMETRO {
+        out = redactar_parametro(&out, nombre, Forma::SoloIgual);
     }
     out
+}
+
+/// Como tiene que venir el valor detras del nombre para darlo por secreto.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Forma {
+    /// `nombre=valor` o `"nombre": "valor"`.
+    Cualquiera,
+    /// Solo `nombre=valor`.
+    SoloIgual,
 }
 
 /// Sustituye `nombre=<valor>` por `nombre=<redactado>`, alli donde aparezca.
@@ -69,7 +90,7 @@ pub fn sin_secretos(texto: &str) -> String {
 /// - **Entre comillas, el valor llega hasta la comilla de cierre.** Cortarlo en el primer
 ///   espacio dejaba fuera la mitad: `"Bearer ya29.abc"` se quedaba en
 ///   `"<redactado> ya29.abc"`, que es justo lo que se queria evitar.
-fn redactar_parametro(texto: &str, nombre: &str) -> String {
+fn redactar_parametro(texto: &str, nombre: &str, forma: Forma) -> String {
     let mut out = String::with_capacity(texto.len());
     let mut resto = texto;
 
@@ -84,7 +105,11 @@ fn redactar_parametro(texto: &str, nombre: &str) -> String {
         // La comilla que cierra el nombre en un JSON: `"access_token"`.
         p = p.strip_prefix('"').unwrap_or(p);
         // Y aqui si hace falta una asignacion de verdad.
-        let Some(tras_signo) = p.strip_prefix(['=', ':']) else {
+        let signo: &[char] = match forma {
+            Forma::Cualquiera => &['=', ':'],
+            Forma::SoloIgual => &['='],
+        };
+        let Some(tras_signo) = p.strip_prefix(signo) else {
             continue;
         };
         p = tras_signo.trim_start_matches(' ');
@@ -606,6 +631,42 @@ mod redaccion {
         // habria tragado media frase y el mensaje seria ilegible.
         let frase = "el proveedor devolvio un code que no era valido";
         assert_eq!(sin_secretos(frase), frase);
+    }
+
+    /// El codigo de error de una respuesta **no** es un secreto, y tacharlo deja el mensaje
+    /// sin lo unico que explica que ha pasado.
+    ///
+    /// Microsoft Graph llama `code` al codigo de error. Con `code` tachado en cualquier forma,
+    /// un error real llego como `"code":"<redactado>"`: el mensaje decia que algo habia
+    /// fallado y se guardaba para si el que.
+    #[test]
+    fn el_codigo_de_error_de_graph_no_se_tacha() {
+        let json = r#"{"error":{"code":"itemNotFound","message":"Resource not found"}}"#;
+        assert_eq!(sin_secretos(json), json);
+    }
+
+    /// Pero el codigo de autorizacion de OAuth2 si, que viaja como parametro y **es** la
+    /// credencial: con el se piden los tokens.
+    #[test]
+    fn el_codigo_de_autorizacion_si_se_tacha() {
+        let peticion = "GET /?code=4/0AeanS0hDEabc&state=xyz HTTP/1.1";
+        let limpio = sin_secretos(peticion);
+        assert!(!limpio.contains("4/0AeanS0hDEabc"), "{limpio}");
+        assert!(limpio.contains("code=<redactado>"), "{limpio}");
+        assert!(
+            limpio.contains("state=xyz"),
+            "lo demas se sigue leyendo: {limpio}"
+        );
+    }
+
+    /// Y el canje, que lo manda en el cuerpo del formulario.
+    #[test]
+    fn el_codigo_en_el_formulario_del_canje_se_tacha() {
+        let cuerpo = "grant_type=authorization_code&code=4/0Aabc&code_verifier=xyzw";
+        let limpio = sin_secretos(cuerpo);
+        assert!(!limpio.contains("4/0Aabc"), "{limpio}");
+        assert!(!limpio.contains("xyzw"), "{limpio}");
+        assert!(limpio.contains("grant_type=authorization_code"), "{limpio}");
     }
 
     #[test]
