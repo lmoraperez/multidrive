@@ -874,6 +874,89 @@ async fn hay_volumen() -> bool {
     matches!(header::read(&backends).await, Ok(Some(_)))
 }
 
+// ---------------------------------------------------------------------------------------
+// Retirar el volumen
+// ---------------------------------------------------------------------------------------
+
+/// Lo que se va a borrar, para poder mirarlo antes de decir que si.
+#[derive(Serialize)]
+struct ParaBorrar {
+    layout: String,
+    proveedores: Vec<String>,
+    fragmentos: usize,
+    bytes: u64,
+    /// Lo que hay que escribir para confirmar.
+    ///
+    /// Se pide escribir los nombres de los proveedores y no un «si»: obliga a mirar la lista
+    /// de lo que se va a borrar. Un boton que solo hay que pulsar se pulsa sin leer.
+    confirmacion: String,
+}
+
+/// Cuenta lo que hay, sin tocar nada.
+///
+/// Cuesta una enumeracion por proveedor —contra una nube, puede tardar— y por eso se pide
+/// aparte: la pantalla no puede ir a preguntarlo cada vez que se repinta.
+#[tauri::command]
+async fn volumen_a_borrar() -> Result<ParaBorrar, String> {
+    let backends = proveedores()?;
+    let header = header::read(&backends)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("no hay ningun volumen en estos proveedores")?;
+
+    let inventario = libredisk_core::retirar::inventariar(&backends)
+        .await
+        .map_err(|e| {
+            format!("{e}\nNo se puede borrar sin poder mirarlo entero: el recuento seria falso")
+        })?;
+
+    let nombres: Vec<String> = backends.iter().map(|b| b.name().to_string()).collect();
+    Ok(ParaBorrar {
+        layout: header.layout.clone(),
+        confirmacion: nombres.join(","),
+        proveedores: nombres,
+        fragmentos: inventario.fragmentos(),
+        bytes: inventario.bytes(),
+    })
+}
+
+/// Retira el volumen. **No se puede deshacer.**
+#[tauri::command]
+async fn borrar_volumen(
+    confirmacion: String,
+    estado: tauri::State<'_, Estado>,
+) -> Result<String, String> {
+    let backends = proveedores()?;
+    let esperado = backends
+        .iter()
+        .map(|b| b.name().to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    if confirmacion.trim() != esperado {
+        return Err(format!(
+            "para confirmar hay que escribir exactamente: {esperado}"
+        ));
+    }
+
+    // Con algo montado, borrar dejaria una unidad sirviendo un volumen que ya no existe. Se
+    // desmonta y se cierra antes, no despues.
+    *estado.montado.lock().await = None;
+    *estado.abierto.lock().await = None;
+    *estado.ocupado.lock().await = None;
+
+    let hecho = libredisk_core::retirar::retirar(&backends)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(format!(
+        "Retirado: {} fragmento(s) en {} proveedor(es).\n\
+         La carpeta sigue existiendo en cada uno, vacía de lo que era del volumen. Si \
+         guardaste ahí otras cosas, siguen donde estaban.",
+        hecho.fragmentos(),
+        hecho.por_proveedor.len()
+    ))
+}
+
 /// Reparte los trozos en tres categorias **excluyentes**, y el orden importa.
 ///
 /// Un trozo del que no quedan fragmentos suficientes ya no se lee. Llamarlo degradado seria
@@ -909,6 +992,8 @@ fn main() {
             montaje,
             montar,
             desmontar,
+            volumen_a_borrar,
+            borrar_volumen,
             tipos_de_proveedor,
             conectar_nube,
             guardar_proveedor
