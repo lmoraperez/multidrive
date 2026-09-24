@@ -173,3 +173,6 @@ select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 #retirar { margin-top: 34px; padding-top: 22px; border-top: 1px solid var(--line); }
 #confirmar-borrado { margin-top: 14px; }
 #confirmar-borrado dl { margin: 0 0 14px; }
+
+/* La cifra con la que se decide: grande y lo primero. El resto del precio es matiz. */
+.cuanto { margin: 0 0 8px; font-size: 19px; font-weight: 600; color: var(--accent); }
