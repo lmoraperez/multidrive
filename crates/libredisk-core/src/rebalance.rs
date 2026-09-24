@@ -1,18 +1,24 @@
 //! Cambiar la topologia de un volumen sin dejar de poder leerlo.
 //!
-//! Anadir un proveedor no es una cosa, son dos, y cuestan ordenes de magnitud distintos:
+//! Anadir un proveedor no es una cosa, son tres, y cuestan ordenes de magnitud distintos:
 //!
 //! - **Mas seguridad.** `rs(k,m)` pasa a `rs(k,m+1)`: el mismo espacio util, una caida mas de
 //!   margen. Los fragmentos de datos **no se mueven**, porque dependen solo de `k` y del blob
 //!   sellado. Solo hay que calcular la paridad nueva y subirla.
-//! - **Mas espacio.** `rs(k,m)` pasa a `rs(k+1,m)`: mas capacidad, el mismo margen. Cambian
-//!   las fronteras del reparto, asi que **todos** los fragmentos de **todos** los trozos hay
-//!   que recalcularlos y volver a subirlos. A las velocidades medidas contra nubes de
-//!   consumo, un volumen de 1 TB son dias.
+//! - **Mas espacio, si el volumen es lineal.** `lineal:n` pasa a `lineal:n+1`: cada trozo vive
+//!   entero en un proveedor, y el sorteo ponderado que decide en cual solo le entrega al recien
+//!   llegado la parte que le toca por su peso. Se muda esa fraccion y **nada mas**: anadir una
+//!   cuenta de 15 GB a un volumen de 1 TB mueve unos 15 GB, no el terabyte.
+//! - **Mas espacio, en el resto.** `rs(k,m)` pasa a `rs(k+1,m)`: mas capacidad, el mismo
+//!   margen. Cambian las fronteras del reparto, asi que **todos** los fragmentos de **todos**
+//!   los trozos hay que recalcularlos y volver a subirlos. A las velocidades medidas contra
+//!   nubes de consumo, un volumen de 1 TB son dias.
 //!
-//! Aqui esta implementada la primera. La segunda necesita ademas un esquema de dos
-//! generaciones de claves —para poder escribir lo nuevo sin destruir lo viejo mientras el
-//! volumen se sigue leyendo— y va aparte.
+//! Los tres estan aqui: [`ChunkStore::ampliar_redundancia`], [`ChunkStore::mudar_reparto`] y
+//! [`ChunkStore::reescribir_reparto`]. Solo el ultimo necesita escribir en un **reparto**
+//! nuevo --otra generacion de claves-- para no destruir lo viejo mientras el volumen se sigue
+//! leyendo. Los otros dos no: uno solo anade fragmentos que antes no existian, y el otro
+//! escribe en un proveedor al que con la cabecera vieja no le toca nada.
 //!
 //! # Por que no se vuelve a cifrar
 //!
@@ -24,9 +30,10 @@
 //! # Por que se puede interrumpir
 //!
 //! Mientras la cabecera no cambie, el volumen se lee con la topologia vieja y los fragmentos
-//! viejos, que no se han tocado. Lo unico que hay a medias son fragmentos de paridad de mas,
-//! que nadie lee todavia. Volver a lanzarlo se salta los que ya estan: **la cabecera es el
-//! unico punto de compromiso**.
+//! viejos, que no se han tocado. Lo que queda a medias no lo lee nadie todavia: paridad de
+//! mas, una copia en un proveedor al que aun no le toca ese trozo, o un reparto que la
+//! cabecera no declara. Volver a lanzarlo se salta lo que ya esta: **la cabecera es el unico
+//! punto de compromiso**.
 
 use std::sync::Arc;
 
@@ -67,16 +74,10 @@ pub fn planear(antes: Layout, nuevos: usize, cambio: Cambio) -> Result<Layout, C
         (Layout::Mirror { n }, _) => Layout::Mirror { n: n + nuevos },
 
         // En lineal no hay que elegir: un proveedor mas es mas espacio y punto, porque no
-        // hay redundancia que ampliar. Y es barato --se mueve la fraccion que gana el nuevo,
-        // no el volumen entero-- pero **el rebalanceo todavia no sabe hacerlo**: el camino
-        // que hay reescribe todo, asi que de momento se rechaza en vez de hacer lo caro
-        // fingiendo que es lo barato.
-        (Layout::Lineal { .. }, _) => {
-            return Err(CoreError::Rebalanceo(
-                "anadir proveedores a un volumen lineal todavia no esta implementado: haria \n                 falta mover solo la fraccion que cambia de sitio, y el camino que hay \n                 reescribiria el volumen entero"
-                    .into(),
-            ));
-        }
+        // hay redundancia que ampliar. Y es la unica ampliacion barata de verdad: no se
+        // reescribe el volumen, se muda solo la fraccion de trozos que gana el que llega.
+        // Ver `ChunkStore::mudar_reparto`.
+        (Layout::Lineal { n }, _) => Layout::Lineal { n: n + nuevos },
 
         (Layout::ReedSolomon { k, m }, Cambio::MasSeguridad) => {
             Layout::ReedSolomon { k, m: m + nuevos }
@@ -168,19 +169,11 @@ impl ChunkStore {
             )));
         }
 
+        let unicos = sin_repetir(trozos);
         let mut informe = Informe {
-            trozos: trozos.len(),
+            trozos: unicos.len(),
             ..Default::default()
         };
-
-        // Un trozo puede aparecer varias veces: la deduplicacion por contenido hace que dos
-        // ficheros iguales compartan trozo, y el arbol repite nodos entre versiones.
-        let mut vistos = std::collections::BTreeSet::new();
-        let unicos: Vec<&ChunkRef> = trozos
-            .iter()
-            .filter(|c| vistos.insert(c.id.clone()))
-            .collect();
-        informe.trozos = unicos.len();
 
         for lote in unicos.chunks(A_LA_VEZ) {
             let trabajos = lote
@@ -315,11 +308,7 @@ impl ChunkStore {
             )));
         }
 
-        let mut vistos = std::collections::BTreeSet::new();
-        let unicos: Vec<&ChunkRef> = trozos
-            .iter()
-            .filter(|c| vistos.insert(c.id.clone()))
-            .collect();
+        let unicos = sin_repetir(trozos);
 
         let mut informe = InformeReparto {
             trozos: unicos.len(),
@@ -407,11 +396,7 @@ impl ChunkStore {
         todos: &[Arc<dyn Backend>],
         trozos: &[ChunkRef],
     ) -> usize {
-        let mut vistos = std::collections::BTreeSet::new();
-        let unicos: Vec<&ChunkRef> = trozos
-            .iter()
-            .filter(|c| vistos.insert(c.id.clone()))
-            .collect();
+        let unicos = sin_repetir(trozos);
 
         let mut borrados = 0;
         for lote in unicos.chunks(A_LA_VEZ) {
@@ -425,6 +410,244 @@ impl ChunkStore {
         }
         borrados
     }
+}
+
+/// Si pasar de `antes` a `despues` solo cambia de sitio una parte de los trozos.
+///
+/// Es el tercer caso de anadir un proveedor, y el unico barato de verdad. En `lineal` cada
+/// trozo vive entero en un proveedor, y a cual le toca lo decide un sorteo ponderado por los
+/// pesos. Ese sorteo tiene la propiedad que lo hace util aqui: al anadir un peso, los trozos
+/// que cambian de dueno son **solo** los que gana el que llega, y ninguno se mueve entre los
+/// que ya estaban. Anadir una cuenta a un volumen de 1 TB mueve lo que esa cuenta aporta, no
+/// el terabyte.
+pub fn muda_una_fraccion(antes: Layout, despues: Layout) -> bool {
+    matches!(
+        (antes, despues),
+        (Layout::Lineal { n }, Layout::Lineal { n: n2 }) if n2 >= n
+    )
+}
+
+/// Que parte del volumen cambia de proveedor al pasar de unos pesos a otros.
+///
+/// Sirve para poder decir **antes de empezar** cuanto hay que mover, que es lo que separa
+/// "esto tarda un minuto" de "esto tarda toda la noche".
+///
+/// El numero sale de como reparte el sorteo ponderado: a un proveedor le toca su peso dividido
+/// por el total, asi que los que llegan se llevan justo lo que suman entre ellos. Es una
+/// esperanza, no una promesa: con pocos trozos la proporcion real baila.
+///
+/// Si los pesos de los que ya estaban **cambian**, esa cuenta no vale --un trozo puede pasar
+/// de un veterano a otro-- y entonces se devuelve 1.0, que es el peor caso: puede moverse
+/// todo. Decir el peor caso es preferible a dar un numero bonito que luego no se cumple.
+pub fn fraccion_que_se_mueve(viejos: &[u64], nuevos: &[u64]) -> f64 {
+    let total: u64 = nuevos.iter().sum();
+    if total == 0 {
+        return 0.0;
+    }
+    if !nuevos.starts_with(viejos) {
+        return 1.0;
+    }
+    nuevos[viejos.len()..].iter().sum::<u64>() as f64 / total as f64
+}
+
+/// Lo que paso al mudar los trozos que cambian de proveedor.
+#[derive(Debug, Default, Clone)]
+pub struct InformeMudanza {
+    /// Trozos distintos examinados.
+    pub trozos: usize,
+    /// Los que siguen tocandole al mismo proveedor. Estos no se tocan, y son la mayoria: son
+    /// la razon de ser de todo esto.
+    pub quietos: usize,
+    /// Los que ya estaban copiados en su destino, de una ejecucion anterior.
+    pub ya_estaban: usize,
+    /// Los que se han copiado en esta pasada.
+    pub mudados: usize,
+    pub bytes: u64,
+    pub fallidos: Vec<(ChunkId, String)>,
+}
+
+impl InformeMudanza {
+    /// Si se puede publicar la cabecera nueva.
+    ///
+    /// Con un solo trozo sin mudar, no: la cabecera nueva manda leer con los pesos nuevos, y
+    /// ese trozo se buscaria en un proveedor donde no esta. Seria un volumen con un agujero.
+    pub fn completo(&self) -> bool {
+        self.fallidos.is_empty()
+    }
+}
+
+impl ChunkStore {
+    /// Copia a su proveedor nuevo **solo** los trozos que cambian de sitio.
+    ///
+    /// Lee con los pesos de este almacen --los que describen lo que hay escrito-- y escribe en
+    /// el proveedor que le toca a cada trozo con `pesos_nuevos`. Los que no cambian de dueno
+    /// no se leen siquiera.
+    ///
+    /// `todos` son **todos** los proveedores del volumen, los de antes en su orden y los
+    /// nuevos detras.
+    ///
+    /// # Por que no hace falta un reparto nuevo
+    ///
+    /// La copia se escribe en el proveedor nuevo, bajo una clave que lleva **su** indice. Con
+    /// la cabecera vieja nadie mira ahi, porque con los pesos viejos a ese trozo le tocaba
+    /// otro; y el original sigue intacto donde estaba. Asi que lo que se escribe no pisa ni
+    /// esconde nada de lo que sostiene el volumen ahora mismo, y no hacen falta dos
+    /// generaciones de claves como en [`ChunkStore::reescribir_reparto`].
+    ///
+    /// Publicar la cabecera con los pesos nuevos es lo que hace efectivo el cambio, y es
+    /// instantaneo: a partir de ese momento cada trozo se busca donde ya esta. Esta funcion no
+    /// la toca. Interrumpirla no rompe nada --sobran copias que nadie lee-- y volver a
+    /// lanzarla se salta lo que ya se copio.
+    pub async fn mudar_reparto(
+        &self,
+        destino: Layout,
+        pesos_nuevos: &[u64],
+        todos: &[Arc<dyn Backend>],
+        trozos: &[ChunkRef],
+    ) -> Result<InformeMudanza, CoreError> {
+        let antes = self.layout();
+        if !muda_una_fraccion(antes, destino) {
+            return Err(CoreError::Rebalanceo(format!(
+                "pasar de {antes} a {destino} no es mudar el reparto de un volumen lineal"
+            )));
+        }
+        if todos.len() != destino.shard_count() {
+            return Err(CoreError::Rebalanceo(format!(
+                "{destino} necesita {} proveedores y se han dado {}",
+                destino.shard_count(),
+                todos.len()
+            )));
+        }
+        if pesos_nuevos.len() != todos.len() {
+            return Err(CoreError::Rebalanceo(format!(
+                "hay {} proveedores y {} pesos: sin un peso por proveedor no se sabe a quien le \
+                 toca cada trozo",
+                todos.len(),
+                pesos_nuevos.len()
+            )));
+        }
+        if pesos_nuevos.iter().all(|p| *p == 0) {
+            return Err(CoreError::SinSitio);
+        }
+
+        // Los proveedores que ya estaban tienen que seguir donde estaban. Si uno cambia de
+        // posicion su indice cambia, y el indice es parte de la clave de cada fragmento: lo
+        // que hay escrito se volveria ilocalizable.
+        for (i, nombre) in self.backend_names().iter().enumerate() {
+            if todos[i].name() != *nombre {
+                return Err(CoreError::Rebalanceo(format!(
+                    "en la posicion {i} el volumen tiene {nombre} y se ha dado {}. Los \
+                     proveedores que ya estaban no se pueden mover ni quitar: solo se pueden \
+                     anadir otros detras.",
+                    todos[i].name()
+                )));
+            }
+        }
+
+        let unicos = sin_repetir(trozos);
+        let mut informe = InformeMudanza {
+            trozos: unicos.len(),
+            ..Default::default()
+        };
+
+        for lote in unicos.chunks(A_LA_VEZ) {
+            let trabajos = lote
+                .iter()
+                .map(|c| self.mudar_uno(destino, pesos_nuevos, todos, c));
+            for (chunk, resultado) in lote.iter().zip(join_all(trabajos).await) {
+                match resultado {
+                    Ok(Mudado::Quieto) => informe.quietos += 1,
+                    Ok(Mudado::YaEstaba) => informe.ya_estaban += 1,
+                    Ok(Mudado::Escrito { bytes }) => {
+                        informe.mudados += 1;
+                        informe.bytes += bytes;
+                    }
+                    Err(e) => informe.fallidos.push((chunk.id.clone(), e.to_string())),
+                }
+            }
+        }
+        Ok(informe)
+    }
+
+    async fn mudar_uno(
+        &self,
+        destino: Layout,
+        pesos_nuevos: &[u64],
+        todos: &[Arc<dyn Backend>],
+        chunk: &ChunkRef,
+    ) -> Result<Mudado, CoreError> {
+        let origen = *self
+            .destinos(&chunk.id)
+            .first()
+            .ok_or(CoreError::SinSitio)?;
+        let ahora = libredisk_raid::reparto::elegir(chunk.id.as_str(), pesos_nuevos)
+            .ok_or(CoreError::SinSitio)?;
+        if ahora == origen {
+            return Ok(Mudado::Quieto);
+        }
+
+        let clave = chunk.id.shard_key(self.reparto(), ahora);
+        if todos[ahora].exists(&clave).await.unwrap_or(false) {
+            return Ok(Mudado::YaEstaba);
+        }
+
+        // Se recupera y se comprueba el trozo entero antes de escribirlo en su sitio nuevo.
+        // Copiar los bytes a ciegas seria mas rapido, pero si el original estuviera corrompido
+        // la copia lo heredaria y despues se borraria el unico rastro de que lo estaba. Asi un
+        // trozo malo sale en `fallidos` y la cabecera no se publica.
+        let (sellado, _) = self.recover(chunk).await?;
+
+        // En `lineal` el fragmento **es** el blob sellado: `split` devuelve exactamente uno y
+        // no toca los bytes. Subirlo tal cual ahorra copiar el trozo entero en memoria.
+        debug_assert_eq!(libredisk_raid::split(destino, b"un trozo")?.len(), 1);
+
+        let bytes = sellado.len() as u64;
+        todos[ahora].put(&clave, sellado).await?;
+        Ok(Mudado::Escrito { bytes })
+    }
+
+    /// Borra la copia vieja de los trozos que se mudaron.
+    ///
+    /// Va **despues** de publicar la cabecera, igual que [`ChunkStore::olvidar_reparto`] y por
+    /// el mismo motivo: hasta ese momento esas copias son las unicas que sostienen el volumen.
+    ///
+    /// Este almacen tiene que seguir siendo el de antes --pesos viejos, proveedores viejos--
+    /// porque es el que sabe donde estaba cada trozo.
+    pub async fn olvidar_origen(&self, pesos_nuevos: &[u64], trozos: &[ChunkRef]) -> usize {
+        let unicos = sin_repetir(trozos);
+
+        let mut borrados = 0;
+        for lote in unicos.chunks(A_LA_VEZ) {
+            let trabajos = lote.iter().filter_map(|c| {
+                let origen = *self.destinos(&c.id).first()?;
+                let ahora = libredisk_raid::reparto::elegir(c.id.as_str(), pesos_nuevos)?;
+                if ahora == origen {
+                    return None;
+                }
+                let clave = c.id.shard_key(self.reparto(), origen);
+                let backend = &self.backends[origen];
+                Some(async move { backend.delete(&clave).await.is_ok() })
+            });
+            borrados += join_all(trabajos).await.into_iter().filter(|x| *x).count();
+        }
+        borrados
+    }
+}
+
+enum Mudado {
+    Quieto,
+    YaEstaba,
+    Escrito { bytes: u64 },
+}
+
+/// Un mismo trozo puede aparecer muchas veces en el recorrido: la deduplicacion por contenido
+/// hace que dos ficheros iguales lo compartan, y el arbol repite nodos entre versiones.
+fn sin_repetir(trozos: &[ChunkRef]) -> Vec<&ChunkRef> {
+    let mut vistos = std::collections::BTreeSet::new();
+    trozos
+        .iter()
+        .filter(|c| vistos.insert(c.id.clone()))
+        .collect()
 }
 
 /// Que se sacrifica al retirar proveedores.
@@ -464,6 +687,19 @@ pub fn planear_retirada(
         }
         (Layout::ReedSolomon { k, m }, Sacrificio::Espacio) if k > cuantos => {
             Layout::ReedSolomon { k: k - cuantos, m }
+        }
+        // De un volumen lineal se podria retirar --mudando a los que quedan lo que tenia el
+        // que se va-- pero no esta hecho, y no es la operacion simetrica de anadir: al anadir,
+        // lo que se mueve lo decide el sorteo y siempre cabe; al retirar hay que colocar todo
+        // lo del que se va, y puede no caber en ninguna parte. Se dice eso, en vez de dejar
+        // que conteste el error de abajo, que habla de otra cosa.
+        (Layout::Lineal { .. }, _) => {
+            return Err(CoreError::Rebalanceo(
+                "retirar un proveedor de un volumen lineal todavia no esta hecho: habria que \
+                 mudar a los que quedan todo lo que tenia el que se va, y antes comprobar que \
+                 les cabe."
+                    .into(),
+            ));
         }
         _ => {
             return Err(CoreError::Rebalanceo(format!(
@@ -509,11 +745,7 @@ impl ChunkStore {
         retirados: &[Arc<dyn Backend>],
         trozos: &[ChunkRef],
     ) -> (usize, usize) {
-        let mut vistos = std::collections::BTreeSet::new();
-        let unicos: Vec<&ChunkRef> = trozos
-            .iter()
-            .filter(|c| vistos.insert(c.id.clone()))
-            .collect();
+        let unicos = sin_repetir(trozos);
 
         let (mut borrados, mut fallidos) = (0, 0);
         for lote in unicos.chunks(A_LA_VEZ) {
@@ -1044,5 +1276,311 @@ mod tests_ampliar {
     fn trozos_unicos(trozos: &[ChunkRef]) -> usize {
         let mut v = std::collections::BTreeSet::new();
         trozos.iter().filter(|c| v.insert(c.id.clone())).count()
+    }
+}
+
+#[cfg(test)]
+mod tests_mudanza {
+    use std::sync::Arc;
+
+    use libredisk_backend::Backend;
+    use libredisk_raid::Layout;
+
+    use super::*;
+    use crate::testutil::{backends, clave};
+
+    fn datos(n: usize) -> Vec<u8> {
+        (0..n).map(|i| (i % 251) as u8).collect()
+    }
+
+    /// Un volumen lineal sobre los primeros proveedores de `bs`, con `cuantos` trozos dentro.
+    async fn volumen_lineal(
+        bs: &[Arc<dyn Backend>],
+        pesos: Vec<u64>,
+        cuantos: usize,
+    ) -> (ChunkStore, Vec<ChunkRef>) {
+        let n = pesos.len();
+        let store = ChunkStore::new(Layout::Lineal { n }, bs[..n].to_vec(), clave())
+            .unwrap()
+            .with_pesos(pesos);
+
+        let mut trozos = Vec::new();
+        for i in 0..cuantos {
+            trozos.push(store.put(&datos(500 + i)).await.unwrap().chunk);
+        }
+        (store, trozos)
+    }
+
+    /// En que proveedores esta cada trozo, **preguntandoselo a los proveedores**.
+    ///
+    /// No se calcula con los pesos: calcularlo seria comprobar el reparto contra si mismo. Lo
+    /// que interesa es lo que hay escrito de verdad, incluido si un trozo acabo en dos sitios
+    /// o en ninguno.
+    async fn donde_esta(bs: &[Arc<dyn Backend>], trozos: &[ChunkRef]) -> Vec<Vec<usize>> {
+        let mut sitios = Vec::new();
+        for t in trozos {
+            let mut suyos = Vec::new();
+            for (i, b) in bs.iter().enumerate() {
+                if b.exists(&t.id.shard_key(0, i)).await.unwrap() {
+                    suyos.push(i);
+                }
+            }
+            sitios.push(suyos);
+        }
+        sitios
+    }
+
+    /// **Lo que persigue toda la operacion**: anadir una cuenta mueve lo que esa cuenta
+    /// aporta, y ni un trozo mas.
+    ///
+    /// Con dos proveedores iguales y uno tercero igual que ellos, al que llega le toca un
+    /// tercio del volumen. Los otros dos tercios no se leen, no se suben y no se borran.
+    #[tokio::test]
+    async fn anadir_un_proveedor_solo_muda_la_parte_que_le_toca() {
+        let bs = backends(3);
+        let (store, trozos) = volumen_lineal(&bs, vec![1, 1], 200).await;
+        let antes = donde_esta(&bs, &trozos).await;
+
+        let destino = planear(Layout::Lineal { n: 2 }, 1, Cambio::MasEspacio).unwrap();
+        assert_eq!(destino, Layout::Lineal { n: 3 });
+
+        let pesos = vec![1, 1, 1];
+        assert!((fraccion_que_se_mueve(&[1, 1], &pesos) - 1.0 / 3.0).abs() < 1e-9);
+
+        let informe = store
+            .mudar_reparto(destino, &pesos, &bs, &trozos)
+            .await
+            .unwrap();
+        assert!(informe.completo(), "{:?}", informe.fallidos);
+        assert_eq!(informe.trozos, trozos.len());
+        assert_eq!(informe.quietos + informe.mudados, trozos.len());
+
+        let parte = informe.mudados as f64 / trozos.len() as f64;
+        assert!(
+            (parte - 1.0 / 3.0).abs() < 0.1,
+            "se mudo el {:.0} % del volumen y el que llega solo aporta un tercio",
+            parte * 100.0
+        );
+
+        // Con la cabecera todavia sin publicar, el volumen se lee como si no hubiera pasado
+        // nada. Es lo que permite que esto tarde horas sin dejar a nadie sin sus ficheros.
+        for (i, t) in trozos.iter().enumerate() {
+            assert_eq!(store.get(t).await.unwrap(), datos(500 + i));
+        }
+
+        // Y publicada --que es esto: leer con los pesos nuevos-- tambien, antes incluso de
+        // borrar nada.
+        let nuevo = ChunkStore::new(destino, bs.clone(), clave())
+            .unwrap()
+            .with_pesos(pesos.clone());
+        for (i, t) in trozos.iter().enumerate() {
+            assert_eq!(nuevo.get(t).await.unwrap(), datos(500 + i));
+        }
+
+        let borrados = store.olvidar_origen(&pesos, &trozos).await;
+        assert_eq!(borrados, informe.mudados, "se borro otra cosa");
+
+        let despues = donde_esta(&bs, &trozos).await;
+        let mut llegaron = 0;
+        for (i, (a, d)) in antes.iter().zip(&despues).enumerate() {
+            assert_eq!(
+                d.len(),
+                1,
+                "el trozo {i} acabo en {d:?}, y toca uno y solo uno"
+            );
+            if d[0] != a[0] {
+                assert_eq!(
+                    d[0], 2,
+                    "el trozo {i} paso de {} a {}: entre los proveedores que ya estaban nadie \
+                     deberia cambiar de dueno",
+                    a[0], d[0]
+                );
+                llegaron += 1;
+            }
+        }
+        assert_eq!(llegaron, informe.mudados);
+        assert!(llegaron > 0, "al que llega no le toco nada");
+
+        for (i, t) in trozos.iter().enumerate() {
+            assert_eq!(nuevo.get(t).await.unwrap(), datos(500 + i));
+        }
+    }
+
+    /// Volver a lanzarlo no vuelve a subir nada.
+    ///
+    /// Importa porque lo normal en una nube de consumo es que esto se corte a la mitad.
+    #[tokio::test]
+    async fn volver_a_lanzarlo_no_repite_lo_subido() {
+        let bs = backends(3);
+        let (store, trozos) = volumen_lineal(&bs, vec![1, 1], 60).await;
+        let pesos = vec![1, 1, 1];
+        let destino = Layout::Lineal { n: 3 };
+
+        let primera = store
+            .mudar_reparto(destino, &pesos, &bs, &trozos)
+            .await
+            .unwrap();
+        let otra = store
+            .mudar_reparto(destino, &pesos, &bs, &trozos)
+            .await
+            .unwrap();
+
+        assert_eq!(otra.mudados, 0, "volvio a subir lo que ya estaba");
+        assert_eq!(otra.bytes, 0);
+        assert_eq!(otra.ya_estaban, primera.mudados);
+        assert_eq!(otra.quietos, primera.quietos);
+    }
+
+    /// Un proveedor que aporta mucho se lleva mucho, tambien al llegar tarde.
+    #[tokio::test]
+    async fn al_que_aporta_mas_le_toca_mas() {
+        let bs = backends(3);
+        let (store, trozos) = volumen_lineal(&bs, vec![1, 1], 200).await;
+
+        // Dos cuentas pequenas y una ocho veces mayor: al llegar, se lleva cuatro quintos.
+        let pesos = vec![1, 1, 8];
+        let informe = store
+            .mudar_reparto(Layout::Lineal { n: 3 }, &pesos, &bs, &trozos)
+            .await
+            .unwrap();
+
+        let parte = informe.mudados as f64 / trozos.len() as f64;
+        let esperado = fraccion_que_se_mueve(&[1, 1], &pesos);
+        assert!((esperado - 0.8).abs() < 1e-9);
+        assert!(
+            (parte - esperado).abs() < 0.1,
+            "se mudo el {:.0} % y tocaba el {:.0} %",
+            parte * 100.0,
+            esperado * 100.0
+        );
+    }
+
+    /// Lo que se dice que se va a mover es lo que aporta el que llega. Si los pesos de los que
+    /// ya estaban cambian, esa cuenta no vale y se dice el peor caso.
+    #[test]
+    fn la_fraccion_que_se_anuncia_es_la_que_aporta_el_que_llega() {
+        assert!((fraccion_que_se_mueve(&[15, 50], &[15, 50, 35]) - 0.35).abs() < 1e-9);
+        assert_eq!(fraccion_que_se_mueve(&[15, 50], &[20, 50, 35]), 1.0);
+        assert_eq!(fraccion_que_se_mueve(&[1, 1], &[1, 1]), 0.0);
+        assert_eq!(fraccion_que_se_mueve(&[], &[]), 0.0);
+    }
+
+    /// Anadir a un volumen lineal ya no se rechaza, y no hay que elegir que se gana.
+    #[test]
+    fn anadir_a_un_lineal_es_mas_espacio_y_punto() {
+        for cambio in [Cambio::MasEspacio, Cambio::MasSeguridad] {
+            assert_eq!(
+                planear(Layout::Lineal { n: 2 }, 2, cambio).unwrap(),
+                Layout::Lineal { n: 4 }
+            );
+        }
+        assert!(muda_una_fraccion(
+            Layout::Lineal { n: 2 },
+            Layout::Lineal { n: 3 }
+        ));
+        assert!(!muda_una_fraccion(
+            Layout::Mirror { n: 2 },
+            Layout::Mirror { n: 3 }
+        ));
+    }
+
+    /// Mudar el reparto no es la forma de cambiar de topologia.
+    #[tokio::test]
+    async fn mudar_solo_vale_entre_lineales() {
+        let bs = backends(3);
+        let store = ChunkStore::new(Layout::Mirror { n: 2 }, bs[..2].to_vec(), clave()).unwrap();
+        let e = store
+            .mudar_reparto(Layout::Mirror { n: 3 }, &[1, 1, 1], &bs, &[])
+            .await
+            .unwrap_err();
+        assert!(matches!(e, CoreError::Rebalanceo(_)), "{e}");
+    }
+
+    /// Los que ya estaban no se pueden reordenar: su posicion es parte de la clave de cada
+    /// fragmento, asi que colar uno por delante haria ilocalizable lo que hay escrito.
+    #[tokio::test]
+    async fn no_se_puede_colar_un_proveedor_por_delante() {
+        let bs = backends(3);
+        let (store, trozos) = volumen_lineal(&bs, vec![1, 1], 4).await;
+        let revueltos = vec![bs[2].clone(), bs[0].clone(), bs[1].clone()];
+
+        let e = store
+            .mudar_reparto(Layout::Lineal { n: 3 }, &[1, 1, 1], &revueltos, &trozos)
+            .await
+            .unwrap_err();
+        assert!(e.to_string().contains("posicion 0"), "{e}");
+    }
+
+    /// Sin un peso por proveedor no se sabe a quien le toca cada trozo, y eso se dice en vez
+    /// de repartir a ciegas.
+    #[tokio::test]
+    async fn sin_un_peso_por_proveedor_no_se_muda_nada() {
+        let bs = backends(3);
+        let (store, trozos) = volumen_lineal(&bs, vec![1, 1], 4).await;
+
+        let e = store
+            .mudar_reparto(Layout::Lineal { n: 3 }, &[1, 1], &bs, &trozos)
+            .await
+            .unwrap_err();
+        assert!(e.to_string().contains("peso"), "{e}");
+
+        let e = store
+            .mudar_reparto(Layout::Lineal { n: 3 }, &[0, 0, 0], &bs, &trozos)
+            .await
+            .unwrap_err();
+        assert!(matches!(e, CoreError::SinSitio), "{e}");
+    }
+
+    /// De punta a punta: se anade una cuenta a un volumen con ficheros dentro y **los ficheros
+    /// se siguen leyendo**, con la cuenta nueva ya en el reparto y la copia vieja borrada.
+    ///
+    /// Los otros tests miran trozos sueltos. Este mira lo unico que le importa a quien usa
+    /// esto: que sus ficheros sigan ahi.
+    #[tokio::test]
+    async fn los_ficheros_se_siguen_leyendo_tras_anadir_una_cuenta() {
+        use crate::tree::Volume;
+
+        let bs = backends(3);
+        let antes = Layout::Lineal { n: 2 };
+        let store = ChunkStore::new(antes, bs[..2].to_vec(), clave())
+            .unwrap()
+            .with_pesos(vec![1, 1]);
+        let (mut v, degradados) = Volume::create(store).await.unwrap();
+        assert!(degradados.is_empty());
+
+        for i in 0..12 {
+            v.write_file(&format!("/carpeta/dato-{i}.bin"), &datos(400 + i * 37)[..])
+                .await
+                .unwrap();
+        }
+
+        let (trozos, ilegibles) = v.walk().await;
+        assert!(ilegibles.is_empty(), "{ilegibles:?}");
+
+        let destino = Layout::Lineal { n: 3 };
+        let pesos = vec![1, 1, 1];
+        let informe = v
+            .store()
+            .mudar_reparto(destino, &pesos, &bs, &trozos)
+            .await
+            .unwrap();
+        assert!(informe.completo(), "{:?}", informe.fallidos);
+        assert!(informe.mudados > 0, "no se mudo ni un trozo");
+
+        // Aqui es donde se publicaria la cabecera. Lo que viene detras es leer con ella.
+        let borrados = v.store().olvidar_origen(&pesos, &trozos).await;
+        assert_eq!(borrados, informe.mudados);
+
+        let nuevo = ChunkStore::new(destino, bs.clone(), clave())
+            .unwrap()
+            .with_pesos(pesos);
+        let ampliado = Volume::at(nuevo, v.root().clone());
+        for i in 0..12 {
+            let leido = ampliado
+                .read_at(&format!("/carpeta/dato-{i}.bin"), 0, 100_000)
+                .await
+                .unwrap();
+            assert_eq!(leido, datos(400 + i * 37), "el fichero {i} no se lee igual");
+        }
     }
 }

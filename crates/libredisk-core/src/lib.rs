@@ -27,6 +27,7 @@ pub mod diskcache;
 pub mod espacio;
 pub mod file;
 pub mod header;
+pub mod pesos;
 pub mod rebalance;
 pub mod rescue;
 pub mod retirar;
@@ -361,6 +362,35 @@ impl ChunkStore {
     pub fn with_pesos(mut self, pesos: Vec<u64>) -> Self {
         self.pesos = pesos;
         self
+    }
+
+    /// Con que pesos esta colocado lo que hay escrito.
+    ///
+    /// Es de lo que hay que partir para anadir un proveedor: los de la cabecera si los trae, y
+    /// si no el respaldo uniforme, que es el que de verdad se ha usado para colocar. Quien
+    /// pregunte por ellos quiere saber donde esta cada trozo, no que dice un fichero.
+    pub fn pesos(&self) -> Vec<u64> {
+        self.pesos_efectivos()
+    }
+
+    /// El mismo almacen visto con otra topologia, otros proveedores y otros pesos.
+    ///
+    /// La clave sale de aqui, ya derivada. Es lo que permite mirar con los ojos nuevos lo que
+    /// se acaba de escribir --antes de borrar lo viejo, que es cuando hay que mirar-- sin
+    /// volver a pedirle la frase de paso a quien ya la dio.
+    ///
+    /// No hereda la cache ni la cola de escritura **a proposito**: esto es para comprobar, y
+    /// una cache contestaria con lo que ya tenia guardado en vez de preguntarle al proveedor,
+    /// que es justo lo que hay que averiguar.
+    pub fn rehecho(
+        &self,
+        layout: Layout,
+        backends: Vec<Arc<dyn Backend>>,
+        pesos: Vec<u64>,
+    ) -> Result<Self, CoreError> {
+        Ok(Self::new(layout, backends, self.key.clone())?
+            .with_reparto(self.reparto)
+            .with_pesos(pesos))
     }
 
     /// Con que pesos coloca. Todos iguales si no se dijo otra cosa.

@@ -371,10 +371,22 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       que puede decir esa función porque es el número con el que se elige la topología
 - [x] Leer en `lineal` es **una petición**, no una por proveedor. Lo fija un test que cuenta
       llamadas
-- [ ] Añadir un proveedor a un volumen lineal que ya existe. Es lo que abarata el reparto por
-      máximo, pero el rebalanceo todavía no sabe mover solo la fracción que cambia: el camino
-      que hay reescribiría el volumen entero, así que de momento se rechaza en vez de hacer lo
-      caro fingiendo que es lo barato
+- [x] **Añadir un proveedor a un volumen lineal que ya existe**, que es el caso de «me he
+      quedado sin espacio». Se copia solo el trozo que cambia de dueño y se borra su copia
+      vieja **después** de publicar la cabecera; lo demás ni se lee. Los pesos de los que ya
+      estaban no se recalculan: cada peso que cambiara movería trozos, y eso convertiría
+      añadir una cuenta en reescribir el volumen. Un test mide que se mueve la fracción que
+      aporta el recién llegado (±10 %) y que **ningún** trozo cambia de manos entre los
+      veteranos; otro escribe doce ficheros, añade una cuenta y los vuelve a leer
+- [x] Se dice **antes de empezar** cuánto hay que mover: `fraccion_que_se_mueve`. Si los pesos
+      de los que ya estaban cambiaran, esa cuenta no valdría, y entonces devuelve el peor caso
+      en vez de un número bonito que no se cumple
+- [x] La interfaz de escritorio lo hace con un botón, y se niega **con la unidad montada o con
+      algo sin subir**: lo que se escribiera mientras tanto se colocaría con el reparto viejo
+      y, al publicar la cabecera, se buscaría donde no está
+- [ ] Retirar un proveedor de un volumen lineal. No es la operación simétrica: al añadir, lo
+      que se mueve lo decide el sorteo y siempre cabe; al retirar hay que colocar en los que
+      quedan todo lo que tenía el que se va, y puede no caber. Hoy se rechaza diciendo eso
 - [ ] Registrar la aplicación en **Azure** para OneDrive. Los pasos están en
       [APLICACION-OAUTH.md](APLICACION-OAUTH.md); es bastante menos trámite que Google, porque
       Microsoft no exige evaluación de ámbitos ni pone tope de usuarios
@@ -409,9 +421,8 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       la escribe la gente (`export`, espacios alrededor del `=`) para no dejar dos líneas
       para la misma clave, y va por temporal y renombrado como el resto del proyecto
 - [x] La ventana dice con todas las letras que configurar un proveedor **no** lo mete en un
-      volumen que ya exista, y cuál de las dos órdenes de `providers add` hace falta. Son
-      cosas de coste muy distinto, y decir que ya está dentro sería la mentira más cara de
-      esa pantalla
+      volumen que ya exista, y manda al botón que sí lo hace. Son cosas de coste muy distinto,
+      y decir que ya está dentro sería la mentira más cara de esa pantalla
 - [x] **La unidad montada ya no dice 7,9 EB.** Windows y `df` recibían un número fijo y
       enorme, con un comentario que decía que no había forma honesta de dar un tamaño: la
       había dejado de haber en cuanto se supo el cupo de cada proveedor. Ahora declara el del

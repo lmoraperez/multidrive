@@ -84,7 +84,7 @@ cargo run -- get /medios/pelicula.mkv ./vuelta.mkv
 cargo run -- scrub                        # qué le falta a cada trozo, y dónde
 cargo run -- providers list               # proveedores del volumen y los configurados de más
 cargo run -- providers add --mas-seguridad   # una caída más de margen (barato)
-cargo run -- providers add --mas-espacio     # más capacidad (reescribe el volumen)
+cargo run -- providers add --mas-espacio     # más capacidad (en lineal solo mueve lo que aporta el nuevo)
 cargo run -- providers remove fs2 --menos-seguridad   # sacar uno, aunque ya no responda
 cargo run -- rebuild                      # regenerar lo que falte
 
