@@ -388,7 +388,7 @@ solo, elegido por una función de la propia identidad del trozo.
 | Un fichero grande | ancho de banda repartido entre n | uno por fichero; el reparto es entre ficheros |
 | Coste de `scrub` | una enumeración por proveedor | **igual** |
 | `rescue` sin base de datos | funciona | **funciona** |
-| Añadir un proveedor | reescribe el volumen **entero** | mueve solo su fracción (*todavía no implementado*) |
+| Añadir un proveedor | reescribe el volumen **entero** | mueve **solo su fracción**: añadir 15 GB a 1 TB mueve unos 15 GB |
 
 Las tres últimas filas son las que cambian el análisis, y no las esperaba al empezar.
 
@@ -412,14 +412,32 @@ proveedor y el volumen se desmontaría solo. Cuando las cuentas cambien de tama�
 reescribir el reparto a propósito, que es la maquinaria que ya existe para cambiar de
 topología.
 
+### Añadir un proveedor a un volumen que ya existe
+
+Es lo que abarata el reparto por máximo, y ya está hecho: `ChunkStore::mudar_reparto` compara,
+para cada trozo, a quién le tocaba con los pesos viejos y a quién le toca con los nuevos. Los
+que no cambian de dueño —la inmensa mayoría— no se leen siquiera. Los que sí se copian a su
+proveedor nuevo, y **solo después de publicar la cabecera** se borra la copia de origen.
+
+No hace falta un reparto nuevo, al contrario que al cambiar de topología. La copia se escribe
+bajo una clave que lleva el índice del proveedor nuevo, y con la cabecera vieja nadie mira ahí:
+con los pesos viejos a ese trozo le tocaba otro. El original sigue intacto donde estaba, así
+que hasta que la cabecera cambia el volumen se lee exactamente como antes, y publicarla es
+instantáneo.
+
+Los pesos de los proveedores que ya estaban **no se recalculan** al añadir, aunque su hueco
+libre haya cambiado desde que se creó el volumen. Cada peso que cambia mueve trozos, y
+recalcularlos todos convertiría «he añadido una cuenta» en «reescribo el volumen entero» sin
+que nadie lo haya pedido. Lo que se mueve es exactamente lo que aporta el recién llegado
+dividido por el total, y eso se dice antes de empezar: `rebalance::fraccion_que_se_mueve`.
+
 ### Lo que queda
 
-- **Añadir un proveedor a un volumen lineal que ya existe.** Es lo que abarata el reparto por
-  máximo —se mueve la fracción que gana el recién llegado y nada más— pero el rebalanceo
-  todavía no sabe hacerlo: el camino que hay reescribe el volumen entero, así que de momento
-  se rechaza en vez de hacer lo caro fingiendo que es lo barato.
+- **Retirar un proveedor de un volumen lineal.** No es la operación simétrica de añadir: al
+  añadir, lo que se mueve lo decide el sorteo y siempre cabe; al retirar hay que colocar en los
+  que quedan **todo** lo que tenía el que se va, y puede no caber. Hoy se rechaza diciendo eso.
 - **Los pesos no se adaptan solos.** Se fijan al crear y viven en la cabecera. Si las cuentas
-  cambian de tamaño, hará falta reescribir el reparto a propósito.
+  cambian de tamaño, hará falta mudar el reparto a propósito.
 
 ### El aviso que no cambia
 

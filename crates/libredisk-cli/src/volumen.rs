@@ -12,13 +12,13 @@ use libredisk_backend::{Backend, live};
 use libredisk_core::ChunkId;
 use libredisk_core::diskcache::DiskCache;
 use libredisk_core::header::{self, HEADER_KEY, Header};
+use libredisk_core::pesos::{pesos_ampliados, pesos_para};
 use libredisk_core::rebalance::{self, Cambio, Sacrificio};
 use libredisk_core::rescue;
 use libredisk_core::sincronizador::{Resultado, Sincronizador};
 use libredisk_core::tree::{self, Kind, Volume};
 use libredisk_core::writeback::{self, WriteQueue};
 use libredisk_core::{ChunkStore, CoreError};
-use libredisk_crypto::MasterKey;
 use libredisk_raid::Layout;
 
 const FRASE: &str = "LIBREDISK_PASSPHRASE";
@@ -163,38 +163,6 @@ pub async fn abrir_completo(cache_bytes: usize, disco_bytes: usize) -> Result<Vo
         ),
         Err(e) => Err(e.into()),
     }
-}
-
-/// Cuanto aporta cada proveedor, para las topologias que colocan por trozo.
-///
-/// Solo `lineal` los usa; para el resto se devuelve vacio y nadie los mira.
-///
-/// Salen de lo que cada proveedor declara **libre** ahora mismo, y se quedan fijos en la
-/// cabecera. Eso es deliberado: si se recalcularan en cada arranque, un trozo escrito ayer se
-/// buscaria hoy en otro proveedor y el volumen se desmontaria solo. Cuando las cuentas cambien
-/// de tamano habra que reescribir el reparto a proposito, no que cambie por su cuenta.
-///
-/// En gigabytes y no en bytes porque lo que importa es la proporcion, y numeros mas pequenos
-/// hacen la cabecera legible a ojo. Al que no declare cupo se le da el peso del mas pequeno
-/// que si lo declare: dejarlo en cero lo sacaria del volumen, y darle mucho le mandaria
-/// trozos que quiza no caben.
-async fn pesos_para(layout: Layout, backends: &[Arc<dyn Backend>]) -> Vec<u64> {
-    if !layout.coloca_por_trozo() {
-        return Vec::new();
-    }
-    const GIB: u64 = 1 << 30;
-
-    let cuotas = futures::future::join_all(backends.iter().map(|b| b.cuota())).await;
-    let libres: Vec<Option<u64>> = cuotas
-        .iter()
-        .map(|c| c.as_ref().ok().and_then(|c| c.libre()))
-        .collect();
-
-    let minimo = libres.iter().flatten().min().copied().unwrap_or(GIB);
-    libres
-        .iter()
-        .map(|l| (l.unwrap_or(minimo) / GIB).max(1))
-        .collect()
 }
 
 /// Crea un volumen sobre los proveedores del entorno.
@@ -989,7 +957,7 @@ pub async fn providers_list() -> Result<()> {
     println!("topologia     {layout}");
     println!(
         "tolera perder {} proveedor(es)",
-        layout.shard_count() - layout.shards_needed()
+        layout.tolerated_failures()
     );
     println!();
     println!("Proveedores del volumen, en su orden:");
@@ -1012,8 +980,15 @@ pub async fn providers_list() -> Result<()> {
             println!("      {n}");
         }
         println!();
-        println!("  libredisk providers add --mas-seguridad   # mas margen de caidas");
-        println!("  libredisk providers add --mas-espacio     # mas capacidad (caro)");
+        if matches!(layout, Layout::Lineal { .. }) {
+            // En lineal no hay nada que elegir, y el precio no es el mismo: anadir mueve solo
+            // lo que aporta el que llega. Ofrecer las dos opciones de siempre haria pensar que
+            // esto cuesta lo que cuesta en Reed-Solomon.
+            println!("  libredisk providers add   # mas espacio: solo se muda lo que aporta");
+        } else {
+            println!("  libredisk providers add --mas-seguridad   # mas margen de caidas");
+            println!("  libredisk providers add --mas-espacio     # mas capacidad (caro)");
+        }
     }
     Ok(())
 }
@@ -1039,13 +1014,13 @@ pub async fn providers_add(cambio: Cambio) -> Result<()> {
     println!("topologia     {antes}  ->  {destino}");
     println!(
         "tolera perder {}  ->  {}",
-        antes.shard_count() - antes.shards_needed(),
-        destino.shard_count() - destino.shards_needed()
+        antes.tolerated_failures(),
+        destino.tolerated_failures()
     );
     println!(
         "sobrecoste    {:.2}x  ->  {:.2}x",
-        antes.shard_count() as f64 / antes.shards_needed() as f64,
-        destino.shard_count() as f64 / destino.shards_needed() as f64
+        antes.storage_overhead(),
+        destino.storage_overhead()
     );
     println!("anadiendo     {}", quien.nuevos.len());
     for b in &quien.nuevos {
@@ -1074,9 +1049,13 @@ pub async fn providers_add(cambio: Cambio) -> Result<()> {
         .collect();
     let nombres: Vec<String> = todos.iter().map(|b| b.name().to_string()).collect();
 
-    // Las dos vias se distinguen en una sola cosa: si los fragmentos que ya estan siguen
-    // valiendo. De ahi sale todo lo demas, incluido cuanto tarda.
-    let reparto_nuevo = if rebalance::conserva_lo_escrito(antes, destino) {
+    // Con que pesos esta colocado lo que hay escrito. Solo `lineal` los usa, y solo el
+    // almacen sabe cuales son de verdad: una cabecera vieja puede no traerlos.
+    let base = volumen.store().pesos();
+
+    // Las tres vias se distinguen en cuanto hay que mover, y son tres ordenes de magnitud:
+    // nada, la parte que le toca al que llega, o el volumen entero.
+    let (reparto_nuevo, pesos_nuevos) = if rebalance::conserva_lo_escrito(antes, destino) {
         println!("ampliando {} referencia(s) de trozo...", trozos.len());
         let informe = volumen
             .store()
@@ -1094,7 +1073,40 @@ pub async fn providers_add(cambio: Cambio) -> Result<()> {
         if !informe.completo() {
             return Err(fallo_a_medias(&informe.fallidos));
         }
-        header.reparto
+        (header.reparto, header.pesos.clone())
+    } else if rebalance::muda_una_fraccion(antes, destino) {
+        // Lo barato de verdad. Cada trozo vive entero en un proveedor, asi que al que llega
+        // solo le toca la parte que le corresponde por lo que aporta; el resto ni se lee.
+        let pesos = pesos_ampliados(&base, &quien.nuevos).await;
+        let parte = rebalance::fraccion_que_se_mueve(&base, &pesos);
+
+        println!("pesos         {base:?}  ->  {pesos:?}");
+        println!(
+            "mudando       ~{:.0} % de {} referencia(s) de trozo: solo lo que le toca al que \
+             llega.",
+            parte * 100.0,
+            trozos.len()
+        );
+        println!("Se puede interrumpir: lo copiado no se repite y el volumen se sigue leyendo.");
+        println!();
+
+        let informe = volumen
+            .store()
+            .mudar_reparto(destino, &pesos, &todos, &trozos)
+            .await?;
+
+        println!("trozos        {}", informe.trozos);
+        println!("quietos       {}", informe.quietos);
+        println!("ya estaban    {}", informe.ya_estaban);
+        println!(
+            "mudados       {}, {}",
+            informe.mudados,
+            tamano(informe.bytes)
+        );
+        if !informe.completo() {
+            return Err(fallo_a_medias(&informe.fallidos));
+        }
+        (header.reparto, pesos)
     } else {
         // Aqui cambia todo de sitio, asi que se escribe en un reparto nuevo y los fragmentos
         // viejos se quedan donde estan: son los que sostienen el volumen mientras tanto.
@@ -1122,12 +1134,16 @@ pub async fn providers_add(cambio: Cambio) -> Result<()> {
         if !informe.completo() {
             return Err(fallo_a_medias(&informe.fallidos));
         }
-        nuevo
+        (nuevo, Vec::new())
     };
+
+    // Si los trozos cambiaron de proveedor sin cambiar de reparto, es que se mudaron: la
+    // copia vieja sigue ahi y hay que tirarla, pero no antes de publicar la cabecera.
+    let mudanza = reparto_nuevo == header.reparto && pesos_nuevos != header.pesos;
 
     // El unico punto de compromiso. Hasta aqui el volumen se leia con lo de antes.
     let cabecera = Header {
-        pesos: Vec::new(),
+        pesos: pesos_nuevos.clone(),
         version: header.version,
         layout: destino.to_string(),
         reparto: reparto_nuevo,
@@ -1138,17 +1154,19 @@ pub async fn providers_add(cambio: Cambio) -> Result<()> {
     println!();
     println!("hecho: el volumen es {destino}");
 
-    // Y solo ahora se puede tirar lo viejo: hasta publicar la cabecera eran lo unico que
+    // Y solo ahora se puede tirar lo viejo: hasta publicar la cabecera era lo unico que
     // sostenia el volumen.
-    if reparto_nuevo != header.reparto {
+    if reparto_nuevo != header.reparto || mudanza {
         println!();
-        println!("comprobando el reparto {reparto_nuevo} antes de borrar el anterior...");
+        println!("comprobando lo escrito antes de borrar lo que sobra...");
 
         // Que la subida no diera error dice que se escribio, no que este ahi. Y lo que se
         // va a borrar es lo unico que quedaria si no lo estuviera, asi que se pregunta a los
         // proveedores antes de destruir la red de seguridad.
-        let key = MasterKey::derive(&frase()?, &header.salt)?;
-        let revisor = ChunkStore::new(destino, todos.clone(), key)?.with_reparto(reparto_nuevo);
+        let revisor = volumen
+            .store()
+            .rehecho(destino, todos.clone(), pesos_nuevos.clone())?
+            .with_reparto(reparto_nuevo);
         let salud = revisor.scrub_many(&trozos).await;
 
         if !salud.is_complete() {
@@ -1164,18 +1182,21 @@ pub async fn providers_add(cambio: Cambio) -> Result<()> {
             .filter(|h| !h.missing.is_empty())
             .count();
         if incompletos > 0 {
-            println!(
-                "  {incompletos} trozo(s) con fragmentos ausentes; NO se borra el reparto anterior."
-            );
+            println!("  {incompletos} trozo(s) con fragmentos ausentes; NO se borra nada.");
             println!("  El volumen se lee igual, pero revisa con `libredisk scrub` y `rebuild`.");
             return Ok(());
         }
 
-        println!("  entero. Borrando el reparto {}...", header.reparto);
-        let borrados = volumen
-            .store()
-            .olvidar_reparto(header.reparto, antes.shard_count(), &todos, &trozos)
-            .await;
+        let borrados = if mudanza {
+            println!("  entero. Borrando la copia que dejaron los trozos mudados...");
+            volumen.store().olvidar_origen(&pesos_nuevos, &trozos).await
+        } else {
+            println!("  entero. Borrando el reparto {}...", header.reparto);
+            volumen
+                .store()
+                .olvidar_reparto(header.reparto, antes.shard_count(), &todos, &trozos)
+                .await
+        };
         println!("  {borrados} fragmento(s) borrados");
     }
 
@@ -1257,13 +1278,13 @@ pub async fn providers_remove(nombre: &str, sacrificio: Sacrificio) -> Result<()
     println!("topologia     {antes}  ->  {destino}");
     println!(
         "tolera perder {}  ->  {}",
-        antes.shard_count() - antes.shards_needed(),
-        destino.shard_count() - destino.shards_needed()
+        antes.tolerated_failures(),
+        destino.tolerated_failures()
     );
     println!(
         "sobrecoste    {:.2}x  ->  {:.2}x",
-        antes.shard_count() as f64 / antes.shards_needed() as f64,
-        destino.shard_count() as f64 / destino.shards_needed() as f64
+        antes.storage_overhead(),
+        destino.storage_overhead()
     );
     println!(
         "coste         {}",

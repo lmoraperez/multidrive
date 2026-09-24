@@ -119,6 +119,7 @@ async function mostrarPanel(ya) {
   await refrescarMontaje();
   await refrescarPendiente();
   await refrescarEspacio($("espacio-panel"));
+  await refrescarAmpliacion();
 }
 
 function rellenarResumen(r) {
@@ -787,10 +788,10 @@ async function guardado(g) {
     // Configurar no es meterlo en el volumen, y son cosas de coste muy distinto. Decir aquí
     // que ya está dentro sería la mentira más cara de esta pantalla.
     texto +=
-      "\n\nOJO: ya hay un volumen, y esto NO lo mete dentro. Para eso hay que mover " +
-      "fragmentos, y hay que elegir para qué:\n" +
-      "  libredisk providers add --mas-seguridad   (aguanta una caída más; barato)\n" +
-      "  libredisk providers add --mas-espacio     (más capacidad; reescribe el volumen entero)";
+      "\n\nOJO: ya hay un volumen, y esto NO lo mete dentro: para eso hay que mover " +
+      "fragmentos. Abre el volumen y usa «Ampliar el volumen», que dice antes de empezar " +
+      "qué se gana y cuánto hay que mover. Si lo que hace falta es reescribir el volumen " +
+      "entero, lo dirá y habrá que hacerlo desde la línea de órdenes.";
   }
   await arrancar();
   // Después de repintar, porque repintar borra el resultado anterior.
@@ -909,4 +910,122 @@ function pedirConfirmacion(v) {
   partes.push(etiqueta, campo, fila, estado);
   caja.replaceChildren(...partes);
   campo.focus();
+}
+
+// ---------------------------------------------------------------------------------------
+// Ampliar el volumen
+// ---------------------------------------------------------------------------------------
+
+/**
+ * Qué se gana metiendo en el volumen los proveedores que están configurados y sueltos.
+ *
+ * Se consulta al abrir el panel y después de cada cambio, porque la respuesta depende de lo
+ * que haya configurado en ese momento.
+ */
+async function refrescarAmpliacion() {
+  const caja = $("ampliacion");
+  try {
+    pintarAmpliacion(await invoke("ampliacion"));
+  } catch (err) {
+    caja.replaceChildren(nota(String(err)));
+  }
+}
+
+function pintarAmpliacion(a) {
+  const caja = $("ampliacion");
+  if (a.problema) {
+    return caja.replaceChildren(nota(a.problema));
+  }
+
+  // Lo que se gana, dicho sin adornos. Una copia más no es más espacio, y llamarlo «ampliar»
+  // a secas haría esperar sitio donde solo hay margen.
+  const gana =
+    a.gana === "espacio"
+      ? a.suma === null
+        ? "más espacio, aunque no dicen cuánto"
+        : `${tamano(a.suma)} más de espacio`
+      : "una caída más de margen, sin añadir espacio";
+
+  const partes = [
+    nota(`Añadir ${a.nuevos.join(", ")}: ${a.antes} → ${a.despues}, ${gana}.`),
+  ];
+  if (a.gana === "espacio") {
+    partes.push(
+      nota(
+        `Hay que mover ~${Math.round(a.mueve * 100)} % del volumen: solo la parte que le ` +
+          "toca al que llega. El volumen se sigue leyendo mientras tanto, y si se corta no " +
+          "se pierde nada: lo copiado no se repite.",
+      ),
+    );
+  }
+
+  const boton = document.createElement("button");
+  boton.textContent = `Añadir al volumen (${a.nuevos.length})`;
+  boton.addEventListener("click", () => confirmarAmpliacion(a));
+  partes.push(boton);
+
+  caja.replaceChildren(...partes);
+}
+
+/**
+ * Pide confirmar antes de empezar.
+ *
+ * No por peligro —si se corta, el volumen se queda como estaba— sino por tiempo: esto mueve
+ * datos entre nubes y puede tardar. Empezarlo sin querer sería dejar la ventana ocupada
+ * durante horas.
+ */
+function confirmarAmpliacion(a) {
+  const caja = $("ampliacion");
+  const aviso = nota(
+    "Desmonta la unidad antes, si la tienes montada. Mientras esto corre no cierres la " +
+      "ventana.",
+  );
+  aviso.className = "aviso";
+
+  const si = document.createElement("button");
+  si.textContent = "Empezar";
+  si.addEventListener("click", () => ampliarAhora(a));
+
+  const no = document.createElement("button");
+  no.className = "secundario";
+  no.textContent = "Ahora no";
+  no.addEventListener("click", () => pintarAmpliacion(a));
+
+  const fila = document.createElement("div");
+  fila.className = "enlinea";
+  fila.append(si, no);
+
+  caja.replaceChildren(aviso, fila);
+}
+
+async function ampliarAhora(a) {
+  const caja = $("ampliacion");
+  const linea = nota("");
+  caja.replaceChildren(linea);
+  const parar = contando(
+    linea,
+    a.gana === "espacio"
+      ? "Moviendo lo que le toca al proveedor nuevo…"
+      : "Escribiendo la redundancia que falta…",
+  );
+
+  try {
+    const r = await invoke("ampliar");
+    parar();
+    rellenarResumen(r);
+    caja.replaceChildren(nota(`Hecho: el volumen es ${r.layout}.`));
+    // Las barras cambian: hay un proveedor más y lo que ocupa cada uno ya no es lo que era.
+    await refrescarEspacio($("espacio-panel"));
+    $("salud").replaceChildren(nota("Sin revisar desde la ampliación."));
+    await refrescarAmpliacion();
+  } catch (err) {
+    parar();
+    const mal = nota(String(err));
+    mal.className = "aviso mal";
+    const otra = document.createElement("button");
+    otra.className = "secundario";
+    otra.textContent = "Volver";
+    otra.addEventListener("click", refrescarAmpliacion);
+    caja.replaceChildren(mal, otra);
+  }
 }

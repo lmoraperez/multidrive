@@ -86,13 +86,18 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
         <li><b>Se monta como una unidad.</b> WinFsp en Windows y FUSE en Linux, en lectura y
         escritura: el Explorador lista carpetas y cualquier programa abre ficheros</li>
         <li><b>Interfaz de escritorio.</b> Añadir proveedores, crear el volumen, montarlo,
-        revisar su salud, ver cuánto espacio queda en cada cuenta y retirarlo</li>
+        revisar su salud, ver cuánto espacio queda en cada cuenta, ampliarlo con una cuenta
+        más y retirarlo</li>
         <li><b>Conectar una cuenta de nube es pulsar un botón.</b> Se abre el navegador, entras
         en tu cuenta y das permiso; tus credenciales no pasan por LibreDisk. A Google se le
         pide <b>solo acceso a los ficheros que LibreDisk crea</b>, no al resto de tu Drive</li>
         <li><b>Rebalanceo.</b> Añadir o retirar proveedores eligiendo qué priorizar, sin dejar
         de poder leer el volumen mientras tanto. Retirar funciona <b>aunque la cuenta ya no
         responda</b></li>
+        <li><b>Ampliar un volumen <code>lineal</code> cuesta lo que aporta la cuenta nueva.</b>
+        Añadir una cuenta de 15 GB a un volumen de 1 TB mueve unos 15 GB, no el terabyte: solo
+        cambia de sitio la fracción que le toca al que llega, y el volumen se sigue leyendo
+        mientras tanto</li>
         <li><b>Escritura diferida con diario.</b> Escribir vuelve enseguida y un hilo de fondo
         sube; nunca se publica una raíz que apunte a trozos que no están arriba todavía</li>
         <li><b>Caché en memoria y en disco.</b> La de disco guarda los trozos <b>cifrados</b> y
@@ -111,9 +116,9 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
         <li><b>No hay versión publicada.</b> El formato en disco puede cambiar sin aviso</li>
         <li><b>Los instaladores no van firmados.</b> Windows los anuncia como de editor
         desconocido hasta que haya un certificado</li>
-        <li><b>A un volumen <code>lineal</code> no se le pueden añadir proveedores todavía.</b>
-        El reparto está diseñado para que eso mueva solo una fracción, pero el rebalanceo aún
-        no sabe hacerlo, así que se rechaza en vez de reescribir el volumen entero</li>
+        <li><b>De un volumen <code>lineal</code> no se puede <i>retirar</i> un proveedor.</b>
+        Añadirlos sí. Retirar obliga a colocar en los que quedan todo lo que tenía el que se
+        va, y antes hay que comprobar que les cabe</li>
         <li><b>No hay índice local.</b> Recorrer el árbol paga una petición por nivel</li>
         <li><b>Un solo escritor.</b> Varias máquinas escribiendo a la vez está fuera de alcance</li>
       </ul>

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
-use libredisk_backend::{Backend, BackendError, Objeto, OpendalBackend};
+use libredisk_backend::{Backend, BackendError, Cuota, Objeto, OpendalBackend};
 use libredisk_crypto::MasterKey;
 use libredisk_raid::Layout;
 
@@ -186,4 +186,43 @@ pub fn memoria(n: usize) -> Vec<Arc<dyn Backend>> {
     (0..n)
         .map(|i| Arc::new(OpendalBackend::memory(format!("p{i}")).unwrap()) as Arc<dyn Backend>)
         .collect()
+}
+
+/// Un proveedor que **si** dice cuanto espacio tiene.
+///
+/// Los de memoria no dicen nada, que es lo que hace un disco local o un S3 cualquiera. Para
+/// mirar como se reparten los pesos hace falta uno que conteste, porque el cupo declarado es
+/// lo unico que mira `pesos`.
+pub struct Declara {
+    pub interior: OpendalBackend,
+    pub total: u64,
+    pub usado: u64,
+}
+
+#[async_trait]
+impl Backend for Declara {
+    fn name(&self) -> &str {
+        self.interior.name()
+    }
+    async fn put(&self, key: &str, data: Vec<u8>) -> Result<(), BackendError> {
+        self.interior.put(key, data).await
+    }
+    async fn get(&self, key: &str) -> Result<Vec<u8>, BackendError> {
+        self.interior.get(key).await
+    }
+    async fn delete(&self, key: &str) -> Result<(), BackendError> {
+        self.interior.delete(key).await
+    }
+    async fn exists(&self, key: &str) -> Result<bool, BackendError> {
+        self.interior.exists(key).await
+    }
+    async fn list(&self, prefix: &str) -> Result<Vec<Objeto>, BackendError> {
+        self.interior.list(prefix).await
+    }
+    async fn cuota(&self) -> Result<Cuota, BackendError> {
+        Ok(Cuota {
+            total: Some(self.total),
+            usado: Some(self.usado),
+        })
+    }
 }

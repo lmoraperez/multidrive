@@ -33,6 +33,8 @@ use std::collections::HashMap;
 use libredisk_backend::{Backend, catalogo, config, live};
 use libredisk_core::ChunkHealth;
 use libredisk_core::header::{self, Header};
+use libredisk_core::pesos::{pesos_ampliados, pesos_para};
+use libredisk_core::rebalance::{self, Cambio};
 use libredisk_core::sincronizador::Sincronizador;
 use libredisk_core::tree::Volume;
 use libredisk_core::writeback::{self, WriteQueue};
@@ -512,8 +514,8 @@ fn resumir(volumen: &Volume, header: &Header) -> Result<Resumen, libredisk_core:
     Ok(Resumen {
         layout: layout.to_string(),
         proveedores: header.backends.clone(),
-        tolera: layout.shard_count() - layout.shards_needed(),
-        sobrecoste: layout.shard_count() as f64 / layout.shards_needed() as f64,
+        tolera: layout.tolerated_failures(),
+        sobrecoste: layout.storage_overhead(),
         reparto: header.reparto,
         generacion: volumen.root().generation,
     })
@@ -667,6 +669,290 @@ async fn pendiente(estado: tauri::State<'_, Estado>) -> Result<Pendiente, String
         bytes: p.bytes,
         a_salvo: p.a_salvo(),
     })
+}
+
+// ---------------------------------------------------------------------------------------
+// Anadir proveedores al volumen
+// ---------------------------------------------------------------------------------------
+
+/// Lo que se ganaria metiendo en el volumen los proveedores configurados que no lo forman.
+///
+/// Es lo que se ensena **antes** de pulsar nada: que se gana, cuanto hay que mover y, si no
+/// se puede desde aqui, por que.
+#[derive(Serialize, Default)]
+struct Ampliacion {
+    /// Configurados que el volumen todavia no usa, en el orden en que entrarian.
+    nuevos: Vec<String>,
+    antes: String,
+    despues: String,
+    /// `espacio` o `margen`. No son lo mismo y no siempre se puede elegir: en un volumen
+    /// lineal un proveedor mas es sitio, y en Reed-Solomon es una caida mas de margen.
+    gana: String,
+    /// Que parte del volumen cambia de proveedor, de 0 a 1.
+    mueve: f64,
+    /// Cuanto sitio anade. `null` si alguno de los nuevos no dice cuanto le queda libre: mas
+    /// vale no decirlo que inventarlo.
+    suma: Option<u64>,
+    /// Por que no se puede desde aqui, si no se puede.
+    problema: Option<String>,
+}
+
+/// Los proveedores que forman el volumen y los que estan configurados de mas.
+type Bandos = (Vec<Arc<dyn Backend>>, Vec<Arc<dyn Backend>>);
+
+/// Los proveedores del volumen **en el orden de la cabecera**, y los que estan de mas.
+///
+/// El orden importa: el indice de un proveedor es parte de la clave de cada fragmento. Por eso
+/// se reconstruye desde la cabecera y no desde como esten configurados ahora.
+fn separar_para_ampliar(
+    header: &Header,
+    configurados: &[Arc<dyn Backend>],
+) -> Result<Bandos, String> {
+    let mut del_volumen = Vec::new();
+    for nombre in &header.backends {
+        let Some(b) = configurados.iter().find(|b| b.name() == nombre) else {
+            return Err(format!(
+                "falta «{nombre}», que forma parte del volumen. Configuralo antes de anadir \
+                 otros proveedores."
+            ));
+        };
+        del_volumen.push(Arc::clone(b));
+    }
+    let nuevos = configurados
+        .iter()
+        .filter(|b| !header.backends.iter().any(|n| n == b.name()))
+        .cloned()
+        .collect();
+    Ok((del_volumen, nuevos))
+}
+
+/// Cuanto sitio libre suman estos proveedores, o nada si alguno no lo dice.
+async fn suma_libre(backends: &[Arc<dyn Backend>]) -> Option<u64> {
+    let cuotas = futures::future::join_all(backends.iter().map(|b| b.cuota())).await;
+    let mut total = 0u64;
+    for c in &cuotas {
+        total += c.as_ref().ok()?.libre()?;
+    }
+    Some(total)
+}
+
+/// Que topologia sale de anadir los que sobran, y que se gana con ello.
+///
+/// En un volumen lineal lo que se gana es sitio. En los demas **no se puede ganar sitio sin
+/// reescribir el volumen entero**, asi que lo que se ofrece es margen de caidas; y si ni eso,
+/// se dice por que.
+fn plan(antes: Layout, cuantos: usize) -> Result<(Layout, &'static str), String> {
+    let lineal = matches!(antes, Layout::Lineal { .. });
+    let cambio = if lineal {
+        Cambio::MasEspacio
+    } else {
+        Cambio::MasSeguridad
+    };
+    let destino = rebalance::planear(antes, cuantos, cambio).map_err(|e| e.to_string())?;
+
+    if lineal {
+        Ok((destino, "espacio"))
+    } else if rebalance::conserva_lo_escrito(antes, destino) {
+        Ok((destino, "margen"))
+    } else {
+        Err(format!(
+            "pasar de {antes} a {destino} mueve todos los fragmentos de todos los trozos, o \
+             sea, reescribe el volumen entero. Eso puede tardar horas o dias, asi que se hace \
+             desde la linea de ordenes, que puede ir informando: `libredisk providers add \
+             --mas-espacio`."
+        ))
+    }
+}
+
+#[tauri::command]
+async fn ampliacion(estado: tauri::State<'_, Estado>) -> Result<Ampliacion, String> {
+    let configurados = proveedores()?;
+    let guardia = estado.abierto.lock().await;
+    let abierto = guardia.as_ref().ok_or("el volumen no esta abierto")?;
+
+    let antes = abierto.header.layout().map_err(|e| e.to_string())?;
+    let (_, nuevos) = separar_para_ampliar(&abierto.header, &configurados)?;
+
+    let mut out = Ampliacion {
+        nuevos: nuevos.iter().map(|b| b.name().to_string()).collect(),
+        antes: antes.to_string(),
+        ..Default::default()
+    };
+    if nuevos.is_empty() {
+        out.problema = Some("no hay ningun proveedor configurado que el volumen no use ya.".into());
+        return Ok(out);
+    }
+
+    let (destino, gana) = match plan(antes, nuevos.len()) {
+        Ok(p) => p,
+        Err(e) => {
+            out.problema = Some(e);
+            return Ok(out);
+        }
+    };
+    out.despues = destino.to_string();
+    out.gana = gana.to_string();
+
+    if gana == "espacio" {
+        let base = abierto.volumen.store().pesos();
+        let pesos = pesos_ampliados(&base, &nuevos).await;
+        out.mueve = rebalance::fraccion_que_se_mueve(&base, &pesos);
+        out.suma = suma_libre(&nuevos).await;
+    } else {
+        // Una copia o una paridad mas no anaden ni un byte de sitio, y decir lo contrario
+        // seria lo que la gente espera oir en vez de lo que pasa.
+        out.suma = Some(0);
+    }
+    Ok(out)
+}
+
+/// Mete en el volumen los proveedores configurados que no lo forman.
+///
+/// Hace **solo** las dos operaciones que no reescriben el volumen entero: mudar la fraccion
+/// que le toca al que llega, en un volumen lineal, y escribir la redundancia que falta, en los
+/// demas. La cara se queda en la linea de ordenes, que puede ir contando por donde va.
+///
+/// La cabecera se publica al final y solo si todo salio bien: hasta ese momento el volumen se
+/// lee exactamente como antes.
+#[tauri::command]
+async fn ampliar(estado: tauri::State<'_, Estado>) -> Result<Resumen, String> {
+    // Montado no se toca. Lo que se escribiera mientras esto corre se colocaria con el reparto
+    // viejo y, al publicar la cabecera, se buscaria donde no esta.
+    if estado.montado.lock().await.is_some() {
+        return Err(
+            "desmonta la unidad antes de ampliar el volumen: lo que se escriba \
+                    mientras tanto acabaria en el proveedor equivocado."
+                .into(),
+        );
+    }
+
+    let configurados = proveedores()?;
+    let mut guardia = estado.abierto.lock().await;
+    let abierto = guardia.as_ref().ok_or("el volumen no esta abierto")?;
+
+    // Y con cosas sin subir, tampoco, por lo mismo: subirian al sitio de antes.
+    let p = abierto.volumen.store().pendiente();
+    if !p.a_salvo() {
+        return Err(format!(
+            "quedan {} trozo(s) por subir. Espera a que esten a salvo en los proveedores \
+             antes de ampliar el volumen.",
+            p.trozos
+        ));
+    }
+
+    let antes = abierto.header.layout().map_err(|e| e.to_string())?;
+    let (del_volumen, nuevos) = separar_para_ampliar(&abierto.header, &configurados)?;
+    if nuevos.is_empty() {
+        return Err("no hay ningun proveedor configurado que el volumen no use ya.".into());
+    }
+    let (destino, gana) = plan(antes, nuevos.len())?;
+
+    let todos: Vec<Arc<dyn Backend>> = del_volumen.iter().chain(&nuevos).cloned().collect();
+    let nombres: Vec<String> = todos.iter().map(|b| b.name().to_string()).collect();
+
+    let (trozos, ilegibles) = abierto.volumen.walk().await;
+    if !ilegibles.is_empty() {
+        // Un trozo que no se puede leer tampoco se puede mudar, y lo que no se muda se queda
+        // donde la cabecera nueva ya no lo busca. Con el volumen a medias no se amplia.
+        return Err(format!(
+            "hay {} ruta(s) que no se pueden leer, empezando por «{}». Revisa la salud del \
+             volumen antes de ampliarlo.",
+            ilegibles.len(),
+            ilegibles[0].0
+        ));
+    }
+
+    let pesos = if gana == "espacio" {
+        pesos_ampliados(&abierto.volumen.store().pesos(), &nuevos).await
+    } else {
+        abierto.header.pesos.clone()
+    };
+
+    let fallidos = if gana == "espacio" {
+        let informe = abierto
+            .volumen
+            .store()
+            .mudar_reparto(destino, &pesos, &todos, &trozos)
+            .await
+            .map_err(|e| e.to_string())?;
+        informe.fallidos
+    } else {
+        let informe = abierto
+            .volumen
+            .store()
+            .ampliar_redundancia(destino, &nuevos, &trozos)
+            .await
+            .map_err(|e| e.to_string())?;
+        informe.fallidos
+    };
+    if !fallidos.is_empty() {
+        // La cabecera es la que promete donde esta cada cosa. Publicarla con trozos a medias
+        // prometeria algo que no esta, que es peor que no haber ampliado.
+        return Err(format!(
+            "{} trozo(s) no se pudieron escribir, asi que no se cambia nada: el volumen sigue \
+             como estaba. Vuelve a intentarlo, que lo que si se subio no se repite. El \
+             primero: {}",
+            fallidos.len(),
+            fallidos[0].1
+        ));
+    }
+
+    // El unico punto de compromiso. Hasta aqui el volumen se leia con lo de antes.
+    let cabecera = Header {
+        version: abierto.header.version,
+        layout: destino.to_string(),
+        salt: abierto.header.salt.clone(),
+        reparto: abierto.header.reparto,
+        backends: nombres,
+        pesos: pesos.clone(),
+    };
+    header::write(&todos, &cabecera)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Y solo ahora se puede tirar la copia vieja de lo que se mudo, y solo si lo nuevo esta
+    // entero de verdad: que la subida no diera error dice que se escribio, no que este ahi.
+    if gana == "espacio" {
+        let revisor = abierto
+            .volumen
+            .store()
+            .rehecho(destino, todos.clone(), pesos.clone())
+            .map_err(|e| e.to_string())?;
+        let salud = revisor.scrub_many(&trozos).await;
+        if salud.is_complete() && salud.health.iter().all(|h| h.missing.is_empty()) {
+            abierto
+                .volumen
+                .store()
+                .olvidar_origen(&pesos, &trozos)
+                .await;
+        }
+        // Si no esta entero no se borra nada. De las dos equivocaciones posibles, dejar sitio
+        // ocupado de mas es la barata.
+    }
+
+    // El volumen que sigue abierto en esta ventana es el de antes: mismos proveedores, mismos
+    // pesos. Se rehace sobre la cabecera nueva, con la misma clave y sin volver a pedir la
+    // frase.
+    let raiz = abierto.volumen.root().clone();
+    let store = abierto
+        .volumen
+        .store()
+        .rehecho(destino, todos.clone(), pesos)
+        .map_err(|e| e.to_string())?
+        .with_cache(CACHE);
+
+    let dir = writeback::dir_de_volumen(writeback::dir_base(), &cabecera.salt);
+    let cola = WriteQueue::open(&dir)
+        .await
+        .map_err(|e| format!("no se pudo reabrir la cola de subida: {e}"))?;
+
+    let volumen = Volume::at(store.with_writeback(Arc::new(cola)), raiz);
+    let resumen = resumir(&volumen, &cabecera).map_err(|e| e.to_string())?;
+    *guardia = Some(Abierto {
+        volumen,
+        header: cabecera,
+    });
+    Ok(resumen)
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1018,38 +1304,6 @@ async fn borrar_volumen(
     ))
 }
 
-/// Cuanto aporta cada proveedor, para las topologias que colocan por trozo.
-///
-/// Solo `lineal` los usa; para el resto se devuelve vacio y nadie los mira.
-///
-/// Salen de lo que cada proveedor declara **libre** ahora mismo, y se quedan fijos en la
-/// cabecera. Eso es deliberado: si se recalcularan en cada arranque, un trozo escrito ayer se
-/// buscaria hoy en otro proveedor y el volumen se desmontaria solo. Cuando las cuentas cambien
-/// de tamano habra que reescribir el reparto a proposito, no que cambie por su cuenta.
-///
-/// En gigabytes y no en bytes porque lo que importa es la proporcion, y numeros mas pequenos
-/// hacen la cabecera legible a ojo. Al que no declare cupo se le da el peso del mas pequeno
-/// que si lo declare: dejarlo en cero lo sacaria del volumen, y darle mucho le mandaria
-/// trozos que quiza no caben.
-async fn pesos_para(layout: Layout, backends: &[Arc<dyn Backend>]) -> Vec<u64> {
-    if !layout.coloca_por_trozo() {
-        return Vec::new();
-    }
-    const GIB: u64 = 1 << 30;
-
-    let cuotas = futures::future::join_all(backends.iter().map(|b| b.cuota())).await;
-    let libres: Vec<Option<u64>> = cuotas
-        .iter()
-        .map(|c| c.as_ref().ok().and_then(|c| c.libre()))
-        .collect();
-
-    let minimo = libres.iter().flatten().min().copied().unwrap_or(GIB);
-    libres
-        .iter()
-        .map(|l| (l.unwrap_or(minimo) / GIB).max(1))
-        .collect()
-}
-
 /// Reparte los trozos en tres categorias **excluyentes**, y el orden importa.
 ///
 /// Un trozo del que no quedan fragmentos suficientes ya no se lee. Llamarlo degradado seria
@@ -1089,7 +1343,9 @@ fn main() {
             borrar_volumen,
             tipos_de_proveedor,
             conectar_nube,
-            guardar_proveedor
+            guardar_proveedor,
+            ampliacion,
+            ampliar
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo arrancar la ventana");
