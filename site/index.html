@@ -81,9 +81,18 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
       <h3>Funciona y está probado</h3>
       <ul>
         <li><b>Cifrado por trozo.</b> XChaCha20-Poly1305 con clave Argon2id, nombres de fichero incluidos</li>
-        <li><b>Erasure coding.</b> Reed-Solomon <code>k+m</code>, espejo y concatenación</li>
+        <li><b>Cinco topologías.</b> Reed-Solomon <code>k+m</code>, espejo, unión, concatenación
+        y <b>lineal</b>, la única que suma capacidades desiguales</li>
         <li><b>Se monta como una unidad.</b> WinFsp en Windows y FUSE en Linux, en lectura y
         escritura: el Explorador lista carpetas y cualquier programa abre ficheros</li>
+        <li><b>Interfaz de escritorio.</b> Añadir proveedores, crear el volumen, montarlo,
+        revisar su salud, ver cuánto espacio queda en cada cuenta y retirarlo</li>
+        <li><b>Conectar una cuenta de nube es pulsar un botón.</b> Se abre el navegador, entras
+        en tu cuenta y das permiso; tus credenciales no pasan por LibreDisk. A Google se le
+        pide <b>solo acceso a los ficheros que LibreDisk crea</b>, no al resto de tu Drive</li>
+        <li><b>Rebalanceo.</b> Añadir o retirar proveedores eligiendo qué priorizar, sin dejar
+        de poder leer el volumen mientras tanto. Retirar funciona <b>aunque la cuenta ya no
+        responda</b></li>
         <li><b>Escritura diferida con diario.</b> Escribir vuelve enseguida y un hilo de fondo
         sube; nunca se publica una raíz que apunte a trozos que no están arriba todavía</li>
         <li><b>Caché en memoria y en disco.</b> La de disco guarda los trozos <b>cifrados</b> y
@@ -92,7 +101,8 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
         desde el Explorador y <b>Windows pide la frase de paso</b>, que no se guarda</li>
         <li><b>Rescate.</b> Si se pierde el puntero de raíz, el volumen se reconstruye
         enumerando y descifrando lo que quede en los proveedores</li>
-        <li><b>Google Drive y OneDrive</b> pasan la suite de conformidad contra cuentas reales</li>
+        <li><b>Google Drive y OneDrive</b> pasan la suite de conformidad contra cuentas reales,
+        y hay un volumen real probado de punta a punta sobre las dos</li>
       </ul>
     </div>
     <div class="no2">
@@ -101,8 +111,9 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
         <li><b>No hay versión publicada.</b> El formato en disco puede cambiar sin aviso</li>
         <li><b>Los instaladores no van firmados.</b> Windows los anuncia como de editor
         desconocido hasta que haya un certificado</li>
-        <li><b>No hay interfaz gráfica</b></li>
-        <li><b>No hay rebalanceo</b> al añadir o retirar un proveedor</li>
+        <li><b>A un volumen <code>lineal</code> no se le pueden añadir proveedores todavía.</b>
+        El reparto está diseñado para que eso mueva solo una fracción, pero el rebalanceo aún
+        no sabe hacerlo, así que se rechaza en vez de reescribir el volumen entero</li>
         <li><b>No hay índice local.</b> Recorrer el árbol paga una petición por nivel</li>
         <li><b>Un solo escritor.</b> Varias máquinas escribiendo a la vez está fuera de alcance</li>
       </ul>
