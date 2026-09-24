@@ -34,7 +34,11 @@ pub const HEADER_VERSION: u32 = 1;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Header {
     pub version: u32,
-    /// Topologia tal y como se escribe: `rs:4,2`, `mirror:3`, `concat`.
+    /// Topologia tal y como se escribe: `rs:4,2`, `espejo:3`, `union:2`, `concat`.
+    ///
+    /// Puede traer nombres viejos --`mirror`, `stripe`-- de volumenes creados antes del
+    /// cambio: `Layout::from_str` los sigue aceptando, y por eso esto se guarda tal cual en
+    /// vez de reescribirse.
     ///
     /// Se guarda porque sin ella no se sabe cuantos fragmentos hacen falta ni como juntarlos,
     /// y equivocarse no da un error limpio: da datos que no descifran.
@@ -190,18 +194,41 @@ pub async fn write(backends: &[Arc<dyn Backend>], header: &Header) -> Result<(),
 /// Si dos proveedores devuelven cabeceras distintas se da error en vez de elegir una. Eso
 /// significa que se estan mezclando dos volumenes, y adivinar cual es el bueno solo serviria
 /// para escribir encima del otro.
+/// Lee la cabecera, que va replicada en todos los proveedores.
+///
+/// Distingue **tres** situaciones que antes se confundian en una:
+///
+/// - La cabecera no esta en ningun sitio: no hay volumen. `Ok(None)`.
+/// - Esta, y todos los que contestaron dicen lo mismo: `Ok(Some(_))`.
+/// - **No se pudo preguntar**, y nadie contesto con una cabecera: eso no es "no hay
+///   volumen", es "no se sabe". Antes se devolvia `Ok(None)` y el programa decia que no
+///   habia ningun volumen, que ante un token caducado o un corte de red es una afirmacion
+///   falsa y bastante alarmante: parece que los datos han desaparecido.
+///
+/// Si alguno falla pero otro si trae la cabecera, se sigue adelante: para eso va replicada.
 pub async fn read(backends: &[Arc<dyn Backend>]) -> Result<Option<Header>, CoreError> {
     let lecturas = backends.iter().map(|b| async move {
-        match b.get(HEADER_KEY).await {
-            Ok(bytes) => Some((b.name().to_string(), bytes)),
+        let r = match b.get(HEADER_KEY).await {
+            Ok(bytes) => Ok(Some(bytes)),
             // Que no este es lo normal en un proveedor recien anadido.
-            Err(BackendError::NotFound(_)) => None,
-            Err(_) => None,
-        }
+            Err(BackendError::NotFound(_)) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        };
+        (b.name().to_string(), r)
     });
 
     let mut encontrada: Option<(String, Header)> = None;
-    for (nombre, bytes) in join_all(lecturas).await.into_iter().flatten() {
+    let mut fallos: Vec<String> = Vec::new();
+
+    for (nombre, r) in join_all(lecturas).await {
+        let bytes = match r {
+            Ok(Some(b)) => b,
+            Ok(None) => continue,
+            Err(e) => {
+                fallos.push(format!("{nombre}: {e}"));
+                continue;
+            }
+        };
         let header: Header = serde_json::from_slice(&bytes)?;
         match &encontrada {
             None => encontrada = Some((nombre, header)),
@@ -214,12 +241,52 @@ pub async fn read(backends: &[Arc<dyn Backend>]) -> Result<Option<Header>, CoreE
         }
     }
 
+    if encontrada.is_none() && !fallos.is_empty() {
+        return Err(CoreError::CabeceraIlegible(fallos.join("; ")));
+    }
     Ok(encontrada.map(|(_, h)| h))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutil::NoResponde;
+    use libredisk_backend::OpendalBackend;
+
+    /// Un proveedor que no se deja leer **no significa que no haya volumen**.
+    ///
+    /// Antes se devolvia lo mismo en los dos casos, y el programa decia «no hay ningun
+    /// volumen en estos proveedores». Ante un token caducado o un corte de red, eso es una
+    /// afirmacion falsa y de las que asustan: parece que los datos han desaparecido.
+    #[tokio::test]
+    async fn no_poder_leer_no_es_lo_mismo_que_no_haber() {
+        let mudo: Vec<Arc<dyn Backend>> = vec![Arc::new(NoResponde(
+            OpendalBackend::memory("caido").unwrap(),
+        ))];
+        let e = read(&mudo).await.unwrap_err().to_string();
+        assert!(e.contains("no se sabe"), "{e}");
+        assert!(e.contains("caido"), "{e}");
+    }
+
+    /// Y si uno falla pero otro trae la cabecera, se sigue adelante: para eso va replicada.
+    #[tokio::test]
+    async fn con_uno_caido_basta_que_otro_la_traiga() {
+        let bueno: Arc<dyn Backend> = Arc::new(OpendalBackend::memory("bueno").unwrap());
+        let h = Header {
+            version: 1,
+            layout: "espejo:2".into(),
+            reparto: 0,
+            salt: vec![1, 2, 3],
+            backends: vec!["bueno".into(), "caido".into()],
+        };
+        write(std::slice::from_ref(&bueno), &h).await.unwrap();
+
+        let mezcla: Vec<Arc<dyn Backend>> = vec![
+            bueno,
+            Arc::new(NoResponde(OpendalBackend::memory("caido").unwrap())),
+        ];
+        assert_eq!(read(&mezcla).await.unwrap(), Some(h));
+    }
     use crate::testutil::backends;
 
     fn cabecera(n: usize) -> Header {

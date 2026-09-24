@@ -413,7 +413,13 @@ async fn arranque(estado: tauri::State<'_, Estado>) -> Result<Arranque, String> 
     match header::read(&backends).await {
         Ok(Some(h)) => {
             out.hay_volumen = true;
-            out.layout = Some(h.layout.clone());
+            // Se ensena la topologia **interpretada**, no la cadena que haya guardada: un
+            // volumen creado antes del cambio de nombre tiene `stripe:2` escrito, y
+            // enseñarlo tal cual seria usar dos vocabularios a la vez.
+            out.layout = Some(
+                h.layout()
+                    .map_or_else(|_| h.layout.clone(), |l| l.to_string()),
+            );
             out.del_volumen = h.backends.clone();
         }
         Ok(None) => out.problema = Some("no hay ningun volumen en estos proveedores".into()),
@@ -912,7 +918,9 @@ async fn volumen_a_borrar() -> Result<ParaBorrar, String> {
 
     let nombres: Vec<String> = backends.iter().map(|b| b.name().to_string()).collect();
     Ok(ParaBorrar {
-        layout: header.layout.clone(),
+        layout: header
+            .layout()
+            .map_or_else(|_| header.layout.clone(), |l| l.to_string()),
         confirmacion: nombres.join(","),
         proveedores: nombres,
         fragmentos: inventario.fragmentos(),
@@ -1041,14 +1049,14 @@ mod tests {
     #[test]
     fn con_tres_proveedores_hay_tres_opciones() {
         let specs: Vec<String> = opciones(3).into_iter().map(|o| o.spec).collect();
-        assert_eq!(specs, vec!["mirror:3", "rs:2,1", "stripe:3"]);
+        assert_eq!(specs, vec!["espejo:3", "rs:2,1", "union:3"]);
     }
 
     /// Con dos no cabe la paridad: `rs:1,1` seria el mismo espejo con otro nombre.
     #[test]
     fn con_dos_proveedores_solo_espejo_y_reparto() {
         let specs: Vec<String> = opciones(2).into_iter().map(|o| o.spec).collect();
-        assert_eq!(specs, vec!["mirror:2", "stripe:2"]);
+        assert_eq!(specs, vec!["espejo:2", "union:2"]);
     }
 
     /// La sin redundancia va **la ultima**, y es la unica marcada como tal.

@@ -61,14 +61,22 @@ stores (que no tienen escritura en sitio ni `rename` atómico).
 | Modo | Fórmula | Sobrevive a | Sobrecoste |
 |---|---|---|---|
 | `concat` | 1 de 1 | nada | 1,0× |
-| `stripe(n)` | n de n | **nada** | 1,0× |
-| `mirror` | 1 de n | n−1 caídas | n× |
+| `union(n)` | n de n | **nada** | 1,0× |
+| `espejo(n)` | 1 de n | n−1 caídas | n× |
 | `rs(k,m)` | k de k+m | m caídas | (k+m)/k × |
 
 Ejemplo práctico: `rs(4,2)` con 6 proveedores → sobrevive a que 2 te suspendan la cuenta,
 con 1,5× de sobrecoste de espacio.
 
-`stripe` es lo que en un disco se llama RAID 0: toda la capacidad sumada y el ancho de banda
+
+Las topologías se llamaban antes `mirror` y `stripe`. **Los dos nombres se siguen leyendo**:
+la topología va escrita en la cabecera del volumen, en los proveedores, y un volumen creado
+cuando se llamaba `mirror:2` tiene eso grabado. Nadie va a ir a reescribirlo por haberle
+cambiado el nombre a una palabra, así que lo que cambia es lo que se escribe de ahora en
+adelante y lo que se enseña — incluso de un volumen viejo, que se muestra interpretado y no
+en bruto, para no usar dos vocabularios a la vez.
+
+`union` es lo que en un disco se llama RAID 0: toda la capacidad sumada y el ancho de banda
 repartido entre los proveedores, a cambio de que **perder uno solo pierda el volumen entero**.
 No es `rs(k,0)` porque eso no existe —Reed-Solomon necesita al menos un fragmento de
 paridad—, y tenerlo como topología propia hace que «sin redundancia» se lea en el nombre en
@@ -215,11 +223,11 @@ tres cifras está en la ventana y en `libredisk espacio`.
 
 Un volumen no tiene tamaño propio: lo tiene prestado, y la topología decide cuánto de ese
 préstamo se aprovecha. La regla cabe en una línea: **manda el proveedor más apretado**, y lo
-que se saque de él se multiplica por `shards_needed`, que es 1 en `mirror` y en `concat`, `k`
-en `rs(k,m)` y `n` en `stripe(n)`. Es la misma función que usa el motor para leer: son la
+que se saque de él se multiplica por `shards_needed`, que es 1 en `espejo` y en `concat`, `k`
+en `rs(k,m)` y `n` en `union(n)`. Es la misma función que usa el motor para leer: son la
 misma cantidad mirada desde los dos lados.
 
-Medido el 2026-09-22 sobre el volumen real `mirror:2` de OneDrive (15,0 GiB) y Google Drive
+Medido el 2026-09-22 sobre el volumen real `espejo:2` de OneDrive (15,0 GiB) y Google Drive
 (17,0 GiB): Windows enseña **15,00 GiB de tamaño y 3,46 GiB libres**, porque Drive está al
 79 %. Antes enseñaba 7,9 EB.
 
