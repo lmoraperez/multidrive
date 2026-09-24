@@ -87,6 +87,7 @@ cargo run -- providers add --mas-seguridad   # una caída más de margen (barato
 cargo run -- providers add --mas-espacio     # más capacidad (en lineal solo mueve lo que aporta el nuevo)
 cargo run -- providers remove fs2 --menos-seguridad   # sacar uno, aunque ya no responda
 cargo run -- rebuild                      # regenerar lo que falte
+cargo run -- volume migrar                # volumen de antes del cambio de nombre: renombra su cabecera
 
 cargo run -- header export ./cabecera.json   # respaldo: sin la sal no hay clave
 cargo run -- rescue                          # si se pierde el puntero de raiz
