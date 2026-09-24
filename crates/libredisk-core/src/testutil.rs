@@ -147,3 +147,36 @@ impl Backend for NoEnumera {
         Err(BackendError::NotFound("el proveedor no responde".into()))
     }
 }
+
+/// Un proveedor que no contesta a nada.
+///
+/// Distinto de [`NoEnumera`], que si sirve objetos pero no los lista. Este falla tambien al
+/// leer, que es lo que hace un token caducado o un corte de red.
+pub struct NoResponde(pub OpendalBackend);
+
+#[async_trait]
+impl Backend for NoResponde {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+    async fn put(&self, key: &str, data: Vec<u8>) -> Result<(), BackendError> {
+        self.0.put(key, data).await
+    }
+    /// **No** es `NotFound`: eso significaria que el objeto no esta, que es justo lo que hay
+    /// que distinguir de "no se pudo preguntar".
+    async fn get(&self, key: &str) -> Result<Vec<u8>, BackendError> {
+        Err(BackendError::Cuota {
+            name: self.0.name().to_string(),
+            detalle: format!("el proveedor no responde (pedian '{key}')"),
+        })
+    }
+    async fn delete(&self, key: &str) -> Result<(), BackendError> {
+        self.0.delete(key).await
+    }
+    async fn exists(&self, key: &str) -> Result<bool, BackendError> {
+        self.0.exists(key).await
+    }
+    async fn list(&self, _prefix: &str) -> Result<Vec<Objeto>, BackendError> {
+        Err(BackendError::NotFound("el proveedor no responde".into()))
+    }
+}

@@ -101,13 +101,19 @@ impl Layout {
     }
 }
 
+/// Como se escribe una topologia. **Es lo que se guarda en la cabecera del volumen**, asi
+/// que cambiarlo no es cosmetica: un volumen escrito con un nombre tiene que seguir
+/// abriendose cuando el nombre cambie.
+///
+/// Por eso los nombres viejos --`mirror` y `stripe`-- se siguen aceptando al leer aunque ya
+/// no se escriban. Ver [`Layout::from_str`].
 impl std::fmt::Display for Layout {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
             Layout::Concat => write!(f, "concat"),
-            Layout::Mirror { n } => write!(f, "mirror:{n}"),
+            Layout::Mirror { n } => write!(f, "espejo:{n}"),
             Layout::ReedSolomon { k, m } => write!(f, "rs:{k},{m}"),
-            Layout::Stripe { n } => write!(f, "stripe:{n}"),
+            Layout::Stripe { n } => write!(f, "union:{n}"),
         }
     }
 }
@@ -115,15 +121,19 @@ impl std::fmt::Display for Layout {
 impl std::str::FromStr for Layout {
     type Err = RaidError;
 
-    /// Acepta `concat`, `mirror:3`, `stripe:3` y `rs:4,2`.
+    /// Acepta `concat`, `espejo:3`, `union:3` y `rs:4,2`.
+    ///
+    /// **Y tambien los nombres viejos**, `mirror` y `stripe`, que es lo que hace que un
+    /// volumen creado antes del cambio de nombre siga abriendose: la topologia va escrita en
+    /// su cabecera, y esa cabecera no se reescribe por cambiarle el nombre a una palabra.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let layout = match s.split_once(':') {
             None if s == "concat" => Layout::Concat,
-            Some(("stripe", n)) => Layout::Stripe {
+            Some(("union" | "stripe", n)) => Layout::Stripe {
                 n: n.parse()
                     .map_err(|_| RaidError::InvalidLayout(format!("n invalido: {n}")))?,
             },
-            Some(("mirror", n)) => Layout::Mirror {
+            Some(("espejo" | "mirror", n)) => Layout::Mirror {
                 n: n.parse()
                     .map_err(|_| RaidError::InvalidLayout(format!("n invalido: {n}")))?,
             },
@@ -258,6 +268,43 @@ pub fn join(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Los nombres viejos se siguen leyendo, y eso **no es una comodidad**.
+    ///
+    /// La topologia va escrita en la cabecera del volumen, en los proveedores. Un volumen
+    /// creado cuando se llamaba `mirror:2` tiene eso escrito, y nadie va a ir a reescribirlo
+    /// por haberle cambiado el nombre a una palabra. Si esto dejara de parsear, ese volumen
+    /// dejaria de abrirse y sus datos serian ilegibles.
+    #[test]
+    fn un_volumen_escrito_con_el_nombre_viejo_se_sigue_abriendo() {
+        for (viejo, nuevo) in [("mirror:3", "espejo:3"), ("stripe:4", "union:4")] {
+            let de_antes: Layout = viejo.parse().expect(viejo);
+            let de_ahora: Layout = nuevo.parse().expect(nuevo);
+            assert_eq!(de_antes, de_ahora, "{viejo} y {nuevo} son lo mismo");
+        }
+    }
+
+    /// Lo que se escribe a partir de ahora son los nombres nuevos.
+    #[test]
+    fn se_escriben_los_nombres_nuevos() {
+        assert_eq!(Layout::Mirror { n: 3 }.to_string(), "espejo:3");
+        assert_eq!(Layout::Stripe { n: 4 }.to_string(), "union:4");
+        assert_eq!(Layout::Concat.to_string(), "concat");
+        assert_eq!(Layout::ReedSolomon { k: 4, m: 2 }.to_string(), "rs:4,2");
+    }
+
+    /// Y lo escrito se vuelve a leer igual, que es lo que sostiene la cabecera.
+    #[test]
+    fn lo_escrito_se_lee_igual() {
+        for l in [
+            Layout::Concat,
+            Layout::Mirror { n: 2 },
+            Layout::Stripe { n: 3 },
+            Layout::ReedSolomon { k: 4, m: 2 },
+        ] {
+            assert_eq!(l.to_string().parse::<Layout>().unwrap(), l, "{l}");
+        }
+    }
 
     fn datos(n: usize) -> Vec<u8> {
         (0..n).map(|i| (i % 251) as u8).collect()
@@ -512,10 +559,10 @@ mod tests {
     }
 
     #[test]
-    fn stripe_va_y_vuelve_por_su_nombre() {
-        let l: Layout = "stripe:6".parse().unwrap();
+    fn union_va_y_vuelve_por_su_nombre() {
+        let l: Layout = "union:6".parse().unwrap();
         assert_eq!(l, Layout::Stripe { n: 6 });
-        assert_eq!(l.to_string(), "stripe:6");
+        assert_eq!(l.to_string(), "union:6");
     }
 
     /// Los fragmentos de datos son los mismos que haria Reed-Solomon con `k = n`.

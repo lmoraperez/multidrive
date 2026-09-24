@@ -9,7 +9,7 @@ Pila elegida: **Rust + OpenDAL**.
 
 - [x] `trait Backend` + adaptador OpenDAL (memoria, directorio local, S3, WebDAV)
 - [x] Cifrado por trozo (XChaCha20-Poly1305 + Argon2id), AAD ligado al id del trozo
-- [x] Motor RAID: `concat`, `mirror:n`, `rs:k,m` con Reed-Solomon
+- [x] Motor RAID: `concat`, `espejo:n`, `rs:k,m` con Reed-Solomon
 - [x] Almacén de trozos direccionado por contenido (BLAKE3) con verificación al leer
 - [x] `scrub` y `repair` como operaciones de biblioteca
 - [x] Suite de conformidad de proveedores + configuracion por entorno (`libredisk check`)
@@ -301,6 +301,20 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] La ventana dice cuántas hay ya de ese tipo, con qué nombre se guardará la nueva y que
       las anteriores no se pisan. Los nombres son `gdrive`, `gdrive1`, `gdrive2`… — la primera
       sin número, que es la convención con la que nacieron las carpetas locales
+- [x] **`mirror` se llama ahora `espejo` y `stripe`, `union`.** Y los nombres viejos se
+      siguen leyendo, que no es una comodidad: la topología va escrita en la cabecera del
+      volumen, en los proveedores, y nadie va a ir a reescribir esa cabecera por haberle
+      cambiado el nombre a una palabra. Si dejaran de interpretarse, esos volúmenes dejarían
+      de abrirse
+- [x] Lo que se enseña es la topología **interpretada y no la cadena guardada**: un volumen
+      creado antes del cambio tiene `stripe:2` grabado, y mostrarlo tal cual sería usar dos
+      vocabularios a la vez. Comprobado con una cabecera escrita a mano con el nombre viejo
+- [x] Arreglado que `header::read` se tragara **todos** los errores y los convirtiera en «no
+      hay ningún volumen». Un token caducado o un corte de red se presentaban como «aquí no
+      hay nada», que es una afirmación muy distinta y de las que asustan: parece que los datos
+      han desaparecido. Ahora distingue las tres situaciones —no está, está, no se pudo
+      preguntar— y si uno falla pero otro trae la cabecera sigue adelante, que para eso va
+      replicada
 - [x] **Abrir y retirar el volumen desde la ventana.** El formulario de la frase de paso ya
       estaba, pero no se veía: su visibilidad se decidía **solo dentro de la rama de «hay un
       problema»**, así que quien creaba un volumen y volvía a esa pantalla leía «hace falta la
@@ -387,7 +401,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       una tarea de fondo cada cinco minutos y deja el resultado en dos enteros atómicos que
       el sistema lee sin bloquear. Mientras no hay medida se vuelve al número enorme a
       propósito —un cero significaría «disco lleno» y ningún programa reintentaría escribir
-- [x] **Probado contra dos nubes reales de punta a punta.** Volumen `mirror:2` sobre las
+- [x] **Probado contra dos nubes reales de punta a punta.** Volumen `espejo:2` sobre las
       cuentas de OneDrive y Google Drive: crear, subir 20 MiB, bajarlos y comprobar el
       SHA-256 —idéntico—, enumerar y medir. Cifras y método en
       [VIABILIDAD.md §9](VIABILIDAD.md#9-primer-volumen-real-sobre-dos-nubes-y-qué-dice-cada-una-de-su-espacio)
@@ -404,7 +418,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] El tramo de LibreDisk se recorta a lo que el proveedor dice que hay ocupado. Medido:
       tras escribir 20 MiB, OneDrive seguía dando la misma cifra un cuarto de hora después. Sin el
       recorte, un volumen recién escrito pintaría más del 100 % de una cuenta al 6 %
-- [x] Topología `stripe:n`, que es RAID 0: todo el espacio sumado y el ancho de banda
+- [x] Topología `union:n`, que es RAID 0: todo el espacio sumado y el ancho de banda
       repartido, a cambio de que **perder un solo proveedor pierda el volumen entero**. No es
       `rs(k,0)` porque eso no existe —Reed-Solomon necesita al menos un fragmento de
       paridad—, y tenerla aparte hace que «sin redundancia» se lea en el nombre en vez de
@@ -412,7 +426,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] En la ventana va **la última** de la lista y su precio sale en rojo diciendo que puede
       perderse todo. El orden no es estético: la primera es el valor por defecto, y quien no
       sepa elegir se queda con ella
-- [x] Arreglado que con tres proveedores se ofrecieran `mirror:3` y `rs:1,2`, que **son la
+- [x] Arreglado que con tres proveedores se ofrecieran `espejo:3` y `rs:1,2`, que **son la
       misma opción**: con un único fragmento de datos, cada fragmento de paridad acaba siendo
       una copia entera. Lo cubre un test que compara por lo que aguanta y lo que cuesta, no
       por el nombre, para que cace también el duplicado que traiga la próxima topología

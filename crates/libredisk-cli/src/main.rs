@@ -28,7 +28,7 @@ struct Cli {
 enum Command {
     /// Describe una topologia: tolerancia a fallos y sobrecoste de espacio.
     Layout {
-        /// Topologia: `concat`, `mirror:3` o `rs:4,2`.
+        /// Topologia: `concat`, `espejo:3`, `union:3` o `rs:4,2`.
         spec: String,
     },
     /// Ciclo completo sobre directorios locales: escribir, perder proveedores, leer, reparar.
@@ -168,7 +168,7 @@ enum Command {
 enum VolumeCmd {
     /// Crea un volumen nuevo. Falla si ya hay uno.
     Create {
-        /// Topologia: `concat`, `mirror:3` o `rs:4,2`.
+        /// Topologia: `concat`, `espejo:3`, `union:3` o `rs:4,2`.
         #[arg(long, default_value = "rs:4,2")]
         layout: String,
     },

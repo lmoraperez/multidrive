@@ -542,7 +542,7 @@ a tres tandas. **Las que quedan escritas son de la tanda en que se midieron, y n
 ## 9. Primer volumen real sobre dos nubes, y qué dice cada una de su espacio
 
 Fecha: 2026-09-22. Cuentas reales de OneDrive y Google Drive, desde esta máquina y esta red.
-Topología `mirror:2`, o sea una copia entera en cada nube.
+Topología `espejo:2`, o sea una copia entera en cada nube.
 
 ### 9.1 Lo que pasó
 

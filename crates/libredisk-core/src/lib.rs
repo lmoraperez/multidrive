@@ -39,6 +39,10 @@ mod testutil;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
+    #[error(
+        "no se pudo leer la cabecera en ningun proveedor, asi que no se sabe si hay volumen: \n         {0}"
+    )]
+    CabeceraIlegible(String),
     #[error("ya hay un volumen en estos proveedores")]
     YaHayVolumen,
     #[error("el proveedor '{proveedor}' no se dejo enumerar: {motivo}")]

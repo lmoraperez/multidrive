@@ -299,7 +299,9 @@ pub async fn status() -> Result<()> {
         .ok_or(CoreError::NoVolume)
         .context("¿has ejecutado `libredisk volume create`?")?;
 
-    println!("topologia     {}", header.layout);
+    // Interpretada y no en bruto: un volumen creado antes del cambio de nombre tiene
+    // `stripe:2` escrito, y enseñarlo tal cual seria usar dos vocabularios a la vez.
+    println!("topologia     {}", header.layout()?);
     println!("proveedores   {}", header.backends.join(", "));
     println!("formato       version {}", header.version);
 
@@ -1460,7 +1462,7 @@ pub async fn destroy(confirmacion: Option<String>) -> Result<()> {
         println!("  {n}");
     }
     println!();
-    println!("  topologia     {}", header.layout);
+    println!("  topologia     {}", header.layout()?);
     println!("  proveedores   {}", header.backends.join(", "));
 
     // Contar antes de borrar. Cuesta una enumeracion por proveedor, y es lo que convierte
