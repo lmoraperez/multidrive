@@ -571,6 +571,7 @@ function pintarFormularioProveedor() {
       boton.addEventListener("click", async () => {
         boton.disabled = true;
         aviso.hidden = false;
+        aviso.className = "nota";
         aviso.textContent = "Abriendo el navegador. Entra en tu cuenta y da permiso…";
         try {
           aviso.textContent = await invoke("conectar_nube", {
@@ -579,6 +580,10 @@ function pintarFormularioProveedor() {
           });
           conectado.add(t.clave);
         } catch (err) {
+          // En rojo y con todas las letras: una línea gris debajo de un botón se pasa por
+          // alto, y entonces parece que no ha pasado nada cuando lo que ha pasado es que
+          // ha fallado.
+          aviso.className = "aviso mal";
           aviso.textContent = String(err);
         } finally {
           boton.disabled = false;

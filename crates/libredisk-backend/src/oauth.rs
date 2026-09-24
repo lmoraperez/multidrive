@@ -103,11 +103,20 @@ pub async fn conectar(
         ))
     })?;
 
-    let codigo = tokio::time::timeout(ESPERA, esperar_codigo(&servidor, &estado))
+    let (codigo, mut socket) = tokio::time::timeout(ESPERA, esperar_codigo(&servidor, &estado))
         .await
         .map_err(|_| fallo("se agoto la espera: nadie termino de dar permiso".into()))??;
 
-    canjear(
+    // El canje va **antes** de contestarle al navegador, y no es un detalle de orden.
+    //
+    // Antes se servia la pagina de «Cuenta conectada» nada mas recibir el codigo, y solo
+    // despues se canjeaba. Si el canje fallaba, el usuario ya habia leido en su pestana que
+    // estaba conectado mientras la ventana se quedaba igual: la pestana afirmaba algo que
+    // todavia no se sabia.
+    //
+    // Ahora la pestana dice lo que ha pasado de verdad, y cuando falla **ensena el motivo
+    // ahi mismo**, que es donde el usuario esta mirando.
+    match canjear(
         oauth,
         client_id,
         client_secret,
@@ -116,6 +125,21 @@ pub async fn conectar(
         &verificador,
     )
     .await
+    {
+        Ok(c) => {
+            responder_pagina(
+                &mut socket,
+                "Cuenta conectada",
+                "Ya puedes cerrar esta pestaña y volver a LibreDisk.",
+            )
+            .await;
+            Ok(c)
+        }
+        Err(e) => {
+            responder_pagina(&mut socket, "No se pudo conectar", &e.to_string()).await;
+            Err(e)
+        }
+    }
 }
 
 /// Atiende hasta que llegue la redireccion buena.
@@ -123,7 +147,10 @@ pub async fn conectar(
 /// Se sigue escuchando tras una peticion que no trae codigo porque el navegador pide cosas
 /// por su cuenta —`/favicon.ico` es la clasica— y cortar en la primera conexion dejaria el
 /// flujo colgado por una peticion que no es la del usuario.
-async fn esperar_codigo(servidor: &TcpListener, estado: &str) -> Result<String, BackendError> {
+async fn esperar_codigo(
+    servidor: &TcpListener,
+    estado: &str,
+) -> Result<(String, tokio::net::TcpStream), BackendError> {
     loop {
         let (mut socket, _) = servidor.accept().await.map_err(|e| BackendError::Oauth {
             detalle: e.to_string(),
@@ -177,13 +204,9 @@ async fn esperar_codigo(servidor: &TcpListener, estado: &str) -> Result<String, 
             });
         }
 
-        responder_pagina(
-            &mut socket,
-            "Cuenta conectada",
-            "Ya puedes cerrar esta pestaña y volver a LibreDisk.",
-        )
-        .await;
-        return Ok(codigo);
+        // La pagina no se sirve aqui: lo que ha pasado todavia no se sabe. La contesta quien
+        // canjea el codigo, que es quien lo averigua.
+        return Ok((codigo, socket));
     }
 }
 
@@ -639,6 +662,93 @@ mod tests {
                 "falta {exigido} en:\n{peticion}"
             );
         }
+    }
+
+    /// Hace de navegador y **se queda con lo que le contesten**, para poder mirarlo.
+    fn navegador_que_guarda_la_respuesta(
+        url: &str,
+    ) -> (Result<(), String>, tokio::sync::oneshot::Receiver<String>) {
+        let params = consulta(url);
+        let buscar = |c: &str| {
+            params
+                .iter()
+                .find(|(k, _)| k == c)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
+        };
+        let vuelta = buscar("redirect_uri");
+        let estado = buscar("state");
+        let (avisar, pagina) = tokio::sync::oneshot::channel();
+
+        tokio::spawn(async move {
+            let destino = vuelta.trim_start_matches("http://").to_string();
+            let mut socket = tokio::net::TcpStream::connect(&destino).await.unwrap();
+            let peticion =
+                format!("GET /?code=un-codigo&state={estado} HTTP/1.1\r\nHost: x\r\n\r\n");
+            socket.write_all(peticion.as_bytes()).await.unwrap();
+            let mut respuesta = Vec::new();
+            socket.read_to_end(&mut respuesta).await.ok();
+            avisar
+                .send(String::from_utf8_lossy(&respuesta).to_string())
+                .ok();
+        });
+        (Ok(()), pagina)
+    }
+
+    /// **La pestana no puede decir que la cuenta esta conectada antes de que lo este.**
+    ///
+    /// Es el fallo que aparecio probando contra Google: la pagina de exito se servia nada mas
+    /// recibir el codigo, y el canje venia despues. Cuando el canje fallaba, el usuario leia
+    /// «Cuenta conectada» en su pestana mientras la ventana se quedaba igual, y lo que veia
+    /// era una contradiccion sin explicacion.
+    #[tokio::test]
+    async fn si_el_canje_falla_la_pestana_no_dice_que_esta_conectada() {
+        // El proveedor contesta sin token de refresco: el canje no sale.
+        let (url, _recibido) = proveedor_falso(r#"{"access_token":"solo-este"}"#).await;
+        let oauth = oauth_falso(&url);
+
+        let pagina = std::sync::Mutex::new(None);
+        let abrir = |u: &str| -> Result<(), String> {
+            let (r, canal) = navegador_que_guarda_la_respuesta(u);
+            *pagina.lock().unwrap() = Some(canal);
+            r
+        };
+
+        let e = conectar(&oauth, "id", "secreto", &abrir).await.unwrap_err();
+        // El cerrojo se suelta antes de esperar: sostenerlo a traves de un `await` es lo
+        // que convierte un test en un bloqueo intermitente.
+        let canal = pagina.lock().unwrap().take().unwrap();
+        let vista = canal.await.unwrap();
+
+        assert!(
+            !vista.contains("Cuenta conectada"),
+            "la pestana mintio:\n{vista}"
+        );
+        assert!(vista.contains("No se pudo conectar"), "{vista}");
+        // Y el motivo se ensena ahi mismo, que es donde el usuario esta mirando.
+        assert!(vista.contains("retirale el permiso"), "{vista}");
+        assert!(e.to_string().contains("token de refresco"), "{e}");
+    }
+
+    /// Y cuando sale bien, lo dice.
+    #[tokio::test]
+    async fn cuando_el_canje_sale_la_pestana_lo_confirma() {
+        let (url, _recibido) = proveedor_falso(r#"{"refresh_token":"el-bueno"}"#).await;
+        let oauth = oauth_falso(&url);
+
+        let pagina = std::sync::Mutex::new(None);
+        let abrir = |u: &str| -> Result<(), String> {
+            let (r, canal) = navegador_que_guarda_la_respuesta(u);
+            *pagina.lock().unwrap() = Some(canal);
+            r
+        };
+
+        let c = conectar(&oauth, "id", "secreto", &abrir).await.unwrap();
+        assert_eq!(c.refresh_token, "el-bueno");
+
+        let canal = pagina.lock().unwrap().take().unwrap();
+        let vista = canal.await.unwrap();
+        assert!(vista.contains("Cuenta conectada"), "{vista}");
     }
 
     /// Un codigo que llega con otro `state` no se canjea.

@@ -156,7 +156,7 @@ select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 #campos-proveedor label { margin-top: 14px; }
 /* La ayuda de cada campo va pegada a su campo, no flotando entre dos. */
 #campos-proveedor .nota { margin-top: 4px; }
-#resultado-proveedor { white-space: pre-wrap; }
+#resultado-proveedor, #campos-proveedor .aviso { white-space: pre-wrap; }
 #alta { margin-top: 30px; }
 /* El boton de abrir el alta ocupa el ancho: es una accion de la pantalla, no un detalle
    al lado de un titulo. */
