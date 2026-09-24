@@ -44,6 +44,18 @@
     <Property Id="ARPSYSTEMCOMPONENT" Secure="yes" />
 
     <!--
+      El icono con el que MultiDrive aparece en "Programas instalados". Sin esto Windows pone
+      el de un paquete generico, que es el mismo que el de cualquier otra cosa instalada: la
+      lista donde alguien va a buscar que desinstalar es justo donde conviene que se
+      distinga.
+
+      Es el mismo `.ico` que usa la ventana, con sus cuatro tamanos dentro; Windows escoge el
+      que le toca segun la vista. La fuente esta en `marca/`.
+    -->
+    <Icon Id="MultiDrive.ico" SourceFile="$(var.RepoDir)\marca\icono.ico" />
+    <Property Id="ARPPRODUCTICON" Value="MultiDrive.ico" />
+
+    <!--
       WinFsp vive en la vista de 32 bits del registro aunque el controlador sea de 64: lo
       pone asi su propio instalador. Sin `always32` un paquete de 64 bits no ve la clave y
       rechazaria la instalacion en una maquina que si tiene WinFsp.
