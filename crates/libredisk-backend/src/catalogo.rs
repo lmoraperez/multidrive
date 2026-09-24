@@ -43,6 +43,13 @@ pub struct Campo {
     /// pueden venir dentro del programa. Cuando vienen, la interfaz no los pide: pedirle a
     /// alguien el ID de una aplicacion que no es suya es pedirle un dato que no tiene.
     pub aplicacion: bool,
+    /// Tiene un valor por defecto que sirve, asi que las interfaces no lo preguntan.
+    ///
+    /// Se sigue pudiendo poner en el fichero de configuracion. Lo que se evita es pedirle
+    /// una decision a quien no tiene motivo para tomarla: la carpeta dentro de una cuenta de
+    /// nube es siempre la misma y da igual como se llame, porque dentro solo hay blobs
+    /// opacos que nadie va a abrir desde la web del proveedor.
+    pub avanzado: bool,
     /// Campos que solo valen acompanados: o estan todos los del grupo o ninguno.
     ///
     /// Medio grupo es un error y no un descuido que se pueda ignorar: un `S3_ACCESS_KEY_ID`
@@ -61,6 +68,7 @@ impl Campo {
             secreto: false,
             obligatorio: true,
             aplicacion: false,
+            avanzado: false,
             navegador: false,
             grupo: None,
         }
@@ -73,10 +81,6 @@ impl Campo {
         self.secreto = true;
         self
     }
-    const fn opcional(mut self) -> Self {
-        self.obligatorio = false;
-        self
-    }
     /// No se teclea: lo trae el flujo del navegador.
     const fn del_navegador(mut self) -> Self {
         self.navegador = true;
@@ -85,6 +89,12 @@ impl Campo {
     /// Identifica a LibreDisk, no al usuario: puede venir dentro del programa.
     const fn de_la_aplicacion(mut self) -> Self {
         self.aplicacion = true;
+        self
+    }
+    /// Tiene un valor por defecto que sirve, asi que no se pregunta.
+    const fn con_defecto(mut self) -> Self {
+        self.avanzado = true;
+        self.obligatorio = false;
         self
     }
     const fn en_grupo(mut self, grupo: &'static str) -> Self {
@@ -217,13 +227,9 @@ const CAMPOS_OAUTH: &[Campo] = &[
     Campo::nuevo("CLIENT_SECRET", "Secreto de la aplicacion", "De la misma aplicacion.")
         .secreto()
         .de_la_aplicacion(),
-    Campo::nuevo(
-        "ROOT",
-        "Carpeta dentro de la cuenta",
-        "Dedicada: aqui solo van blobs opacos, y no deben mezclarse con tus archivos.",
-    )
-    .con_ejemplo("/libredisk")
-    .opcional(),
+    Campo::nuevo("ROOT", "Carpeta dentro de la cuenta", "")
+        .con_ejemplo("/libredisk")
+        .con_defecto(),
 ];
 
 const CAMPOS_S3: &[Campo] = &[
@@ -250,7 +256,7 @@ const CAMPOS_S3: &[Campo] = &[
     .en_grupo("credenciales"),
     Campo::nuevo("ROOT", "Prefijo dentro del bucket", "")
         .con_ejemplo("/libredisk")
-        .opcional(),
+        .con_defecto(),
 ];
 
 const CAMPOS_WEBDAV: &[Campo] = &[
@@ -266,7 +272,7 @@ const CAMPOS_WEBDAV: &[Campo] = &[
     .en_grupo("credenciales"),
     Campo::nuevo("ROOT", "Carpeta", "")
         .con_ejemplo("/libredisk")
-        .opcional(),
+        .con_defecto(),
 ];
 
 /// Todas las clases, en el orden en que tiene sentido ofrecerlas.
@@ -451,6 +457,44 @@ mod tests {
         let t = tipo("GDRIVE").unwrap();
         let fallos = validar_con(t, &|c| m.get(c).cloned(), true).unwrap_err();
         assert_eq!(fallos, ["falta «Cuenta conectada»"]);
+    }
+
+    /// La carpeta dentro de la cuenta **no se pregunta**: es siempre la misma y da igual
+    /// como se llame, porque dentro solo hay blobs opacos que nadie va a abrir desde la web
+    /// del proveedor. Pedir una decision a quien no tiene motivo para tomarla es ruido.
+    ///
+    /// La excepcion es la carpeta local, donde la carpeta **es** el proveedor: ahi no hay
+    /// defecto que valga y hay que decir cual.
+    #[test]
+    fn la_carpeta_solo_se_pregunta_donde_no_hay_defecto() {
+        for t in TIPOS {
+            for c in t.campos.iter().filter(|c| c.clave == "ROOT") {
+                let se_pregunta = !c.avanzado;
+                assert_eq!(
+                    se_pregunta,
+                    t.clave == "FS",
+                    "{}_{} se pregunta: {se_pregunta}",
+                    t.clave,
+                    c.clave
+                );
+            }
+        }
+    }
+
+    /// Un campo que no se pregunta no puede ser obligatorio: no habria forma de rellenarlo
+    /// desde la ventana y el alta seria imposible.
+    #[test]
+    fn nada_obligatorio_se_esconde() {
+        for t in TIPOS {
+            for c in t.campos {
+                assert!(
+                    !(c.avanzado && c.obligatorio && !c.navegador),
+                    "{}_{} es obligatorio y no se pregunta",
+                    t.clave,
+                    c.clave
+                );
+            }
+        }
     }
 
     /// Solo son de la aplicacion los dos que identifican a LibreDisk.

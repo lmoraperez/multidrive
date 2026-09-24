@@ -626,6 +626,8 @@ struct CampoJson {
     navegador: bool,
     /// Identifica a la aplicacion y no al usuario: puede venir dentro del programa.
     aplicacion: bool,
+    /// Tiene un valor por defecto que sirve: no se pregunta.
+    avanzado: bool,
     /// Los de un mismo grupo van todos o ninguno. La ventana lo dice antes de enviar.
     grupo: Option<String>,
 }
@@ -702,6 +704,7 @@ fn tipos_de_proveedor() -> Vec<TipoJson> {
                         obligatorio: c.obligatorio,
                         navegador: c.navegador,
                         aplicacion: c.aplicacion,
+                        avanzado: c.avanzado,
                         grupo: c.grupo.map(str::to_string),
                     })
                     .collect(),
@@ -803,22 +806,6 @@ async fn con_lo_conectado(
         campos.insert("REFRESH_TOKEN".into(), token.clone());
     }
     campos
-}
-
-/// Escribe, lee, compara y borra contra el proveedor, sin guardar nada.
-///
-/// Guardar primero y descubrir despues que las credenciales estaban mal deja la
-/// configuracion con un proveedor que no responde, y a partir de ahi todo lo que el programa
-/// enumere o mida sale con un hueco que hay que ir a explicar.
-#[tauri::command]
-async fn probar_proveedor(
-    tipo: String,
-    campos: HashMap<String, String>,
-    estado: tauri::State<'_, Estado>,
-) -> Result<String, String> {
-    let campos = con_lo_conectado(&tipo, campos, &estado).await;
-    let (_, _, backend) = preparar(&tipo, &campos)?;
-    libredisk_backend::conformance::prueba_rapida(&backend).await
 }
 
 #[derive(Serialize)]
@@ -924,7 +911,6 @@ fn main() {
             desmontar,
             tipos_de_proveedor,
             conectar_nube,
-            probar_proveedor,
             guardar_proveedor
         ])
         .run(tauri::generate_context!())

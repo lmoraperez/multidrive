@@ -260,6 +260,22 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       y si alguien abusa lo pagan todos los de esa versión
 - [x] `libredisk config ver` dice si esta copia trae aplicación registrada. Es lo que decide
       si al usuario se le piden dos datos de desarrollador o solo se le pide pulsar un botón
+- [x] Fuera los botones de probar y guardar en los proveedores de nube: el de conectar ya
+      hace todo. Y donde siguen haciendo falta —los que se rellenan a mano— queda **uno
+      solo**: «Probar sin guardar» comprobaba y no hacía nada, que es una versión peor del
+      otro, porque el de guardar ya prueba antes y se niega si falla
+- [x] Arreglado que `hidden` no ocultara nada sobre un contenedor con `display: flex`. El
+      atributo trae su `display: none` de la hoja del navegador y **cualquier regla de autor
+      le gana**: los botones se ocultaban y el CSS los volvía a enseñar. Arreglado para toda
+      la página de una vez, en vez de recordarlo caso por caso
+- [x] La carpeta dentro de la cuenta ya no se pregunta. Es siempre la misma y da igual cómo
+      se llame, porque dentro solo hay blobs opacos que nadie va a abrir desde la web del
+      proveedor: pedir una decisión a quien no tiene motivo para tomarla es ruido. Se sigue
+      pudiendo poner en el fichero de configuración
+- [x] Y esa carpeta se llama ya `/libredisk` y no `/libredisk-pruebas`, que era el nombre de
+      cuando esto solo configuraba la suite de conformidad. Una carpeta llamada «pruebas» en
+      la cuenta de alguien invita a borrarla. **Quien tuviera un volumen en la carpeta vieja
+      sin declararla tiene que escribir `LIBREDISK_<PROVEEDOR>_ROOT=/libredisk-pruebas`**
 - [x] **Conectar una cuenta de nube la guarda, sin pedir otro clic.** Conectar la cuenta *es*
       configurar el proveedor: obligar a pulsar «Probar y guardar» después era trabajo que no
       aportaba nada. Sigue probando antes de escribir, como siempre

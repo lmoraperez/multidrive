@@ -11,6 +11,12 @@
   color-scheme: dark;
 }
 
+/* El atributo `hidden` trae `display: none` de la hoja del navegador, y **cualquier regla
+   de autor le gana**. Con `.enlinea { display: flex }`, poner `hidden` no ocultaba nada: los
+   botones seguian ahi. Esto lo arregla de una vez para toda la pagina en vez de recordarlo
+   caso por caso. */
+[hidden] { display: none !important; }
+
 * { box-sizing: border-box; }
 
 body {

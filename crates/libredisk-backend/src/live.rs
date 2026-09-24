@@ -22,9 +22,17 @@ const PREFIJO: &str = "LIBREDISK_";
 /// porque el proyecto haya crecido. El nuevo gana si estan los dos.
 const PREFIJO_VIEJO: &str = "LIBREDISK_TEST_";
 
-/// Carpeta por defecto dentro de la cuenta. Dedicada a proposito: la suite escribe blobs
-/// opacos y borra lo que crea, y no debe compartir carpeta con archivos del usuario.
-const RAIZ_POR_DEFECTO: &str = "/libredisk-pruebas";
+/// Carpeta por defecto dentro de la cuenta.
+///
+/// Dedicada a proposito: dentro solo hay blobs opacos, y no deben compartir carpeta con los
+/// archivos del usuario.
+///
+/// Se llamaba `/libredisk-pruebas` de cuando esto solo configuraba la suite de conformidad.
+/// Ahora configura volumenes de verdad, y una carpeta llamada «pruebas» en la cuenta de
+/// alguien invita a borrarla. **Quien tuviera un volumen en la carpeta vieja sin declararla
+/// tiene que escribir `LIBREDISK_<PROVEEDOR>_ROOT=/libredisk-pruebas`**; si no, el programa
+/// mirara en otro sitio y dira que no hay volumen.
+const RAIZ_POR_DEFECTO: &str = "/libredisk";
 
 /// Cuantas ranuras numeradas se buscan de cada tipo.
 ///
