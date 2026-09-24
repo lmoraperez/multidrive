@@ -296,7 +296,9 @@ async function ofrecerCreacion(proveedores) {
     `Se creará sobre los ${proveedores.length} proveedores configurados: ` +
     `${proveedores.join(", ")}. Para usar otros, cámbialos en la configuración y reinicia.`;
 
-  const opciones = await invoke("topologias", { proveedores: proveedores.length });
+  // Preguntar el cupo es una peticion por nube, asi que se dice que se esta haciendo.
+  $("precio").replaceChildren(nota("Consultando cuánto espacio hay en cada proveedor…"));
+  const opciones = await invoke("topologias", { cuantos: proveedores.length });
   const sel = $("topologia");
   sel.replaceChildren();
   for (const o of opciones) {
@@ -307,6 +309,8 @@ async function ofrecerCreacion(proveedores) {
     op.dataset.sobrecoste = o.sobrecoste.toFixed(2);
     op.dataset.aprovechado = Math.round(o.aprovechado * 100);
     op.dataset.sinRed = o.sin_red ? "1" : "";
+    if (o.libre !== null) op.dataset.libre = String(o.libre);
+    if (o.sin_medir.length) op.dataset.sinMedir = o.sin_medir.join(", ");
     sel.append(op);
   }
   // La primera de la lista es la que más aguanta. Que el valor por defecto sea el prudente
@@ -319,23 +323,56 @@ function mostrarPrecio() {
   const op = $("topologia").selectedOptions[0];
   if (!op) return;
   const caja = $("precio");
+  caja.replaceChildren();
 
+  // Lo primero, la cifra con la que de verdad se decide. «Aprovechas el 50 %» no dice si te
+  // quedan tres gigas o trescientos, y con proveedores desiguales el número sorprende:
+  // manda el más apretado, así que 15 GiB y 3,4 GiB dan 3,4 en espejo y 6,8 en unión.
+  if (op.dataset.libre) {
+    const cuanto = document.createElement("p");
+    cuanto.className = "cuanto";
+    cuanto.textContent = `Te quedarían ${tamano(Number(op.dataset.libre))} libres.`;
+    caja.append(cuanto);
+  }
+
+  const detalle = document.createElement("p");
   if (op.dataset.sinRed) {
     // Sin redundancia, el aviso no es un matiz del precio: es lo único que hay que saber
     // antes de elegirlo. Va en rojo y con todas las letras.
-    caja.className = "aviso mal";
-    caja.textContent =
+    detalle.className = "aviso mal";
+    detalle.textContent =
       "NO aguanta ninguna caída: si un proveedor falla o te cierra la cuenta, pierdes el " +
       "volumen ENTERO, no una parte. A cambio aprovechas el 100 % del espacio y repartes " +
       "la lectura y la escritura entre todos.";
-    return;
+  } else {
+    detalle.className = "nota";
+    detalle.textContent =
+      `Aguanta perder ${op.dataset.tolera} proveedor(es). ` +
+      `Aprovechas el ${op.dataset.aprovechado}% del espacio: guardar 1 TB ocupa ` +
+      `${op.dataset.sobrecoste} TB repartidos.`;
   }
+  caja.append(detalle);
 
-  caja.className = "nota";
-  caja.textContent =
-    `Aguanta perder ${op.dataset.tolera} proveedor(es). ` +
-    `Aprovechas el ${op.dataset.aprovechado}% del espacio: guardar 1 TB ocupa ` +
-    `${op.dataset.sobrecoste} TB repartidos.`;
+  if (op.dataset.libre) {
+    // La letra pequeña no es un descargo: es lo que evita que alguien planifique con una
+    // cifra que no significa lo que parece.
+    caja.append(
+      nota(
+        "Manda el proveedor con menos sitio: los trozos se reparten a partes iguales, así " +
+          "que cuando el más pequeño se llena no cabe nada más aunque a los otros les sobre. " +
+          "Y sale de lo que declara cada nube, que va por detrás de lo que acabas de escribir.",
+      ),
+    );
+  }
+  if (op.dataset.sinMedir) {
+    const aviso = nota(
+      `Es un techo, no una medida: ${op.dataset.sinMedir} no declara${
+        op.dataset.sinMedir.includes(",") ? "n" : ""
+      } su cupo, así que la cifra se ha calculado sin contarlo.`,
+    );
+    aviso.className = "aviso";
+    caja.append(aviso);
+  }
 }
 
 $("topologia").addEventListener("change", mostrarPrecio);

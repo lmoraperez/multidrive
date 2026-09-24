@@ -175,6 +175,13 @@ struct Opcion {
     /// No aguanta ninguna caida. La ventana lo pinta en rojo y lo dice con todas las letras:
     /// elegir esto sin enterarse es perder el volumen entero el dia que caiga un proveedor.
     sin_red: bool,
+    /// Lo que quedaria libre en el volumen, si se pudo preguntar.
+    ///
+    /// Es la cifra con la que de verdad se elige: «aprovechas el 50 %» no dice si te quedan
+    /// tres gigas o trescientos.
+    libre: Option<u64>,
+    /// Proveedores que no declararon cupo. Con alguno, `libre` es un techo y no una medida.
+    sin_medir: Vec<String>,
 }
 
 /// Que topologias tienen sentido con `n` proveedores.
@@ -185,6 +192,8 @@ fn opciones(n: usize) -> Vec<Opcion> {
         sobrecoste: l.storage_overhead(),
         aprovechado: l.shards_needed() as f64 / l.shard_count() as f64,
         sin_red: l.tolerated_failures() == 0,
+        libre: None,
+        sin_medir: Vec::new(),
     };
 
     let mut out = Vec::new();
@@ -347,9 +356,41 @@ async fn desmontar(estado: tauri::State<'_, Estado>) -> Result<EstadoMontaje, St
     })
 }
 
+/// Que topologias tienen sentido con los proveedores que hay, **y cuanto daria cada una**.
+///
+/// El porcentaje de aprovechamiento no basta para decidir: «aprovechas el 50 %» no dice si
+/// te quedan tres gigas o trescientos. Y con proveedores desiguales la cifra sorprende, que
+/// es justo cuando hay que verla antes y no despues: manda el mas apretado, asi que dos
+/// cuentas de 15 GiB y 3,4 GiB dan 3,4 en espejo y 6,8 en union, no 18,4.
+///
+/// Cuesta **una peticion por proveedor**, una sola vez al abrir la pantalla.
 #[tauri::command]
-fn topologias(proveedores: usize) -> Vec<Opcion> {
-    opciones(proveedores)
+async fn topologias(cuantos: usize) -> Vec<Opcion> {
+    let mut out = opciones(cuantos);
+
+    // Si no se puede preguntar, se devuelven las opciones sin cifra en vez de fallar: elegir
+    // topologia sigue siendo posible sin saber cuanto queda, y negarse a ensenar la lista
+    // por no poder medir seria peor que ensenarla sin la medida.
+    let Ok(backends) = proveedores() else {
+        return out;
+    };
+    let cuotas: Vec<Result<libredisk_backend::Cuota, String>> = futures::future::join_all(
+        backends
+            .iter()
+            .map(|b| async move { b.cuota().await.map_err(|e| e.to_string()) }),
+    )
+    .await;
+    let nombres: Vec<String> = backends.iter().map(|b| b.name().to_string()).collect();
+
+    for o in &mut out {
+        let Ok(layout) = o.spec.parse::<Layout>() else {
+            continue;
+        };
+        let e = libredisk_core::espacio::combinar(layout, &nombres, &cuotas);
+        o.libre = e.libre;
+        o.sin_medir = e.sin_respuesta;
+    }
+    out
 }
 
 #[tauri::command]
