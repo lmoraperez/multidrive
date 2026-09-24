@@ -267,6 +267,14 @@ enum ServicioCmd {
 enum ConfigCmd {
     /// Ficheros donde se busca la configuracion, y cual de ellos existe.
     Ruta,
+    /// Conecta una cuenta de nube por el navegador y la guarda.
+    ///
+    /// Lo mismo que el boton de la ventana, pero contando cada paso. Util cuando la ventana
+    /// se queda a medias y no hay donde mirar, y en una maquina sin ventana.
+    Conectar {
+        /// ONEDRIVE o GDRIVE.
+        tipo: String,
+    },
     /// Anade un proveedor, leyendo los valores por la entrada estandar.
     ///
     /// Los valores no van por argumentos porque aqui dentro hay tokens y claves secretas, y
@@ -352,6 +360,7 @@ async fn main() -> Result<()> {
         Command::Config(ConfigCmd::Ruta) => configuracion::ruta(),
         Command::Config(ConfigCmd::Ver) => configuracion::ver(),
         Command::Config(ConfigCmd::Add { tipo }) => configuracion::add(&tipo).await,
+        Command::Config(ConfigCmd::Conectar { tipo }) => configuracion::conectar(&tipo).await,
         Command::Servicio(ServicioCmd::Registrar {
             nombre,
             cache_mb,
