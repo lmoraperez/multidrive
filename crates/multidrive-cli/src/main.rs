@@ -186,6 +186,10 @@ enum VolumeCmd {
     },
     /// Topologia, proveedores y generacion actual.
     Status,
+    /// Renombra la cabecera de un volumen creado antes del cambio de nombre del proyecto.
+    ///
+    /// Solo cambia como se llama ese objeto. No mueve ni un fragmento.
+    Migrar,
 }
 
 #[derive(Subcommand)]
@@ -306,6 +310,7 @@ async fn main() -> Result<()> {
         Command::Check { pasadas } => check(pasadas).await,
         Command::Volume(VolumeCmd::Create { layout }) => volumen::create(&layout).await,
         Command::Volume(VolumeCmd::Status) => volumen::status().await,
+        Command::Volume(VolumeCmd::Migrar) => volumen::migrar().await,
         Command::Volume(VolumeCmd::Destroy { confirmar }) => volumen::destroy(confirmar).await,
         Command::Ls { path } => volumen::ls(&path).await,
         Command::Put {

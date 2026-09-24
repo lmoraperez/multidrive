@@ -292,6 +292,107 @@ pub async fn rm(path: &str) -> Result<()> {
     Ok(())
 }
 
+/// El nombre que tenia la cabecera antes del cambio de nombre del proyecto.
+///
+/// Es la unica pieza del formato que un volumen viejo no puede resolver por configuracion: la
+/// carpeta dentro de la cuenta se declara con `ROOT`, pero esto va escrito en el programa.
+const CABECERA_VIEJA: &str = "libredisk-volume.json";
+
+/// Renombra la cabecera de un volumen creado antes del cambio de nombre.
+///
+/// No mueve ni un fragmento: el resto de las claves son relativas a la carpeta del proveedor y
+/// no llevan el nombre del proyecto dentro. Lo unico que cambia es como se llama el objeto que
+/// dice que ahi hay un volumen.
+///
+/// El orden es escribir, comprobar y solo entonces borrar. Al reves, un corte de red entre el
+/// borrado y la escritura dejaria el volumen sin cabecera en ese proveedor, que es como
+/// dejarlo sin la sal: los fragmentos seguirian ahi y no habria forma de saber que son.
+pub async fn migrar() -> Result<()> {
+    migrar_en(&proveedores()?).await
+}
+
+/// Lo que hace [`migrar`], sobre unos proveedores dados.
+///
+/// Va aparte para poder probarlo: lo otro sale del entorno, y una orden que **borra** la
+/// cabecera vieja no deberia estrenarse contra la cuenta de alguien.
+pub async fn migrar_en(backends: &[Arc<dyn Backend>]) -> Result<()> {
+    println!("Cabecera: '{CABECERA_VIEJA}'  ->  '{HEADER_KEY}'");
+    println!();
+
+    let (mut hechos, mut ya, mut sin_nada) = (0, 0, 0);
+    for b in backends {
+        let nombre = b.name();
+        let nueva = b
+            .exists(HEADER_KEY)
+            .await
+            .with_context(|| format!("preguntando a '{nombre}'"))?;
+        let vieja = b
+            .exists(CABECERA_VIEJA)
+            .await
+            .with_context(|| format!("preguntando a '{nombre}'"))?;
+
+        match (nueva, vieja) {
+            (true, false) => {
+                println!("  {nombre}: ya estaba migrado");
+                ya += 1;
+            }
+            (true, true) => {
+                // Una migracion anterior que se corto entre escribir y borrar. La nueva ya
+                // esta, asi que lo que queda es terminar de quitar la vieja.
+                b.delete(CABECERA_VIEJA).await?;
+                println!("  {nombre}: estaban las dos; borrada la vieja");
+                hechos += 1;
+            }
+            (false, true) => {
+                let bytes = b.get(CABECERA_VIEJA).await?;
+                let cuantos = bytes.len();
+                b.put(HEADER_KEY, bytes).await?;
+
+                // Que el `put` no diera error dice que se escribio, no que este ahi. Y lo que
+                // se va a borrar es lo unico que quedaria si no lo estuviera.
+                if !b.exists(HEADER_KEY).await? {
+                    bail!(
+                        "en '{nombre}' se escribio '{HEADER_KEY}' pero el proveedor dice que no \
+                         esta. No se ha borrado nada: vuelve a intentarlo."
+                    );
+                }
+                b.delete(CABECERA_VIEJA).await?;
+                println!("  {nombre}: migrada ({cuantos} bytes)");
+                hechos += 1;
+            }
+            (false, false) => {
+                println!("  {nombre}: no hay cabecera de ninguno de los dos nombres");
+                sin_nada += 1;
+            }
+        }
+    }
+
+    println!();
+    if sin_nada == backends.len() {
+        println!("No se encontro ninguna cabecera. Si el volumen es de antes del cambio de");
+        println!("nombre, tambien la **carpeta** dentro de cada cuenta se llama distinto: era");
+        println!("`/libredisk` y ahora se busca en `/multidrive`. Declara la de antes con:");
+        println!();
+        for b in backends {
+            println!("  MULTIDRIVE_{}_ROOT=/libredisk", b.name().to_uppercase());
+        }
+        println!();
+        println!("o renombra la carpeta en cada cuenta, que viene a ser lo mismo.");
+        return Ok(());
+    }
+
+    println!("migradas    {hechos}");
+    println!("ya estaban  {ya}");
+    if sin_nada > 0 {
+        println!("sin nada    {sin_nada}");
+        println!();
+        println!("AVISO: hay proveedores sin cabecera. Si son del volumen, les falta; revisa");
+        println!("con `multidrive volume status` y `multidrive scrub`.");
+    }
+    println!();
+    println!("Comprueba con `multidrive volume status`.");
+    Ok(())
+}
 /// Estado del volumen.
 pub async fn status() -> Result<()> {
     let backends = proveedores()?;
@@ -1560,4 +1661,94 @@ pub async fn destroy(confirmacion: Option<String>) -> Result<()> {
     println!("La carpeta sigue existiendo en cada proveedor, vacia de lo que era del volumen.");
     println!("Si guardaste ahi otras cosas, siguen donde estaban.");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests_migrar {
+    use std::sync::Arc;
+
+    use multidrive_backend::{Backend, OpendalBackend};
+
+    use super::*;
+
+    fn memoria(nombre: &str) -> Arc<dyn Backend> {
+        Arc::new(OpendalBackend::memory(nombre).unwrap()) as Arc<dyn Backend>
+    }
+
+    /// La cabecera vieja pasa a llamarse como la nueva, **con los mismos bytes**.
+    ///
+    /// Que sean los mismos importa: dentro van la sal y la topologia. Un byte distinto es un
+    /// volumen que no abre.
+    #[tokio::test]
+    async fn la_cabecera_vieja_pasa_a_llamarse_como_la_nueva() {
+        let b = memoria("uno");
+        let cabecera = br#"{"version":1,"layout":"lineal:2"}"#.to_vec();
+        b.put(CABECERA_VIEJA, cabecera.clone()).await.unwrap();
+
+        migrar_en(&[Arc::clone(&b)]).await.unwrap();
+
+        assert_eq!(b.get(HEADER_KEY).await.unwrap(), cabecera);
+        assert!(
+            !b.exists(CABECERA_VIEJA).await.unwrap(),
+            "la vieja tiene que desaparecer, o el volumen queda con dos cabeceras"
+        );
+    }
+
+    /// Volver a lanzarlo no rompe nada ni borra lo que hay.
+    #[tokio::test]
+    async fn volver_a_lanzarlo_no_toca_nada() {
+        let b = memoria("uno");
+        let cabecera = b"la cabecera".to_vec();
+        b.put(CABECERA_VIEJA, cabecera.clone()).await.unwrap();
+
+        migrar_en(&[Arc::clone(&b)]).await.unwrap();
+        migrar_en(&[Arc::clone(&b)]).await.unwrap();
+
+        assert_eq!(b.get(HEADER_KEY).await.unwrap(), cabecera);
+    }
+
+    /// Una migracion que se corto entre escribir y borrar se termina, y **no se pisa la
+    /// nueva**: la buena es la que ya esta publicada.
+    #[tokio::test]
+    async fn si_estan_las_dos_se_borra_la_vieja_y_se_respeta_la_nueva() {
+        let b = memoria("uno");
+        b.put(CABECERA_VIEJA, b"la de antes".to_vec())
+            .await
+            .unwrap();
+        b.put(HEADER_KEY, b"la buena".to_vec()).await.unwrap();
+
+        migrar_en(&[Arc::clone(&b)]).await.unwrap();
+
+        assert_eq!(b.get(HEADER_KEY).await.unwrap(), b"la buena");
+        assert!(!b.exists(CABECERA_VIEJA).await.unwrap());
+    }
+
+    /// Sin cabecera de ninguno de los dos nombres no se inventa una.
+    #[tokio::test]
+    async fn sin_cabecera_no_se_crea_ninguna() {
+        let b = memoria("uno");
+        migrar_en(&[Arc::clone(&b)]).await.unwrap();
+
+        assert!(!b.exists(HEADER_KEY).await.unwrap());
+        assert!(!b.exists(CABECERA_VIEJA).await.unwrap());
+    }
+
+    /// Con varios proveedores se migran todos: la cabecera va replicada en cada uno, y dejar
+    /// a uno con el nombre viejo es dejarlo sin cabecera para quien la busque.
+    #[tokio::test]
+    async fn se_migran_todos_los_proveedores() {
+        let bs = [memoria("uno"), memoria("dos"), memoria("tres")];
+        for b in &bs {
+            b.put(CABECERA_VIEJA, b"igual en todos".to_vec())
+                .await
+                .unwrap();
+        }
+
+        migrar_en(&bs).await.unwrap();
+
+        for b in &bs {
+            assert_eq!(b.get(HEADER_KEY).await.unwrap(), b"igual en todos");
+            assert!(!b.exists(CABECERA_VIEJA).await.unwrap(), "{}", b.name());
+        }
+    }
 }
