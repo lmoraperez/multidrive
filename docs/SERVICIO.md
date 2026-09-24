@@ -1,14 +1,14 @@
 # Montar el volumen como servicio en Windows
 
 Sin esto, el volumen solo existe mientras alguien tenga una consola abierta con
-`libredisk mount`. Con esto, se conecta desde el Explorador como una unidad de red más y
+`multidrive mount`. Con esto, se conecta desde el Explorador como una unidad de red más y
 **Windows pide la frase de paso**.
 
 ## Por qué no hay un servicio propio
 
 Porque WinFsp ya trae uno. `WinFsp.Launcher` arranca con la máquina, corre como LocalSystem y
 sabe lanzar sistemas de ficheros bajo demanda. Escribir otro al lado sería duplicar un
-servicio que ya está instalado, firmado y depurado. Lo único que hace LibreDisk es declararse
+servicio que ya está instalado, firmado y depurado. Lo único que hace MultiDrive es declararse
 ante él con una clave en el registro.
 
 ## La frase de paso no se guarda
@@ -25,11 +25,11 @@ El lanzador de WinFsp resuelve exactamente esto:
 3. El lanzador nos la entrega por la **entrada estándar**.
 
 No pasa por la línea de órdenes, ni por el registro, ni por una variable de entorno: los tres
-sitios donde acabaría siendo legible por otros procesos. `libredisk servicio estado` lo
+sitios donde acabaría siendo legible por otros procesos. `multidrive servicio estado` lo
 enseña: la orden registrada no contiene ninguna frase.
 
 Si al conectar marcas **«recordar»**, la guarda el Gestor de credenciales de Windows. Eso es
-una decisión tuya, tomada en un diálogo del sistema, no una política de LibreDisk.
+una decisión tuya, tomada en un diálogo del sistema, no una política de MultiDrive.
 
 ## Las credenciales de los proveedores sí hacen falta en disco
 
@@ -38,17 +38,17 @@ Aquí no hay truco que valga. Un servicio arranca como LocalSystem, sin consola 
 leer.
 
 ```
-C:\ProgramData\LibreDisk\libredisk.conf
+C:\ProgramData\MultiDrive\multidrive.conf
 ```
 
 El formato son las mismas claves que las variables de entorno, así que el fichero se escribe
 copiando el `.env` que ya tenías:
 
 ```
-LIBREDISK_GDRIVE_REFRESH_TOKEN=...
-LIBREDISK_GDRIVE_CLIENT_ID=...
-LIBREDISK_GDRIVE_CLIENT_SECRET=...
-LIBREDISK_ONEDRIVE_REFRESH_TOKEN=...
+MULTIDRIVE_GDRIVE_REFRESH_TOKEN=...
+MULTIDRIVE_GDRIVE_CLIENT_ID=...
+MULTIDRIVE_GDRIVE_CLIENT_SECRET=...
+MULTIDRIVE_ONEDRIVE_REFRESH_TOKEN=...
 ```
 
 Admite `export` delante, comentarios con `#` y comillas alrededor del valor, para no tener que
@@ -62,8 +62,8 @@ notas y PowerShell.
 Para ver dónde se busca y qué está ganando:
 
 ```powershell
-libredisk config ruta    # los ficheros, y cuál existe
-libredisk config ver     # qué claves hay y de dónde salen (nunca imprime valores)
+multidrive config ruta    # los ficheros, y cuál existe
+multidrive config ver     # qué claves hay y de dónde salen (nunca imprime valores)
 ```
 
 El entorno gana al fichero: quien exporta una variable está diciendo algo sobre **esa**
@@ -74,8 +74,8 @@ ejecución. `config ver` avisa de las claves del fichero que el entorno está ta
 Necesita administrador: la clave vive en HKLM.
 
 ```powershell
-libredisk servicio registrar --escritura
-libredisk servicio estado
+multidrive servicio registrar --escritura
+multidrive servicio estado
 ```
 
 Opciones: `--cache-mb`, `--disco-mb`, `--sync-cada` y `--nombre` (lo que aparece en la ruta de
@@ -85,13 +85,13 @@ red).
 
 Desde el Explorador, *Conectar a unidad de red*:
 
-- Carpeta: `\libredisk\volumen`
+- Carpeta: `\multidrive\volumen`
 - Marcar «Conectar con otras credenciales» y poner la frase de paso como contraseña.
 
 O desde una consola:
 
 ```powershell
-net use Z: \libredisk\volumen
+net use Z: \multidrive\volumen
 ```
 
 > **Hace falta reiniciar una vez después de instalar WinFsp.** Su proveedor de red se registra
@@ -103,19 +103,19 @@ net use Z: \libredisk\volumen
 El servicio no tiene dónde escribir, así que su salida va a un fichero:
 
 ```
-C:\ProgramData\LibreDisk\libredisk.log
+C:\ProgramData\MultiDrive\multidrive.log
 ```
 
 Ahí aparecen los dos fallos que se llevan casi todos los casos:
 
 - **«no se pudo leer ninguna raíz»** — la frase de paso no es la del volumen.
 - **«no hay ningún proveedor configurado»** — falta el fichero de configuración, o está en una
-  ruta que LocalSystem no lee. `libredisk config ruta`.
+  ruta que LocalSystem no lee. `multidrive config ruta`.
 
 ## Quitar
 
 ```powershell
-libredisk servicio quitar
+multidrive servicio quitar
 ```
 
 No toca el volumen ni sus datos: eso solo era la forma de montarlo.

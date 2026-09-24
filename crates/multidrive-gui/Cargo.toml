@@ -1,0 +1,28 @@
+[package]
+name = "multidrive-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+multidrive-backend.workspace = true
+multidrive-core.workspace = true
+multidrive-mount.workspace = true
+multidrive-crypto.workspace = true
+multidrive-raid.workspace = true
+serde = { workspace = true }
+serde_json.workspace = true
+# Sin la funcionalidad de arrastrar y soltar del webview: la ventana no recibe ficheros, y
+# aceptarlos sin querer seria una via de entrada que nadie ha pensado.
+futures = "0.3.34"
+tauri = { version = "2.11", features = [] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[build-dependencies]
+tauri-build = { version = "2.6", features = [] }
+
+[target."cfg(windows)".build-dependencies]
+winfsp = "0.13"

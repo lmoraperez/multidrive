@@ -12,7 +12,7 @@ Pila elegida: **Rust + OpenDAL**.
 - [x] Motor RAID: `concat`, `espejo:n`, `rs:k,m` con Reed-Solomon
 - [x] Almacén de trozos direccionado por contenido (BLAKE3) con verificación al leer
 - [x] `scrub` y `repair` como operaciones de biblioteca
-- [x] Suite de conformidad de proveedores + configuracion por entorno (`libredisk check`)
+- [x] Suite de conformidad de proveedores + configuracion por entorno (`multidrive check`)
 - [x] Constructores de OneDrive y Google Drive (OAuth2 con token de refresco)
 - [x] Google Drive probado contra una cuenta real: las nueve comprobaciones pasan.
       Medidas y consecuencias en [VIABILIDAD.md](VIABILIDAD.md#5-medidas-reales-contra-google-drive)
@@ -88,9 +88,9 @@ Pila elegida: **Rust + OpenDAL**.
       todavía no estén en los proveedores**. Si una subida falla, la raíz se queda esperando y
       el volumen se sigue viendo como antes de la escritura — un estado viejo, pero íntegro.
       Sobrevive a un corte: la cola se recupera del diario al arrancar
-- [x] Montaje en lectura-escritura. `libredisk mount Z: --escritura`: el Explorador crea
+- [x] Montaje en lectura-escritura. `multidrive mount Z: --escritura`: el Explorador crea
       carpetas, `Copy-Item` copia, borrar funciona y borrar un directorio con contenido se
-      rechaza. Lo escrito queda en la cola de escritura diferida hasta `libredisk sync`, y
+      rechaza. Lo escrito queda en la cola de escritura diferida hasta `multidrive sync`, y
       cada descriptor acumula los tramos en un buffer que se fusiona cuando son contiguos —
       sin eso, copiar en bloques de 1 MiB reescribiría el mismo trozo de 16 MiB una vez por
       bloque
@@ -115,13 +115,13 @@ Pila elegida: **Rust + OpenDAL**.
       Primero se prueba la ruta tal cual, que es el caso normal porque Windows devuelve los
       nombres como se los dimos al listar; solo si falla se baja por el árbol comparando sin
       distinguir
-- [x] `libredisk scrub` y `rebuild` expuestos en la CLI. `scrub` recorre el árbol, enumera
+- [x] `multidrive scrub` y `rebuild` expuestos en la CLI. `scrub` recorre el árbol, enumera
       los proveedores y dice qué le falta a cada trozo y dónde; si un nodo no se deja leer,
       avisa de que el recorrido quedó **incompleto** en vez de dar un resumen tranquilizador
       sobre lo poco que pudo mirar
 - [x] El volumen, expuesto en la CLI: `volume create`, `ls`, `put`, `get`, `cat`, `mkdir`,
       `rm`, `volume status`, `scrub` y `rebuild`. Para abrir un volumen sabiendo solo la frase
-      de paso hizo falta una **cabecera en claro** (`libredisk-volume.json`, replicada en
+      de paso hizo falta una **cabecera en claro** (`multidrive-volume.json`, replicada en
       todos los proveedores) con la sal, la topología y el orden de los proveedores: la sal no
       puede ir cifrada porque sin ella no hay clave, y el orden es parte del formato porque el
       índice de un fragmento es la posición de su proveedor
@@ -149,14 +149,14 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 > máquina de desarrollo es Windows, y FUSE no se puede ni compilar ahí. La capa VFS que ambos
 > necesitan ya estaba hecha, así que el trabajo era el adaptador.
 
-- [x] Capa de montaje con WinFsp. `libredisk mount Z:` y el volumen aparece como una unidad
+- [x] Capa de montaje con WinFsp. `multidrive mount Z:` y el volumen aparece como una unidad
       más: el Explorador lista carpetas, `Copy-Item` copia ficheros y escribir se rechaza.
       **Solo lectura**, porque escribir a través del montaje exige antes una caché con
       escritura diferida: sin ella cada `write` de 4 KiB sería una subida síncrona a varias
       nubes, y ningún programa espera eso. **Y es lento**, por la misma razón: cada operación
       va a la nube. Sirve para demostrar que funciona, no para usarlo
 - [x] CI multiplataforma (GitHub Actions: linux + windows)
-- [x] Instalador MSI. `packaging/windows/libredisk.wxs` más un guión que compila, firma y
+- [x] Instalador MSI. `packaging/windows/multidrive.wxs` más un guión que compila, firma y
       empaqueta. Instala en Archivos de programa y añade la carpeta al PATH de la máquina.
       **Se niega a instalarse sin WinFsp**, con el enlace: una herramienta que se instala y
       luego no puede montar nada es peor que una que avisa. Probado entero en esta máquina:
@@ -165,17 +165,17 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       instalador que se descubre roto ese día
 - [x] Instalador completo que **encadena el de WinFsp sin modificar**, que es lo único que
       permite su excepción FLOSS: rempaquetar su controlador sería modificarlo. Detecta si ya
-      está y no lo toca, y **no lo desinstala** al quitar LibreDisk, porque puede haber otros
+      está y no lo toca, y **no lo desinstala** al quitar MultiDrive, porque puede haber otros
       programas usándolo. El guión comprueba la huella SHA-256 y la firma Authenticode del
       paquete de WinFsp antes de empaquetarlo: se redistribuye software de otro y verificar
       que es el suyo es lo mínimo. Probado el ciclo entero, incluido que al desinstalar
       WinFsp se queda
 - [x] El MSI suelto sigue existiendo, para quien ya administra WinFsp por su cuenta. Dentro
       del encadenador se oculta su entrada en «Programas y características»: si no, salen dos
-      LibreDisk y quitar la equivocada deja la otra registrada sobre algo que ya no está
+      MultiDrive y quitar la equivocada deja la otra registrada sobre algo que ya no está
 - [x] La excepción de WinFsp pide su aviso de copyright y el enlace a su repositorio en la
       interfaz y en la documentación. Va en el README, en AVISOS.txt —que se instala junto al
-      programa— y en la salida de `libredisk mount`, que es donde se está usando
+      programa— y en la salida de `multidrive mount`, que es donde se está usando
 - [x] WiX fijado a la 5.0.2. De la 6 en adelante hay que aceptar la licencia de la Open
       Source Maintenance Fee, que es de pago para uso comercial; la 5 es la última bajo MS-RL
       sin esa condición. Subir de versión es una decisión de licencia, no de empaquetado
@@ -184,7 +184,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       una y por qué **no hace falta un EV** están en [FIRMA.md](FIRMA.md). El guión ya firma
       binario y MSI en cuanto haya con qué; mientras tanto publica el SHA-256
 - [x] Servicio de Windows, a través del lanzador de WinFsp en vez de escribiendo uno propio:
-      ya arranca con la máquina, corre como LocalSystem y está instalado y firmado. `libredisk
+      ya arranca con la máquina, corre como LocalSystem y está instalado y firmado. `multidrive
       servicio registrar` y el volumen se conecta desde el Explorador como unidad de red.
       **La frase de paso no se guarda en ninguna parte**: Windows la pide al conectar y el
       lanzador la entrega por la entrada estándar, no por la línea de órdenes ni por el
@@ -194,8 +194,8 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] Fichero de configuración. Las credenciales salían solo del entorno, que es correcto para
       una persona en una consola e imposible para un servicio: LocalSystem no ve el `.env` de
       nadie. Mismas claves que las variables, para poder copiar el `.env` sin traducirlo. El
-      entorno sigue ganando al fichero, y `libredisk config ver` dice qué claves está tapando
-- [x] `LIBREDISK_` como prefijo, en vez de `LIBREDISK_TEST_`. Nació cuando esto solo
+      entorno sigue ganando al fichero, y `multidrive config ver` dice qué claves está tapando
+- [x] `MULTIDRIVE_` como prefijo, en vez de `MULTIDRIVE_TEST_`. Nació cuando esto solo
       configuraba la suite de conformidad; ahora es como se configura el producto. El antiguo
       se sigue aceptando: nadie debería reescribir su configuración porque el proyecto crezca
 - [x] Arreglado que el montaje solo funcionara si la carpeta `bin` de WinFsp estaba en el
@@ -232,7 +232,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       navegador en la página del proveedor, entras en tu cuenta y das permiso. Ya no se
       teclea ningún token: el flujo de código de autorización con redirección a `localhost`,
       que es el que usan las aplicaciones de escritorio. Tus credenciales **no pasan por
-      LibreDisk**: van del navegador al proveedor, y aquí solo llega un código de un solo uso
+      MultiDrive**: van del navegador al proveedor, y aquí solo llega un código de un solo uso
 - [x] Con PKCE, aunque la aplicación lleve secreto y no sea obligatorio. El motivo es
       concreto: el redirector es `localhost`, así que cualquier otro programa de la máquina
       podría quedarse escuchando y recoger el código. Con PKCE ese código no sirve sin un
@@ -242,13 +242,13 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       se queda en el proceso hasta que se guarda, y se borra de memoria en cuanto está en el
       fichero. Que la página sea nuestra y corra en el mismo proceso no es motivo para
       pasear por ella acceso permanente a una cuenta
-- [x] A Google se le pide `drive.file`, o sea **solo los ficheros que LibreDisk cree**. Pedir
+- [x] A Google se le pide `drive.file`, o sea **solo los ficheros que MultiDrive cree**. Pedir
       el Drive entero sería pedir permiso sobre las fotos del usuario para guardar en una
       carpeta, y además Google lo clasifica como ámbito restringido, que obliga a una
       evaluación de seguridad anual de terceros
 - [x] **Las credenciales de la aplicación pueden venir dentro del programa**, y entonces la
       ventana no las pide: conectar una cuenta es pulsar el botón y entrar. Son dos cosas
-      que se llaman igual y no lo son — el ID y el secreto identifican a *LibreDisk* y son
+      que se llaman igual y no lo son — el ID y el secreto identifican a *MultiDrive* y son
       iguales para todo el mundo; el token identifica a *tu cuenta*. Pedirle a alguien el ID
       de una aplicación que no es suya es pedirle un dato que no tiene
 - [x] Se leen del entorno al compilar, así que el repositorio no las lleva escritas, y un
@@ -258,7 +258,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] Y se pueden sustituir **sin recompilar**, que es la salida para quien choque con la
       cuota compartida: un proyecto compartido lo es también para los límites del proveedor,
       y si alguien abusa lo pagan todos los de esa versión
-- [x] `libredisk config ver` dice si esta copia trae aplicación registrada. Es lo que decide
+- [x] `multidrive config ver` dice si esta copia trae aplicación registrada. Es lo que decide
       si al usuario se le piden dos datos de desarrollador o solo se le pide pulsar un botón
 - [x] Fuera los botones de probar y guardar en los proveedores de nube: el de conectar ya
       hace todo. Y donde siguen haciendo falta —los que se rellenan a mano— queda **uno
@@ -272,10 +272,10 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       se llame, porque dentro solo hay blobs opacos que nadie va a abrir desde la web del
       proveedor: pedir una decisión a quien no tiene motivo para tomarla es ruido. Se sigue
       pudiendo poner en el fichero de configuración
-- [x] Y esa carpeta se llama ya `/libredisk` y no `/libredisk-pruebas`, que era el nombre de
+- [x] Y esa carpeta se llama ya `/multidrive` y no `/multidrive-pruebas`, que era el nombre de
       cuando esto solo configuraba la suite de conformidad. Una carpeta llamada «pruebas» en
       la cuenta de alguien invita a borrarla. **Quien tuviera un volumen en la carpeta vieja
-      sin declararla tiene que escribir `LIBREDISK_<PROVEEDOR>_ROOT=/libredisk-pruebas`**
+      sin declararla tiene que escribir `MULTIDRIVE_<PROVEEDOR>_ROOT=/multidrive-pruebas`**
 - [x] **Conectar una cuenta de nube la guarda, sin pedir otro clic.** Conectar la cuenta *es*
       configurar el proveedor: obligar a pulsar «Probar y guardar» después era trabajo que no
       aportaba nada. Sigue probando antes de escribir, como siempre
@@ -328,7 +328,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] La lógica de retirar vive en el núcleo y la usan las dos interfaces. Dos copias de un
       borrado acaban discrepando en qué borran, y la que discrepa se lleva algo por delante.
       De paso dejó de enumerar dos veces, que contra una nube son minutos duplicados
-- [x] **`libredisk volume destroy`**, que no existía: no había forma de retirar un volumen.
+- [x] **`multidrive volume destroy`**, que no existía: no había forma de retirar un volumen.
       Borra sus fragmentos, su raíz y su cabecera, y **solo eso** — si guardaste otras cosas
       en esa carpeta siguen donde estaban, comprobado con un test contra carpetas locales
 - [x] Confirmar no es teclear `--si`: hay que escribir los nombres de los proveedores, que es
@@ -345,7 +345,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       y no por aspecto del valor — adivinar qué parece un secreto es una carrera que se
       pierde. Lo encontró un borrado real, y lo fija un test con el texto exacto que apareció
 - [x] **Comprobado contra una cuenta real que el permiso mínimo basta.** Con la aplicación
-      propia y un único ámbito `drive.file` —solo los ficheros que LibreDisk crea— funciona
+      propia y un único ámbito `drive.file` —solo los ficheros que MultiDrive crea— funciona
       todo: crear volumen, subir, bajar con el SHA-256 idéntico, enumerar y medir. No era
       obvio, porque la biblioteca resuelve rutas buscando carpetas por nombre. Cifras en
       [VIABILIDAD.md §10](VIABILIDAD.md#10-el-permiso-mínimo-de-google-basta)
@@ -353,7 +353,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       por otra aplicación, responde que ahí no hay nada. Es la verificación directa de lo que
       promete la política de privacidad, no una promesa
 - [x] Aplicación registrada en **Google Cloud**, cliente de tipo escritorio, y política de
-      privacidad publicada en libredisk.chambaya.net
+      privacidad publicada en multidrive.net
 - [x] **Topología `lineal`: las capacidades desiguales se suman.** Cada trozo va **entero** a
       un proveedor, elegido a partir de su propio identificador en proporción a lo que cada
       uno aporta. Con 15 GB + 5 GB + 1 TB da **1,02 TB**, donde espejo da 5 y unión 15.
@@ -401,7 +401,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       sale bien** escribe la configuración. Guardar primero y descubrir después que las
       credenciales estaban mal deja un proveedor que no responde, y a partir de ahí todo lo
       que el programa enumere o mida sale con un hueco que hay que ir a explicar
-- [x] Lo mismo sin ventana: `libredisk config add FS` toma los valores **por la entrada
+- [x] Lo mismo sin ventana: `multidrive config add FS` toma los valores **por la entrada
       estándar**, no por argumentos. Aquí dentro hay tokens y claves secretas, y lo que se
       escribe en la línea de órdenes acaba en el historial del intérprete y en la lista de
       procesos. Es la misma regla que sigue la frase de paso
@@ -437,7 +437,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       cuentas de OneDrive y Google Drive: crear, subir 20 MiB, bajarlos y comprobar el
       SHA-256 —idéntico—, enumerar y medir. Cifras y método en
       [VIABILIDAD.md §9](VIABILIDAD.md#9-primer-volumen-real-sobre-dos-nubes-y-qué-dice-cada-una-de-su-espacio)
-- [x] Barra de espacio por proveedor, en la ventana y en `libredisk espacio`. Enseña **tres
+- [x] Barra de espacio por proveedor, en la ventana y en `multidrive espacio`. Enseña **tres
       cifras que no se mezclan**: lo que cabe en la cuenta, lo que hay ocupado en ella y lo
       que ocupa este volumen. Las dos primeras son una petición al proveedor; la tercera
       obliga a enumerar, así que va detrás de `--medir` y de «Revisar»
@@ -447,7 +447,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] Un proveedor sin cupo que declarar —un bucket S3 se factura por lo que ocupa— sale como
       «sin límite declarado» y no como una barra vacía; uno que no contesta sale con el
       motivo y no con un cero. Un cero diría que está vacío, que es una afirmación
-- [x] El tramo de LibreDisk se recorta a lo que el proveedor dice que hay ocupado. Medido:
+- [x] El tramo de MultiDrive se recorta a lo que el proveedor dice que hay ocupado. Medido:
       tras escribir 20 MiB, OneDrive seguía dando la misma cifra un cuarto de hora después. Sin el
       recorte, un volumen recién escrito pintaría más del 100 % de una cuenta al 6 %
 - [x] Topología `union:n`, que es RAID 0: todo el espacio sumado y el ancho de banda
@@ -514,15 +514,15 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [ ] Avisos claros de Términos de Servicio en la UI
 
 ## v0.5 — Robustez
-- [x] `libredisk rescue`: reconstruir metadatos solo desde los backends. Enumera los trozos,
+- [x] `multidrive rescue`: reconstruir metadatos solo desde los backends. Enumera los trozos,
       los descifra y busca los directorios a los que no apunta nadie: son las raíces
       candidatas, incluidas las de versiones anteriores, y se describen por su contenido para
       poder elegir sin mirar hashes. **No hizo falta la cabecera autodescriptiva por trozo**
       que preveía ARQUITECTURA: la longitud sellada se deduce porque `split` rellena hasta un
       múltiplo de *k*, y el tag de XChaCha20-Poly1305 desambigua. Se añade también
-      `libredisk header export`/`import`, que es el respaldo que de verdad importa: la
+      `multidrive header export`/`import`, que es el respaldo que de verdad importa: la
       cabecera lleva la sal, y sin sal no hay clave
-- [x] Montaje FUSE en Linux. `libredisk mount /ruta/vacia`, con las mismas reglas que el lado
+- [x] Montaje FUSE en Linux. `multidrive mount /ruta/vacia`, con las mismas reglas que el lado
       de Windows: bloquear en los hilos del kernel es correcto porque no son del runtime, y
       escribir se acumula por descriptor y se materializa al cerrar. La diferencia que lo
       cambia todo es que **FUSE habla de inodos y WinFsp de rutas**, así que hay una tabla que
@@ -532,7 +532,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] Y **no hay que traducir mayúsculas**: en Linux el sistema distingue y el árbol también.
       Haber dejado esa traducción en la capa de montaje de Windows, y no más abajo, es lo que
       hace que el adaptador de FUSE no tenga que saber nada del asunto
-- [x] **Montado de verdad**, contra el contenedor de `libredisk.chambaya.net`: lee un fichero
+- [x] **Montado de verdad**, contra el contenedor de `multidrive.net`: lee un fichero
       de 3 MB con el mismo SHA-256 que el original, lo escribe de vuelta igual, crea
       directorios anidados, renombra una carpeta con contenido dentro sin que se pierda lo de
       dentro, y `rmdir` sobre un directorio no vacío responde *Directory not empty*, que es lo
@@ -556,7 +556,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       fragmento de los que ya hay. Se apoya en una propiedad que no se da por supuesta y tiene
       tres tests propios: ampliar la paridad no cambia los fragmentos anteriores, porque los
       de datos dependen solo de `k` y los de paridad que ya existían salen iguales de la matriz
-      nueva. `libredisk providers add --mas-seguridad`
+      nueva. `multidrive providers add --mas-seguridad`
 - [x] Y **se puede interrumpir sin consecuencias**, que es lo que lo hace usable en algo que
       tarda horas: mientras la cabecera no cambie, el volumen se lee con la topología vieja y
       los fragmentos viejos, que no se han tocado. Lo único a medias son fragmentos de paridad
@@ -582,7 +582,7 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       subida no diera error dice que se escribió, no que esté ahí, y lo que se iba a borrar es
       lo único que quedaría si no lo estuviera. Se enumera y se cuenta antes de destruir la
       red de seguridad; si falta algo, no se borra nada y se dice
-- [x] Retirar un proveedor: `libredisk providers remove <nombre> --menos-seguridad` o
+- [x] Retirar un proveedor: `multidrive providers remove <nombre> --menos-seguridad` o
       `--menos-espacio`, simétrico a añadir. Si el que se va es **el último** y `k` no cambia,
       no se mueve ni un fragmento: es publicar la cabecera y tirar lo que sobra. Si es uno de
       en medio, todos los de detrás cambian de índice —y el índice es donde vive el
@@ -613,8 +613,8 @@ Comprobado cruzando a `aarch64-linux-android`:
 
 | Crate | Resultado |
 |---|---|
-| `libredisk-crypto`, `libredisk-raid` | compilan sin NDK |
-| `libredisk-core` → `backend` → `opendal` | requiere el NDK: `cc-rs` no encuentra `clang`, lo arrastra `aws-lc-sys` vía `rustls` |
+| `multidrive-crypto`, `multidrive-raid` | compilan sin NDK |
+| `multidrive-core` → `backend` → `opendal` | requiere el NDK: `cc-rs` no encuentra `clang`, lo arrastra `aws-lc-sys` vía `rustls` |
 
 Lo segundo no es un problema de diseño. Se resuelve instalando el NDK y apuntando
 `CC_aarch64-linux-android`, o cambiando `rustls` al proveedor `ring`.
@@ -664,7 +664,7 @@ escritor. Ver [Recuperación ante desastre](ARQUITECTURA.md#recuperación-ante-d
 lo que un lector de solo lectura necesita: el id de la raíz y nada más.
 
 Lo barato mientras tanto, para no perder la opción: un job de CI con
-`cargo check --target aarch64-linux-android` sobre `libredisk-crypto` y `libredisk-raid`.
+`cargo check --target aarch64-linux-android` sobre `multidrive-crypto` y `multidrive-raid`.
 Pasan sin NDK, así que cuesta segundos y evita que la portabilidad se pudra sin avisar.
 
 ## Fuera de alcance por ahora

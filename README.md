@@ -1,8 +1,8 @@
-# LibreDisk
+# MultiDrive
 
 **Una sola unidad. Muchas nubes.**
 
-LibreDisk agrega varios servicios de almacenamiento en la nube (S3/B2/R2/Wasabi/Storj,
+MultiDrive agrega varios servicios de almacenamiento en la nube (S3/B2/R2/Wasabi/Storj,
 WebDAV/Nextcloud, Google Drive, OneDrive, Dropbox…) en **un único volumen virtual** que se
 monta como una unidad más del sistema en Windows y Linux, con semántica tipo RAID
 (espejo, striping y paridad por *erasure coding*) y **cifrado de conocimiento cero**.
@@ -13,7 +13,7 @@ monta como una unidad más del sistema en Windows y Linux, con semántica tipo R
 > y escritura**, con caché en memoria y en disco y subida en segundo plano. Sigue siendo
 > pre-alfa: no es donde poner el único ejemplar de nada.
 
-Sitio del proyecto: https://libredisk.chambaya.net
+Sitio del proyecto: https://multidrive.net
 
 ## Instalar en Windows
 
@@ -21,17 +21,17 @@ Hay dos descargas en la página de publicaciones, y la que quieres casi seguro e
 
 | | |
 |---|---|
-| `libredisk-X.Y.Z-x64-completo.exe` | Instala **WinFsp y LibreDisk**. Es lo normal. |
-| `libredisk-X.Y.Z-x64.msi` | Solo LibreDisk; se niega a instalarse si no hay WinFsp. Para quien ya administra WinFsp por su cuenta. |
+| `multidrive-X.Y.Z-x64-completo.exe` | Instala **WinFsp y MultiDrive**. Es lo normal. |
+| `multidrive-X.Y.Z-x64.msi` | Solo MultiDrive; se niega a instalarse si no hay WinFsp. Para quien ya administra WinFsp por su cuenta. |
 
 WinFsp es quien pone el controlador que hace aparecer la unidad. El instalador completo
 **encadena el instalador de WinFsp sin modificar, tal y como lo publica su proyecto**, y lo
-detecta si ya está: no lo toca, ni lo reinstala, ni lo quita al desinstalar LibreDisk. Puede
+detecta si ya está: no lo toca, ni lo reinstala, ni lo quita al desinstalar MultiDrive. Puede
 haber otros programas usándolo.
 
 > **Hace falta reiniciar una vez después de instalar WinFsp.** Su proveedor de red se registra
 > en el arranque, así que hasta el primer reinicio `net use` responde «error de sistema 67»
-> aunque todo lo demás esté bien. Montar con `libredisk mount Z:` funciona desde el primer
+> aunque todo lo demás esté bien. Montar con `multidrive mount Z:` funciona desde el primer
 > momento.
 
 > **Todavía no van firmados.** Windows los anunciará como de «editor desconocido» y SmartScreen
@@ -75,7 +75,7 @@ Con proveedores configurados (ver [docs/PRUEBAS-PROVEEDORES.md](docs/PRUEBAS-PRO
 y una frase de paso:
 
 ```sh
-export LIBREDISK_PASSPHRASE='...'        # no hay recuperación: si la pierdes, lo pierdes todo
+export MULTIDRIVE_PASSPHRASE='...'        # no hay recuperación: si la pierdes, lo pierdes todo
 cargo run -- volume create --layout rs:2,1
 cargo run -- put ./pelicula.mkv /medios/pelicula.mkv
 cargo run -- ls /medios
@@ -96,12 +96,12 @@ cargo run -- sync                                             # y sube cuando to
 cargo run -- mount Z:                        # montarlo como unidad (Windows)
 cargo run -- mount Z: --escritura            # ...y poder escribir (sube solo cada 30 s)
 
-cargo run -p libredisk-gui                   # la ventana de escritorio
+cargo run -p multidrive-gui                   # la ventana de escritorio
 ```
 
 ## Montaje
 
-En Windows, `libredisk mount Z:` expone el volumen como una unidad del sistema: el Explorador
+En Windows, `multidrive mount Z:` expone el volumen como una unidad del sistema: el Explorador
 lista carpetas, cualquier programa abre ficheros y `Copy-Item` copia. Requiere
 [WinFsp](https://winfsp.dev), que trae el instalador completo, y el toolchain **MSVC** de Rust
 para compilarlo.
@@ -118,7 +118,7 @@ Hay además una **caché en disco** (`--disco-mb`, 4096 por defecto) que sobrevi
 así que montar de nuevo no vuelve a pagar la red. Guarda los trozos **cifrados**: los datos
 no quedan en claro en la máquina.
 
-En Linux, `libredisk mount /ruta/vacia` hace lo mismo con FUSE, y está probado de punta a
+En Linux, `multidrive mount /ruta/vacia` hace lo mismo con FUSE, y está probado de punta a
 punta: leer y escribir con el contenido intacto, renombrar carpetas con cosas dentro, y los
 códigos de error que `rm -r` necesita para no rendirse. Lo comprueba CI en cada cambio,
 montando de verdad.
@@ -133,25 +133,25 @@ montando de verdad.
 
 | Crate | Qué hace |
 |---|---|
-| `libredisk-crypto` | Argon2id + XChaCha20-Poly1305 por trozo |
-| `libredisk-raid` | Reed-Solomon `k+m`, espejo, reparto puro (RAID 0), concat |
-| `libredisk-backend` | `trait Backend` + adaptador OpenDAL (~40 proveedores) |
-| `libredisk-core` | Almacén de trozos: id por BLAKE3, `put`/`get`/`scrub`/`repair` |
-| `libredisk-mount` | Montaje como unidad del sistema: WinFsp en Windows, FUSE en Linux |
-| `libredisk-gui` | Ventana de escritorio (Tauri, sin Node): crear, montar, salud y cola de subida |
-| `libredisk-cli` | Binario `libredisk` |
+| `multidrive-crypto` | Argon2id + XChaCha20-Poly1305 por trozo |
+| `multidrive-raid` | Reed-Solomon `k+m`, espejo, reparto puro (RAID 0), concat |
+| `multidrive-backend` | `trait Backend` + adaptador OpenDAL (~40 proveedores) |
+| `multidrive-core` | Almacén de trozos: id por BLAKE3, `put`/`get`/`scrub`/`repair` |
+| `multidrive-mount` | Montaje como unidad del sistema: WinFsp en Windows, FUSE en Linux |
+| `multidrive-gui` | Ventana de escritorio (Tauri, sin Node): crear, montar, salud y cola de subida |
+| `multidrive-cli` | Binario `multidrive` |
 
 ---
 
 ## La idea en una frase
 
-Si RAID convirtió varios discos poco fiables en un volumen fiable, LibreDisk hace lo mismo
+Si RAID convirtió varios discos poco fiables en un volumen fiable, MultiDrive hace lo mismo
 con varias cuentas de nube poco fiables (y con cuotas): **ningún proveedor tiene tus datos
 completos, ninguno puede leerlos, y la caída de uno no te deja sin volumen.**
 
 ## Qué resuelve
 
-| Problema | Respuesta de LibreDisk |
+| Problema | Respuesta de MultiDrive |
 |---|---|
 | Tengo cuentas sueltas en varios sitios | Un solo volumen sobre todas, cifrado y con RAID |
 | Si el proveedor me suspende la cuenta, lo pierdo todo | Paridad *k de n*: sobrevive a la pérdida de *m* proveedores |
@@ -188,7 +188,7 @@ sí suma: con esos mismos números da 1,02 TB.
 — <https://github.com/winfsp/winfsp>
 
 WinFsp pone el controlador que hace que el volumen aparezca como una unidad de Windows.
-LibreDisk lo usa al amparo de su excepción para software libre, y la cumple: se distribuye
+MultiDrive lo usa al amparo de su excepción para software libre, y la cumple: se distribuye
 bajo AGPL-3.0, lleva este aviso aquí, en [packaging/windows/AVISOS.txt](packaging/windows/AVISOS.txt)
 —que se instala junto al programa— y en la propia orden de montaje, y no va con ningún
 componente propietario.

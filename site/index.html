@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>LibreDisk — una sola unidad, muchas nubes</title>
-<meta name="description" content="LibreDisk agrega varios servicios de almacenamiento en la nube en un unico volumen con semantica RAID y cifrado de conocimiento cero. Pre-alfa: el nucleo funciona y esta verificado contra cuentas reales.">
+<title>MultiDrive — una sola unidad, muchas nubes</title>
+<meta name="description" content="MultiDrive agrega varios servicios de almacenamiento en la nube en un unico volumen con semantica RAID y cifrado de conocimiento cero. Pre-alfa: el nucleo funciona y esta verificado contra cuentas reales.">
 <style>
 :root{
   --bg:#0e1116; --panel:#161b22; --line:#262d38;
@@ -59,17 +59,17 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 <header>
   <div class="badge">Pre-alfa · ya se monta</div>
-  <h1>Libre<span>Disk</span></h1>
+  <h1>Multi<span>Drive</span></h1>
   <p class="tag">Una sola unidad. Muchas nubes.</p>
 </header>
 
 <section>
-  <p class="lead">LibreDisk agrega varios servicios de almacenamiento en la nube
+  <p class="lead">MultiDrive agrega varios servicios de almacenamiento en la nube
   —S3, Backblaze B2, Cloudflare R2, Storj, Nextcloud/WebDAV, Google Drive, OneDrive—
   en <strong>un único volumen</strong> con semántica tipo RAID y cifrado de conocimiento cero.
   El objetivo es que se monte como una unidad más del sistema en Windows y Linux, y
   <strong>ya lo hace</strong>: abajo se explica exactamente qué está probado y qué no.</p>
-  <p>Si RAID convirtió varios discos poco fiables en un volumen fiable, LibreDisk hace lo
+  <p>Si RAID convirtió varios discos poco fiables en un volumen fiable, MultiDrive hace lo
   mismo con varias cuentas de nube: <strong>ningún proveedor tiene tus datos completos,
   ninguno puede leerlos, y la caída de uno no te deja sin volumen.</strong></p>
 </section>
@@ -89,8 +89,8 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
         revisar su salud, ver cuánto espacio queda en cada cuenta, ampliarlo con una cuenta
         más y retirarlo</li>
         <li><b>Conectar una cuenta de nube es pulsar un botón.</b> Se abre el navegador, entras
-        en tu cuenta y das permiso; tus credenciales no pasan por LibreDisk. A Google se le
-        pide <b>solo acceso a los ficheros que LibreDisk crea</b>, no al resto de tu Drive</li>
+        en tu cuenta y das permiso; tus credenciales no pasan por MultiDrive. A Google se le
+        pide <b>solo acceso a los ficheros que MultiDrive crea</b>, no al resto de tu Drive</li>
         <li><b>Rebalanceo.</b> Añadir o retirar proveedores eligiendo qué priorizar, sin dejar
         de poder leer el volumen mientras tanto. Retirar funciona <b>aunque la cuenta ya no
         responda</b></li>
@@ -216,11 +216,11 @@ rs(k,m)     k de k+m                m caídas      (k+m)/k ×</code></pre>
 
 <footer>
   <div class="wrap" style="padding:0">
-    LibreDisk · AGPL-3.0 · pre-alfa: se monta, se usa y está cubierto por pruebas, pero no
+    MultiDrive · AGPL-3.0 · pre-alfa: se monta, se usa y está cubierto por pruebas, pero no
     hay versión publicada y el formato en disco todavía puede cambiar.
     <br><br>
     <a href="/privacidad.html" style="color:var(--accent)">Política de privacidad</a>
-    · <a href="https://github.com/lmoraperez/libredisk" style="color:var(--accent)" rel="noopener">Código fuente</a>
+    · <a href="https://github.com/lmoraperez/multidrive" style="color:var(--accent)" rel="noopener">Código fuente</a>
   </div>
 </footer>
 

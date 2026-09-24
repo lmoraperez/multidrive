@@ -33,7 +33,7 @@ jobs:
         run: cargo test --workspace
 
   # La capa de montaje solo existe en Windows, asi que el job de linux no la compila:
-  # `libredisk-mount` queda reducido a un stub por los `cfg(windows)` de sus dependencias.
+  # `multidrive-mount` queda reducido a un stub por los `cfg(windows)` de sus dependencias.
   windows:
     runs-on: windows-latest
     steps:
@@ -72,7 +72,7 @@ jobs:
         run: .\packaging\windows\construir-msi.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: libredisk-instaladores
+          name: multidrive-instaladores
           path: |
             target/msi/*.msi
             target/msi/*.exe
@@ -99,4 +99,4 @@ jobs:
           ls -l /dev/fuse
           fusermount3 --version
       - name: Montar y usar
-        run: cargo test -p libredisk-mount --test montaje_fuse -- --ignored --nocapture --test-threads=1
+        run: cargo test -p multidrive-mount --test montaje_fuse -- --ignored --nocapture --test-threads=1

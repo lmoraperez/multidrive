@@ -17,4 +17,4 @@
 /packaging/windows/terceros/
 
 # Lo genera tauri-build en cada compilacion.
-/crates/libredisk-gui/gen/
+/crates/multidrive-gui/gen/

@@ -6,7 +6,7 @@ manera, contenido que vuelve alterado. Este documento explica cómo apuntar la *
 conformidad** a una cuenta real.
 
 ```sh
-LIBREDISK_TEST_ONEDRIVE_ACCESS_TOKEN=... cargo run -- check
+MULTIDRIVE_TEST_ONEDRIVE_ACCESS_TOKEN=... cargo run -- check
 ```
 
 Una sola pasada sirve de semáforo, no de medida: contra nubes de consumo, dos ejecuciones
@@ -27,7 +27,7 @@ Y una comprobación que falla en unas pasadas y en otras no se marca **`intermit
 es peor noticia que un fallo limpio: el proveedor cumple a ratos.
 
 La suite escribe y borra objetos en una carpeta dedicada de cada cuenta
-(`/libredisk-pruebas` por defecto) y no toca nada más. Si la limpieza falla, lo dice y
+(`/multidrive-pruebas` por defecto) y no toca nada más. Si la limpieza falla, lo dice y
 nombra el prefijo que quedó por borrar.
 
 ## Qué comprueba y por qué
@@ -54,7 +54,7 @@ RAID**.
 Antes de pelearse con OAuth conviene comprobar que el arnés entero funciona:
 
 ```sh
-LIBREDISK_TEST_FS_ROOT=$(mktemp -d) cargo run -- check
+MULTIDRIVE_TEST_FS_ROOT=$(mktemp -d) cargo run -- check
 ```
 
 No prueba ninguna nube, pero recorre el mismo camino: configuración → suite → limpieza.
@@ -122,15 +122,15 @@ OpenDAL habla con Microsoft Graph. Hacen falta credenciales de una aplicación p
    ```
 
 ```sh
-export LIBREDISK_TEST_ONEDRIVE_REFRESH_TOKEN=...
-export LIBREDISK_TEST_ONEDRIVE_CLIENT_ID=...
-export LIBREDISK_TEST_ONEDRIVE_CLIENT_SECRET=...
-export LIBREDISK_TEST_ONEDRIVE_ROOT=/libredisk-pruebas   # opcional
+export MULTIDRIVE_TEST_ONEDRIVE_REFRESH_TOKEN=...
+export MULTIDRIVE_TEST_ONEDRIVE_CLIENT_ID=...
+export MULTIDRIVE_TEST_ONEDRIVE_CLIENT_SECRET=...
+export MULTIDRIVE_TEST_ONEDRIVE_ROOT=/multidrive-pruebas   # opcional
 ```
 
 > **Atajo para una prueba suelta:** el
 > [Graph Explorer](https://developer.microsoft.com/graph/graph-explorer) entrega un token de
-> acceso válido una hora. Sirve para `LIBREDISK_TEST_ONEDRIVE_ACCESS_TOKEN` y evita registrar
+> acceso válido una hora. Sirve para `MULTIDRIVE_TEST_ONEDRIVE_ACCESS_TOKEN` y evita registrar
 > nada, pero no sirve para nada que deba seguir vivo mañana.
 >
 > Graph Explorer **solo ofrece los permisos que necesita la consulta escrita en la barra**.
@@ -149,7 +149,7 @@ export LIBREDISK_TEST_ONEDRIVE_ROOT=/libredisk-pruebas   # opcional
 
 ### Dos detalles de OneDrive
 
-- **La raíz se crea sola**, igual que en Drive: no hace falta crear `/libredisk-pruebas` a
+- **La raíz se crea sola**, igual que en Drive: no hace falta crear `/multidrive-pruebas` a
   mano, el primer `put` la crea.
 - **El borrado probablemente va a la papelera**, igual que en Drive: Graph implementa
   `DELETE /driveItem` como envío a la papelera de OneDrive, no como borrado permanente. No
@@ -188,7 +188,7 @@ y [§7](VIABILIDAD.md#7-enumerar-qué-cuesta-list).
    > cliente OAuth y no lo es.
 
    > **En modo *Prueba*, Google caduca los tokens de refresco a los 7 días.** Funcionará toda
-   > la semana y un día empezará a fallar con `invalid_grant`. No es un fallo de LibreDisk:
+   > la semana y un día empezará a fallar con `invalid_grant`. No es un fallo de MultiDrive:
    > hay que repetir el paso 4, o publicar la aplicación.
 3. Sección **Clientes** ([/auth/clients](https://console.cloud.google.com/auth/clients)) →
    **+ Crear cliente** → tipo *Aplicación web*, con
@@ -206,33 +206,33 @@ y [§7](VIABILIDAD.md#7-enumerar-qué-cuesta-list).
    Playground, paso 2 → *Exchange authorization code for tokens*, y ahí está el refresh token.
 
 ```sh
-export LIBREDISK_TEST_GDRIVE_REFRESH_TOKEN=...
-export LIBREDISK_TEST_GDRIVE_CLIENT_ID=...
-export LIBREDISK_TEST_GDRIVE_CLIENT_SECRET=...
-export LIBREDISK_TEST_GDRIVE_ROOT=/libredisk-pruebas     # opcional
+export MULTIDRIVE_TEST_GDRIVE_REFRESH_TOKEN=...
+export MULTIDRIVE_TEST_GDRIVE_CLIENT_ID=...
+export MULTIDRIVE_TEST_GDRIVE_CLIENT_SECRET=...
+export MULTIDRIVE_TEST_GDRIVE_ROOT=/multidrive-pruebas     # opcional
 ```
 
 > **Atajo para una prueba suelta:** el OAuth Playground entrega un token de acceso válido
 > una hora usando sus propias credenciales, sin crear ningún proyecto. Autoriza el ámbito
 > `Drive API v3` en el paso 1, canjéalo en el paso 2 y ponlo en
-> `LIBREDISK_TEST_GDRIVE_ACCESS_TOKEN`.
+> `MULTIDRIVE_TEST_GDRIVE_ACCESS_TOKEN`.
 
 ### Tres detalles de Drive que cuestan una tarde
 
 Verificados en el código de `opendal-service-gdrive` 0.57, no supuestos:
 
 - **No crees la carpeta raíz a mano.** El servicio llama a `ensure_dir` en el camino de
-  escritura, así que crea `/libredisk-pruebas` y los niveles que hagan falta en el primer
+  escritura, así que crea `/multidrive-pruebas` y los niveles que hagan falta en el primer
   `put`.
 - **El borrado va a la papelera, no es permanente.** Drive no tiene borrado directo por
   ruta: OpenDAL usa `files.trash`. La limpieza de la suite deja tu Drive sin esos archivos a
   la vista y `exists` responde correctamente, pero unos 6 MB se quedan ocupando cuota en la
   papelera hasta que la vacíes. Que `exists_refleja_el_borrado` pase confirma algo que
-  importa para LibreDisk: el borrado a papelera es indistinguible de uno real desde el
+  importa para MultiDrive: el borrado a papelera es indistinguible de uno real desde el
   contrato de `Backend`.
 - **Ámbito `drive` vs `drive.file`.** El ámbito `drive.file` (solo los archivos que crea la
-  propia aplicación) encaja mejor con LibreDisk y debería ser el de la versión final: limita
-  el daño de un token robado a los datos de LibreDisk en vez de a todo el Drive. Al
+  propia aplicación) encaja mejor con MultiDrive y debería ser el de la versión final: limita
+  el daño de un token robado a los datos de MultiDrive en vez de a todo el Drive. Al
   cambiarlo hay que comprobar la resolución de rutas: OpenDAL localiza cada carpeta
   buscándola en Drive, y con `drive.file` esas búsquedas solo ven lo que creó la aplicación.
   Para la primera prueba, `drive` da menos problemas.
@@ -240,11 +240,11 @@ Verificados en el código de `opendal-service-gdrive` 0.57, no supuestos:
 ## S3 y WebDAV
 
 ```sh
-export LIBREDISK_TEST_S3_BUCKET=... LIBREDISK_TEST_S3_ENDPOINT=... LIBREDISK_TEST_S3_REGION=...
-export LIBREDISK_TEST_S3_ACCESS_KEY_ID=... LIBREDISK_TEST_S3_SECRET_ACCESS_KEY=...
+export MULTIDRIVE_TEST_S3_BUCKET=... MULTIDRIVE_TEST_S3_ENDPOINT=... MULTIDRIVE_TEST_S3_REGION=...
+export MULTIDRIVE_TEST_S3_ACCESS_KEY_ID=... MULTIDRIVE_TEST_S3_SECRET_ACCESS_KEY=...
 
-export LIBREDISK_TEST_WEBDAV_ENDPOINT=https://nextcloud.example/remote.php/dav/files/usuario
-export LIBREDISK_TEST_WEBDAV_USERNAME=... LIBREDISK_TEST_WEBDAV_PASSWORD=...
+export MULTIDRIVE_TEST_WEBDAV_ENDPOINT=https://nextcloud.example/remote.php/dav/files/usuario
+export MULTIDRIVE_TEST_WEBDAV_USERNAME=... MULTIDRIVE_TEST_WEBDAV_PASSWORD=...
 ```
 
 En Nextcloud usa una **contraseña de aplicación** (Ajustes → Seguridad), nunca la del
@@ -261,8 +261,8 @@ error ruidoso, a propósito: la forma clásica de tener pruebas que no prueban n
 `Option` se salte todo por una variable mal escrita.
 
 ```
-Error: configuracion incompleta de 'ONEDRIVE': falta LIBREDISK_TEST_ONEDRIVE_ACCESS_TOKEN,
-o bien LIBREDISK_TEST_ONEDRIVE_REFRESH_TOKEN + ..._CLIENT_ID + ..._CLIENT_SECRET
+Error: configuracion incompleta de 'ONEDRIVE': falta MULTIDRIVE_TEST_ONEDRIVE_ACCESS_TOKEN,
+o bien MULTIDRIVE_TEST_ONEDRIVE_REFRESH_TOKEN + ..._CLIENT_ID + ..._CLIENT_SECRET
 ```
 
 ## MEGA
@@ -270,7 +270,7 @@ o bien LIBREDISK_TEST_ONEDRIVE_REFRESH_TOKEN + ..._CLIENT_ID + ..._CLIENT_SECRET
 **Aplazado.** MEGA no tiene servicio en OpenDAL, así que no entra por el mismo camino que el
 resto. Las dos vías posibles, para cuando toque:
 
-- **`rclone serve webdav` por delante.** rclone sí habla MEGA; LibreDisk lo vería como un
+- **`rclone serve webdav` por delante.** rclone sí habla MEGA; MultiDrive lo vería como un
   backend WebDAV más. Cero código nuevo, pero exige un demonio de rclone corriendo y añade
   un salto de red, así que MEGA dejaría de ser un proveedor nativo.
 - **Crate [`mega`](https://crates.io/crates/mega) (MIT/Apache).** Implementación no oficial
@@ -281,7 +281,7 @@ resto. Las dos vías posibles, para cuando toque:
 
 Estas pruebas hacen peticiones reales: escriben unos 6 MB por proveedor y pasada, y los
 borran. Es despreciable en coste, pero cuenta para los límites de peticiones. Si
-`seis_escrituras_en_paralelo` falla con errores 429, no es un fallo de LibreDisk: es el
+`seis_escrituras_en_paralelo` falla con errores 429, no es un fallo de MultiDrive: es el
 proveedor diciendo cuántas escrituras simultáneas tolera, que es justo el dato que se venía
 a buscar.
 

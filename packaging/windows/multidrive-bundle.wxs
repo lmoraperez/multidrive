@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Instalador completo: WinFsp y MultiDrive en una sola descarga.
+
+  El MSI suelto sigue existiendo, y no por duplicar el trabajo: quien ya administra WinFsp por
+  su cuenta -porque lo comparte con rclone, sshfs-win o Cyberduck- no quiere que le llegue otro
+  paquete que decida por el. Este encadenador es para todos los demas, que son casi todos.
+
+  # Por que se encadena el MSI de WinFsp en vez de meter el controlador dentro
+
+  Porque es la unica forma permitida, y ademas es la correcta. La excepcion FLOSS de WinFsp
+  autoriza "distribuir versiones binarias **sin modificar** del instalador de WinFsp (tal y
+  como las publica el proyecto WinFsp)". Rempaquetar su controlador seria modificarlo.
+
+  Y aunque se pudiera, no habria que hacerlo: el instalador de WinFsp sabe cosas que nosotros
+  no -convivencia de versiones, registro del proveedor de red, firma del controlador- y esta
+  firmado por NAVIMATICS LLC. El nuestro, de momento, no.
+
+  # Que NO hace
+
+  Desinstalar WinFsp al desinstalar MultiDrive. Va marcado como permanente a proposito: puede
+  haber otros programas usandolo, y llevarselo por delante al quitar el nuestro seria
+  romperles el suyo.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+
+  <Bundle
+      Name="MultiDrive"
+      Manufacturer="MultiDrive"
+      Version="$(var.Version)"
+      UpgradeCode="6C0F5A1E-9B3D-4F72-8E41-2A7D5C8B90F3"
+      AboutUrl="https://multidrive.net"
+      Compressed="yes">
+
+    <BootstrapperApplication>
+      <!--
+        La pagina de licencia enlaza a los AVISOS, que llevan las dos licencias: la AGPL de
+        MultiDrive y la GPLv3 de WinFsp con su excepcion. No es un formalismo: la excepcion
+        exige que el aviso de copyright de WinFsp y el enlace a su repositorio aparezcan en
+        la interfaz y en la documentacion, y esta es la interfaz.
+      -->
+      <bal:WixStandardBootstrapperApplication
+          Theme="hyperlinkLicense"
+          LicenseUrl="https://github.com/lmoraperez/multidrive/blob/main/packaging/windows/AVISOS.txt"
+          SuppressOptionsUI="yes" />
+    </BootstrapperApplication>
+
+    <!-- Solo x64: el binario lo es, y el MSI ya se niega en 32 bits. -->
+    <bal:Condition
+        Condition="VersionNT64"
+        Message="MultiDrive solo se distribuye para Windows de 64 bits." />
+
+    <Chain>
+      <!--
+        Sin modificar, tal y como lo publica el proyecto WinFsp. El guion de construccion
+        comprueba su huella SHA-256 **y** su firma Authenticode antes de empaquetarlo: lo que
+        se redistribuye aqui es software de otro, y verificar que es el suyo es lo minimo.
+
+        Burn detecta por su cuenta si ya esta instalado, leyendo el codigo de producto del
+        propio MSI. Si hay una version igual o mas nueva, no lo toca.
+      -->
+      <MsiPackage
+          Id="WinFsp"
+          SourceFile="$(var.WinFspMsi)"
+          DisplayName="WinFsp"
+          Permanent="yes"
+          Vital="yes" />
+
+      <!--
+        `ARPSYSTEMCOMPONENT` esconde la entrada del MSI en "Programas y caracteristicas". Sin
+        ella salen **dos** entradas llamadas MultiDrive -la del encadenador y la del MSI- y la
+        que hay que usar es la del encadenador: quitar el MSI por su cuenta dejaria al
+        encadenador registrado sobre algo que ya no esta.
+
+        Instalado suelto, el MSI no recibe esta propiedad y aparece con normalidad.
+      -->
+      <MsiPackage
+          Id="MultiDrive"
+          SourceFile="$(var.MultiDriveMsi)"
+          DisplayName="MultiDrive"
+          Vital="yes">
+        <MsiProperty Name="ARPSYSTEMCOMPONENT" Value="1" />
+      </MsiPackage>
+    </Chain>
+  </Bundle>
+</Wix>

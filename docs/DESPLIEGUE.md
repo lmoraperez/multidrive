@@ -1,18 +1,19 @@
 # Despliegue del sitio
 
-`libredisk.chambaya.net` se sirve **desde el servidor propio** (no GitHub Pages).
+`multidrive.net` se sirve **desde el servidor propio** (no GitHub Pages).
 
-- DNS: `libredisk.chambaya.net` → `154.197.1.5`, la misma IP que `chambaya.net` y
-  `nextcloud.chambaya.net`.
+- DNS: `multidrive.net` y `www.multidrive.net` → `154.197.1.5`, la misma IP que
+  `chambaya.net` y `nextcloud.chambaya.net`.
 - Servidor web: **Caddy**, con TLS automático de Let's Encrypt.
-- Raíz del sitio: `/var/www/libredisk` (propietario `www-data`).
+- Raíz del sitio: `/var/www/multidrive` (propietario `www-data`).
 - Fuente en este repo: [`site/`](../site).
+- Acceso: `ssh soporte@chambaya.net`, con `sudo` sin contraseña.
 
-Bloque en `/etc/caddy/Caddyfile`:
+Bloques en `/etc/caddy/Caddyfile`:
 
 ```caddyfile
-libredisk.chambaya.net {
-	root * /var/www/libredisk
+multidrive.net, www.multidrive.net {
+	root * /var/www/multidrive
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
@@ -22,14 +23,29 @@ libredisk.chambaya.net {
 	}
 	file_server
 }
+
+libredisk.chambaya.net {
+	redir https://multidrive.net{uri} permanent
+}
 ```
+
+El segundo bloque es el nombre de antes del cambio de marca. Redirige **conservando la
+ruta**, y eso no es un detalle: la política de privacidad registrada en la pantalla de
+consentimiento de Google apunta todavía a
+`https://libredisk.chambaya.net/privacidad.html`. Mientras esa URL no se cambie en Google
+Cloud, el bloque tiene que quedarse; quitarlo dejaría el consentimiento apuntando a un sitio
+que no responde. La copia vieja en `/var/www/libredisk` ya no la sirve nadie.
 
 ## Publicar un cambio
 
 ```sh
-sudo cp site/index.html /var/www/libredisk/index.html
-sudo chown www-data:www-data /var/www/libredisk/index.html
+scp site/index.html site/privacidad.html soporte@chambaya.net:/tmp/
+ssh soporte@chambaya.net '
+  sudo install -o www-data -g www-data -m 644 /tmp/index.html /var/www/multidrive/index.html
+  sudo install -o www-data -g www-data -m 644 /tmp/privacidad.html /var/www/multidrive/privacidad.html'
 ```
+
+Respaldar antes lo que se va a pisar: `sudo cp -p fichero fichero.bak-$(date +%Y%m%d-%H%M%S)`.
 
 No hace falta recargar Caddy para cambios de contenido. Si se toca el `Caddyfile`:
 

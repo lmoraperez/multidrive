@@ -1,28 +1,28 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/libredisk-crypto",
-    "crates/libredisk-raid",
-    "crates/libredisk-backend",
-    "crates/libredisk-core",
-    "crates/libredisk-cli",
-    "crates/libredisk-mount",
-    "crates/libredisk-gui",
+    "crates/multidrive-crypto",
+    "crates/multidrive-raid",
+    "crates/multidrive-backend",
+    "crates/multidrive-core",
+    "crates/multidrive-cli",
+    "crates/multidrive-mount",
+    "crates/multidrive-gui",
 ]
 
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
 license = "AGPL-3.0-or-later"
-repository = "https://github.com/lmoraperez/libredisk"
+repository = "https://github.com/lmoraperez/multidrive"
 rust-version = "1.91"
 
 [workspace.dependencies]
-libredisk-crypto  = { path = "crates/libredisk-crypto" }
-libredisk-raid    = { path = "crates/libredisk-raid" }
-libredisk-backend = { path = "crates/libredisk-backend" }
-libredisk-core    = { path = "crates/libredisk-core" }
-libredisk-mount   = { path = "crates/libredisk-mount" }
+multidrive-crypto  = { path = "crates/multidrive-crypto" }
+multidrive-raid    = { path = "crates/multidrive-raid" }
+multidrive-backend = { path = "crates/multidrive-backend" }
+multidrive-core    = { path = "crates/multidrive-core" }
+multidrive-mount   = { path = "crates/multidrive-mount" }
 
 thiserror = "2"
 anyhow    = "1"
