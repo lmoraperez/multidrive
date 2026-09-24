@@ -564,6 +564,10 @@ function pintarFormularioProveedor() {
     // pedirle a alguien el ID de una aplicación que no es suya es pedirle un dato que no
     // tiene.
     if (c.aplicacion && t.aplicacion_propia) continue;
+    // Los que tienen un valor por defecto que sirve no se preguntan: la carpeta dentro de
+    // una cuenta de nube es siempre la misma, y da igual cómo se llame porque dentro solo
+    // hay blobs opacos que nadie va a abrir desde la web del proveedor.
+    if (c.avanzado) continue;
     if (c.navegador) {
       // No es una caja de texto: es un botón. Nadie debería teclear un token de 200
       // caracteres, y el token tampoco pasa por esta página: se queda en el proceso.
@@ -671,19 +675,6 @@ function resultado(texto, mal = false) {
 
 $("tipo-proveedor").addEventListener("change", pintarFormularioProveedor);
 
-$("probar-proveedor").addEventListener("click", async () => {
-  const boton = $("probar-proveedor");
-  boton.disabled = true;
-  resultado("Probando: escribe, lee y borra un objeto pequeño…");
-  try {
-    resultado(await invoke("probar_proveedor", { tipo: $("tipo-proveedor").value, campos: campos() }));
-  } catch (err) {
-    resultado(String(err), true);
-  } finally {
-    parar();
-    boton.disabled = false;
-  }
-});
 
 $("guardar-proveedor").addEventListener("click", async () => {
   const boton = $("guardar-proveedor");
