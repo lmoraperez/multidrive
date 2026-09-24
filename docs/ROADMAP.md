@@ -355,14 +355,13 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] Aplicación registrada en **Google Cloud**, cliente de tipo escritorio, y política de
       privacidad publicada en libredisk.chambaya.net
 - [ ] **Topología lineal: que las capacidades desiguales se sumen.** Hoy manda el proveedor
-      con menos sitio, así que 15 GB + 5 GB + 1 TB dan 15 GB y no 1,02 TB. La web prometía
-      «un solo volumen agregado», que se leía como que se suman; ya está corregida. Sumarlo
-      pide colocar **cada trozo entero en un proveedor** en vez de repartirlo, y eso rompe la
-      propiedad de la que cuelgan tres cosas: que cada trozo toque a todos en un índice fijo
-      es lo que hace `scrub` barato, lo que permite `rescue` sin base de datos y lo que evita
-      buscar al leer. Hay que resolver dónde se apunta la colocación —o buscar en todos— y
-      adaptar `scrub`, `rescue` y el rebalanceo. Mismo riesgo que `union`: perder uno se lleva
-      el volumen, porque cada trozo vive en uno solo
+      con menos sitio, así que 15 GB + 5 GB + 1 TB dan 15 GB y no 1,02 TB. Comparación
+      completa en
+      [ARQUITECTURA.md](ARQUITECTURA.md#topología-lineal-lo-que-hay-contra-lo-que-daría):
+      al analizarla salió que **no es solo capacidad** —también lee más barato, dice qué se
+      perdió cuando cae un proveedor, y ampliar mueve una fracción en vez del volumen
+      entero— y que `scrub` y `rescue` **sobreviven** si la colocación se deriva del propio
+      trozo en vez de decidirse sobre la marcha, que era lo que parecía que iba a romperse
 - [ ] Registrar la aplicación en **Azure** para OneDrive. Los pasos están en
       [APLICACION-OAUTH.md](APLICACION-OAUTH.md); es bastante menos trámite que Google, porque
       Microsoft no exige evaluación de ámbitos ni pone tope de usuarios
