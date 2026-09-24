@@ -225,3 +225,89 @@ fn nombre_corto(clave: &str) -> String {
         .map(|c| c.clave.to_string())
         .unwrap_or_else(|| clave.to_string())
 }
+
+/// Conecta una cuenta de nube por el navegador y la guarda, contando cada paso.
+///
+/// Es lo mismo que hace el botón de la ventana. Existe aparte por dos motivos:
+///
+/// - Un servidor no tiene ventana, y esto se puede ejecutar por SSH con reenvío de
+///   navegador, o copiando la dirección a mano cuando falla al abrirlo.
+/// - **Se ve lo que pasa.** La ventana no tiene consola detrás, así que cuando algo se
+///   queda a medias no hay donde mirar; aquí cada paso dice cuándo empieza y cuánto tardó.
+pub async fn conectar(tipo: &str) -> Result<()> {
+    let tipo = tipo.to_uppercase();
+    let t = catalogo::tipo(&tipo).ok_or_else(|| anyhow!("no conozco el tipo '{tipo}'"))?;
+    let oauth = t
+        .oauth
+        .ok_or_else(|| anyhow!("'{}' no se conecta por navegador", t.etiqueta))?;
+
+    let app = libredisk_backend::aplicacion::configurada(&tipo).ok_or_else(|| {
+        anyhow!(
+            "esta copia no trae aplicacion registrada para {}. Ver docs/APLICACION-OAUTH.md",
+            t.etiqueta
+        )
+    })?;
+
+    let ranura = live::hueco_libre_configurado(t)?
+        .ok_or_else(|| anyhow!("no quedan ranuras libres de tipo {}", t.clave))?;
+    let nombre = live::nombre_de_ranura(&ranura);
+    println!("Se conectara como '{nombre}'.");
+    println!();
+
+    let reloj = std::time::Instant::now();
+    println!("[1/4] abriendo el navegador; entra en tu cuenta y da permiso...");
+    let conectada = libredisk_backend::oauth::conectar(
+        oauth,
+        &app.client_id,
+        &app.client_secret,
+        &libredisk_backend::oauth::abrir_en_navegador,
+    )
+    .await?;
+    println!(
+        "      cuenta conectada ({:.1} s)",
+        reloj.elapsed().as_secs_f64()
+    );
+
+    let valores = |c: &str| match c {
+        "REFRESH_TOKEN" => Some(conectada.refresh_token.clone()),
+        _ => None,
+    };
+    let backend = live::construir_uno(t, &ranura, &valores)?;
+
+    let reloj = std::time::Instant::now();
+    println!("[2/4] comprobando que escribe, lee y borra...");
+    match conformance::prueba_rapida(&backend).await {
+        Ok(que) => println!(
+            "      {que}\n      ({:.1} s)",
+            reloj.elapsed().as_secs_f64()
+        ),
+        Err(e) => bail!("no se guarda nada porque el proveedor no responde: {e}"),
+    }
+
+    let reloj = std::time::Instant::now();
+    println!("[3/4] comprobando que no sea una cuenta ya configurada...");
+    match live::ya_configurada(t, &backend).await {
+        Ok(Some(otro)) => bail!(
+            "esa cuenta ya esta configurada como '{otro}'.\n\
+             Dos proveedores sobre la misma cuenta no son redundancia: se verian como dos,\n\
+             pero el dia que se pierda la cuenta se pierden los dos a la vez."
+        ),
+        Ok(None) => println!(
+            "      es una cuenta nueva ({:.1} s)",
+            reloj.elapsed().as_secs_f64()
+        ),
+        // No poder comprobarlo no bloquea, pero se dice: la proxima cifra de «aguanta perder
+        // uno» se habra calculado sin saberlo.
+        Err(e) => println!("      AVISO: no se pudo comprobar: {e}"),
+    }
+
+    println!("[4/4] guardando...");
+    let fichero = config::fichero_de_usuario()
+        .context("no se sabe donde vive la configuracion de este usuario")?;
+    config::guardar(&fichero, &live::claves_de(t, &ranura, &valores))?;
+
+    println!();
+    println!("guardado        {nombre}");
+    println!("en              {}", fichero.display());
+    Ok(())
+}

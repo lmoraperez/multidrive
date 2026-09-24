@@ -602,6 +602,31 @@ async fn limpiar(b: &dyn Backend, esc: &Escenario) -> Result<(), BackendError> {
     }
 }
 
+/// Cuanto se espera a cada operacion de la comprobacion.
+///
+/// Existe porque sin el la ventana se queda en «Comprobando que escribe y lee…» para
+/// siempre, sin decir en que paso ni por que. Una pantalla que espera indefinidamente es un
+/// fallo por si misma, aunque debajo haya otro: no deja ni reintentar ni entender.
+///
+/// Minuto y medio por operacion es de sobra para escribir 34 bytes en cualquier nube, con
+/// margen para los reintentos que hace la capa de red por su cuenta.
+const PACIENCIA: std::time::Duration = std::time::Duration::from_secs(90);
+
+/// Una operacion de la comprobacion, con limite de tiempo y diciendo cual era.
+async fn paso<T>(
+    que: &str,
+    f: impl std::future::Future<Output = Result<T, BackendError>>,
+) -> Result<T, String> {
+    match tokio::time::timeout(PACIENCIA, f).await {
+        Ok(Ok(v)) => Ok(v),
+        Ok(Err(e)) => Err(format!("{que}: {e}")),
+        Err(_) => Err(format!(
+            "{que}: el proveedor no contesto en {} segundos. No se ha guardado nada",
+            PACIENCIA.as_secs()
+        )),
+    }
+}
+
 /// Comprobacion minima para decidir si un proveedor recien tecleado sirve.
 ///
 /// No es la suite: son cuatro operaciones y unos pocos segundos, porque esto se ejecuta con
@@ -613,6 +638,9 @@ async fn limpiar(b: &dyn Backend, esc: &Escenario) -> Result<(), BackendError> {
 /// credenciales malas, carpeta inexistente, permisos de solo lectura y, sobre todo, **que lo
 /// leido sea lo escrito**. Un proveedor que acepta escrituras y devuelve otra cosa es peor
 /// que uno que falla, porque el fallo aparece mucho mas tarde y lejos.
+///
+/// Cada paso lleva su propio limite de tiempo. Sin eso, un proveedor que no contesta deja la
+/// interfaz esperando sin decir en que se quedo.
 ///
 /// Limpia lo que escribe. Si no pudiera borrarlo, lo dice: dejar restos en la cuenta de
 /// alguien sin avisar no esta bien, y ademas indica que el proveedor no sirve para un
@@ -628,15 +656,13 @@ pub async fn prueba_rapida(b: &dyn Backend) -> Result<String, String> {
     );
     let contenido = b"LibreDisk comprobando el proveedor".to_vec();
 
-    b.put(&clave, contenido.clone())
-        .await
-        .map_err(|e| format!("no se pudo escribir: {e}"))?;
+    paso("no se pudo escribir", b.put(&clave, contenido.clone())).await?;
 
-    let leido = match b.get(&clave).await {
+    let leido = match paso("se escribio, pero no se pudo leer de vuelta", b.get(&clave)).await {
         Ok(v) => v,
         Err(e) => {
             b.delete(&clave).await.ok();
-            return Err(format!("se escribio, pero no se pudo leer de vuelta: {e}"));
+            return Err(e);
         }
     };
     if leido != contenido {
@@ -649,9 +675,11 @@ pub async fn prueba_rapida(b: &dyn Backend) -> Result<String, String> {
         ));
     }
 
-    b.delete(&clave)
-        .await
-        .map_err(|e| format!("se escribio y se leyo, pero no se pudo borrar: {e}"))?;
+    paso(
+        "se escribio y se leyo, pero no se pudo borrar",
+        b.delete(&clave),
+    )
+    .await?;
 
     Ok(format!(
         "escribe, lee lo mismo que escribio y borra. Comprobado con {} bytes.\n\
