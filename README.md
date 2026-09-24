@@ -153,10 +153,17 @@ completos, ninguno puede leerlos, y la caída de uno no te deja sin volumen.**
 
 | Problema | Respuesta de LibreDisk |
 |---|---|
-| Tengo 15 GB aquí, 5 GB allá, 1 TB en otro lado | Un solo volumen agregado |
+| Tengo cuentas sueltas en varios sitios | Un solo volumen sobre todas, cifrado y con RAID |
 | Si el proveedor me suspende la cuenta, lo pierdo todo | Paridad *k de n*: sobrevive a la pérdida de *m* proveedores |
 | El proveedor puede leer mis archivos | Cifrado en cliente (XChaCha20-Poly1305), nombres incluidos |
 | Vendor lock-in | Añade o retira proveedores eligiendo qué priorizar, sin dejar de poder leer el volumen. **Retirar funciona aunque la cuenta ya no responda** |
+
+**Sobre el espacio, con todas las letras: manda el proveedor con menos sitio.** Los trozos se
+reparten a partes iguales entre todos, así que cuando el más pequeño se llena no cabe nada más
+aunque a los otros les sobre. Con 15 GB, 5 GB y 1 TB el volumen sale de **5 GB** en espejo y
+**15 GB** en unión, no de 1,02 TB. Esto decía «un solo volumen agregado», que se leía como que
+las capacidades se suman; no se suman. Sumar lo desigual pediría colocar cada trozo entero en
+un proveedor en vez de repartirlo, que es otra topología y todavía no existe.
 
 ## Qué **no** es
 
