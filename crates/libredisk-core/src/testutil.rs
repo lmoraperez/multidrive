@@ -116,3 +116,34 @@ pub fn store(layout: Layout) -> ChunkStore {
 pub fn store_sobre(backends: &[Arc<dyn Backend>], layout: Layout) -> ChunkStore {
     ChunkStore::new(layout, backends.to_vec(), clave()).unwrap()
 }
+
+/// Un proveedor que no se deja enumerar.
+///
+/// Lo usan dos modulos, y por motivos que son el mismo mirado desde dos lados: que un
+/// proveedor mudo **no se tome por vacio**. En `scrub` eso convertiria una caida pasajera en
+/// una perdida total sobre el papel; al retirar un volumen, haria que se borrara a medias
+/// diciendo que termino.
+pub struct NoEnumera(pub OpendalBackend);
+
+#[async_trait]
+impl Backend for NoEnumera {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+    async fn put(&self, key: &str, data: Vec<u8>) -> Result<(), BackendError> {
+        self.0.put(key, data).await
+    }
+    async fn get(&self, key: &str) -> Result<Vec<u8>, BackendError> {
+        self.0.get(key).await
+    }
+    async fn delete(&self, key: &str) -> Result<(), BackendError> {
+        self.0.delete(key).await
+    }
+    async fn exists(&self, key: &str) -> Result<bool, BackendError> {
+        self.0.exists(key).await
+    }
+    /// Cualquier fallo sirve: lo que se prueba es que no se traduce a "vacio".
+    async fn list(&self, _prefix: &str) -> Result<Vec<Objeto>, BackendError> {
+        Err(BackendError::NotFound("el proveedor no responde".into()))
+    }
+}

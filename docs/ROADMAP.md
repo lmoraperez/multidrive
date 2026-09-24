@@ -301,6 +301,19 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] La ventana dice cuántas hay ya de ese tipo, con qué nombre se guardará la nueva y que
       las anteriores no se pisan. Los nombres son `gdrive`, `gdrive1`, `gdrive2`… — la primera
       sin número, que es la convención con la que nacieron las carpetas locales
+- [x] **Abrir y retirar el volumen desde la ventana.** El formulario de la frase de paso ya
+      estaba, pero no se veía: su visibilidad se decidía **solo dentro de la rama de «hay un
+      problema»**, así que quien creaba un volumen y volvía a esa pantalla leía «hace falta la
+      frase de paso» sin tener dónde escribirla. Ahora se decide siempre
+- [x] Retirar pide **escribir los nombres de los proveedores**, igual que en la línea de
+      órdenes, y enseña antes la topología, los proveedores y cuántos fragmentos y bytes se
+      van a borrar. Un botón que solo hay que pulsar se pulsa sin leer, y esto no tiene vuelta
+      atrás. El botón de borrar no se enciende hasta que lo escrito coincide
+- [x] Antes de borrar se desmonta y se cierra el volumen: borrarlo con algo montado dejaría
+      una unidad sirviendo algo que ya no existe
+- [x] La lógica de retirar vive en el núcleo y la usan las dos interfaces. Dos copias de un
+      borrado acaban discrepando en qué borran, y la que discrepa se lleva algo por delante.
+      De paso dejó de enumerar dos veces, que contra una nube son minutos duplicados
 - [x] **`libredisk volume destroy`**, que no existía: no había forma de retirar un volumen.
       Borra sus fragmentos, su raíz y su cabecera, y **solo eso** — si guardaste otras cosas
       en esa carpeta siguen donde estaban, comprobado con un test contra carpetas locales

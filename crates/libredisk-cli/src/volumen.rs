@@ -1465,26 +1465,14 @@ pub async fn destroy(confirmacion: Option<String>) -> Result<()> {
 
     // Contar antes de borrar. Cuesta una enumeracion por proveedor, y es lo que convierte
     // "se va a borrar el volumen" en una cifra que se puede mirar antes de decir que si.
-    let mut total = 0usize;
-    let mut bytes = 0u64;
-    for b in &backends {
-        match b.list(libredisk_core::SHARD_PREFIX).await {
-            Ok(objetos) => {
-                total += objetos.len();
-                bytes += objetos.iter().map(|o| o.bytes).sum::<u64>();
-            }
-            Err(e) => {
-                // Un proveedor que no se deja enumerar no se puede limpiar, y decir "hecho"
-                // dejando fragmentos detras seria mentir sobre algo irreversible.
-                bail!(
-                    "no se pudo enumerar '{}': {e}\nNo se borra nada: sin poder mirarlo \
-                     entero, el recuento de abajo seria falso.",
-                    Backend::name(b.as_ref())
-                );
-            }
-        }
-    }
-    println!("  fragmentos    {total} ({})", tamano(bytes));
+    let inventario = libredisk_core::retirar::inventariar(&backends)
+        .await
+        .context("no se borra nada: sin poder mirarlo entero, el recuento seria falso")?;
+    println!(
+        "  fragmentos    {} ({})",
+        inventario.fragmentos(),
+        tamano(inventario.bytes())
+    );
     println!();
 
     let esperado = nombres.join(",");
@@ -1499,29 +1487,15 @@ pub async fn destroy(confirmacion: Option<String>) -> Result<()> {
         }
     }
 
-    let mut borrados = 0usize;
-    for b in &backends {
-        let nombre = Backend::name(b.as_ref()).to_string();
-        // Los fragmentos primero y la cabecera **la ultima**: si esto se corta a la mitad, un
-        // volumen sin fragmentos pero con cabecera se diagnostica --`scrub` dira que falta
-        // todo--, mientras que fragmentos sin cabecera son basura anonima que ya nadie sabe
-        // de quien era.
-        let objetos = b.list(libredisk_core::SHARD_PREFIX).await?;
-        for o in &objetos {
-            b.delete(&o.clave).await?;
-            borrados += 1;
-        }
-        b.delete(libredisk_core::tree::ROOT_KEY).await?;
-        b.delete(libredisk_core::header::HEADER_KEY).await?;
-        println!(
-            "  {nombre}: {} fragmento(s), raiz y cabecera",
-            objetos.len()
-        );
+    let hecho = libredisk_core::retirar::retirar(&backends).await?;
+    for (nombre, n, _) in &hecho.por_proveedor {
+        println!("  {nombre}: {n} fragmento(s), raiz y cabecera");
     }
 
     println!();
     println!(
-        "retirado      {borrados} fragmento(s) en {} proveedor(es)",
+        "retirado      {} fragmento(s) en {} proveedor(es)",
+        hecho.fragmentos(),
         backends.len()
     );
     println!();

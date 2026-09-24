@@ -29,6 +29,7 @@ pub mod file;
 pub mod header;
 pub mod rebalance;
 pub mod rescue;
+pub mod retirar;
 pub mod sincronizador;
 pub mod tree;
 pub mod writeback;
@@ -40,6 +41,8 @@ mod testutil;
 pub enum CoreError {
     #[error("ya hay un volumen en estos proveedores")]
     YaHayVolumen,
+    #[error("el proveedor '{proveedor}' no se dejo enumerar: {motivo}")]
+    NoSeDejaEnumerar { proveedor: String, motivo: String },
     #[error("no se puede cambiar la topologia: {0}")]
     Rebalanceo(String),
     #[error("la topologia {layout} necesita {needed} proveedores y se configuraron {given}")]
@@ -832,10 +835,9 @@ impl ChunkStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libredisk_backend::Objeto;
+    use crate::testutil::NoEnumera;
     use std::sync::atomic::Ordering;
 
-    use async_trait::async_trait;
     use libredisk_backend::OpendalBackend;
 
     use crate::testutil::{clave, como_backends, contadores, reiniciar, store};
@@ -1165,31 +1167,6 @@ mod tests {
 
     #[tokio::test]
     async fn un_proveedor_que_falla_al_enumerar_se_declara_en_vez_de_darse_por_vacio() {
-        struct NoEnumera(OpendalBackend);
-
-        #[async_trait]
-        impl Backend for NoEnumera {
-            fn name(&self) -> &str {
-                self.0.name()
-            }
-            async fn put(&self, key: &str, data: Vec<u8>) -> Result<(), BackendError> {
-                self.0.put(key, data).await
-            }
-            async fn get(&self, key: &str) -> Result<Vec<u8>, BackendError> {
-                self.0.get(key).await
-            }
-            async fn delete(&self, key: &str) -> Result<(), BackendError> {
-                self.0.delete(key).await
-            }
-            async fn exists(&self, key: &str) -> Result<bool, BackendError> {
-                self.0.exists(key).await
-            }
-            /// Cualquier fallo sirve: lo que se prueba es que no se traduce a "vacio".
-            async fn list(&self, _prefix: &str) -> Result<Vec<Objeto>, BackendError> {
-                Err(BackendError::NotFound("el proveedor no responde".into()))
-            }
-        }
-
         let layout = Layout::ReedSolomon { k: 4, m: 2 };
         let backends: Vec<Arc<dyn Backend>> = (0..layout.shard_count())
             .map(|i| {

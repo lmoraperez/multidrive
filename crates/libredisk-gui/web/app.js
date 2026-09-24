@@ -51,12 +51,19 @@ async function arrancar() {
   if (a.proveedores.length) refrescarEspacio($("espacio"));
   else $("espacio").replaceChildren(nota("No hay ningún proveedor configurado."));
 
+  // La visibilidad se decide **siempre**, no solo cuando hay un problema. Antes se fijaba
+  // dentro de esa rama, asi que quien creaba un volumen y volvia a esta pantalla se
+  // encontraba con que decia «hace falta la frase de paso» y no habia donde escribirla: el
+  // formulario seguia oculto de cuando no habia volumen que abrir.
+  $("formulario").hidden = !a.hay_volumen;
+  $("retirar").hidden = !a.hay_volumen;
+  $("confirmar-borrado").hidden = true;
+  $("confirmar-borrado").replaceChildren();
+
   if (a.problema) {
     // Sin volumen no hay nada que abrir: pedir la frase seria pedir algo inutil. Pero si hay
     // proveedores configurados, si hay algo que hacer: crearlo.
-    const creable = !a.hay_volumen && a.proveedores.length > 0;
-    $("formulario").hidden = !a.hay_volumen;
-    if (creable) {
+    if (!a.hay_volumen && a.proveedores.length > 0) {
       $("cabecera").textContent = "No hay ningún volumen todavía.";
       await ofrecerCreacion(a.proveedores);
     } else {
@@ -739,4 +746,117 @@ async function guardado(g) {
   // Después de repintar, porque repintar borra el resultado anterior.
   await prepararAlta();
   resultado(texto);
+}
+
+// ---------------------------------------------------------------------------------------
+// Retirar el volumen
+// ---------------------------------------------------------------------------------------
+
+$("pedir-borrar").addEventListener("click", async () => {
+  const caja = $("confirmar-borrado");
+  const boton = $("pedir-borrar");
+  boton.disabled = true;
+  caja.hidden = false;
+  const parar = contando(
+    caja.appendChild(nota("")),
+    "Mirando qué hay que borrar; enumera cada proveedor y puede tardar…",
+  );
+  try {
+    const v = await invoke("volumen_a_borrar");
+    parar();
+    pedirConfirmacion(v);
+  } catch (err) {
+    parar();
+    caja.replaceChildren();
+    const mal = nota(String(err));
+    mal.className = "aviso mal";
+    caja.append(mal);
+  } finally {
+    boton.disabled = false;
+  }
+});
+
+/**
+ * Enseña qué se va a borrar y pide escribirlo para confirmar.
+ *
+ * Se pide **escribir los nombres de los proveedores** y no pulsar «sí»: obliga a mirar la
+ * lista. Un botón que solo hay que pulsar se pulsa sin leer, y esto no tiene vuelta atrás.
+ */
+function pedirConfirmacion(v) {
+  const caja = $("confirmar-borrado");
+  const partes = [];
+
+  const resumen = document.createElement("dl");
+  definiciones(resumen, [
+    ["topologia", v.layout],
+    ["proveedores", v.proveedores.join(", ")],
+    ["fragmentos", `${v.fragmentos} (${tamano(v.bytes)})`],
+  ]);
+  partes.push(resumen);
+
+  const grave = nota(
+    "Esto borra los fragmentos, la raíz y la cabecera de TODOS los proveedores. " +
+      "No se puede deshacer y no hay papelera. Lo que no sea del volumen se queda donde está.",
+  );
+  grave.className = "aviso mal";
+  partes.push(grave);
+
+  const etiqueta = document.createElement("label");
+  etiqueta.htmlFor = "texto-confirmar";
+  etiqueta.textContent = `Para confirmar, escribe: ${v.confirmacion}`;
+  const campo = document.createElement("input");
+  campo.type = "text";
+  campo.id = "texto-confirmar";
+  campo.autocomplete = "off";
+  campo.spellcheck = false;
+
+  const borrar = document.createElement("button");
+  borrar.textContent = "Eliminar el volumen";
+  borrar.disabled = true;
+  // El botón no se enciende hasta que lo escrito coincide. Así el paso de leer no se puede
+  // saltar a base de clics.
+  campo.addEventListener("input", () => {
+    borrar.disabled = campo.value.trim() !== v.confirmacion;
+  });
+
+  const cancelar = document.createElement("button");
+  cancelar.className = "secundario";
+  cancelar.textContent = "Cancelar";
+  cancelar.addEventListener("click", () => {
+    caja.replaceChildren();
+    caja.hidden = true;
+  });
+
+  const fila = document.createElement("div");
+  fila.className = "enlinea";
+  fila.append(cancelar, borrar);
+
+  const estado = nota("");
+  estado.hidden = true;
+
+  borrar.addEventListener("click", async () => {
+    borrar.disabled = true;
+    cancelar.disabled = true;
+    estado.hidden = false;
+    estado.className = "nota";
+    const parar = contando(estado, "Borrando de cada proveedor…");
+    try {
+      const dicho = await invoke("borrar_volumen", { confirmacion: campo.value.trim() });
+      parar();
+      caja.replaceChildren();
+      caja.hidden = true;
+      // Se vuelve a arrancar: ya no hay volumen, así que la pantalla es otra.
+      await arrancar();
+      aviso(dicho);
+    } catch (err) {
+      parar();
+      estado.className = "aviso mal";
+      estado.textContent = String(err);
+      cancelar.disabled = false;
+    }
+  });
+
+  partes.push(etiqueta, campo, fila, estado);
+  caja.replaceChildren(...partes);
+  campo.focus();
 }

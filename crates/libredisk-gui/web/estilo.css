@@ -167,3 +167,9 @@ select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 /* El boton de abrir el alta ocupa el ancho: es una accion de la pantalla, no un detalle
    al lado de un titulo. */
 #abrir-alta { width: 100%; }
+
+/* Retirar el volumen: separado y al final, porque es lo unico de esa pantalla que no tiene
+   vuelta atras. */
+#retirar { margin-top: 34px; padding-top: 22px; border-top: 1px solid var(--line); }
+#confirmar-borrado { margin-top: 14px; }
+#confirmar-borrado dl { margin: 0 0 14px; }
