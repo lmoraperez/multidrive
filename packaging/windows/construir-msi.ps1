@@ -293,6 +293,7 @@ Ejecutar -Programa "wix" -Argumentos @(
     "-arch", "x64",
     "-ext", "WixToolset.BootstrapperApplications.wixext",
     "-d", "Version=$Version",
+    "-d", "RepoDir=$repo",
     "-d", "WinFspMsi=$winfsp",
     "-d", "MultiDriveMsi=$msi",
     "-o", $bundle)

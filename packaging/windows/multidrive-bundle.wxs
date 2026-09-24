@@ -31,6 +31,7 @@
       Version="$(var.Version)"
       UpgradeCode="6C0F5A1E-9B3D-4F72-8E41-2A7D5C8B90F3"
       AboutUrl="https://multidrive.net"
+      IconSourceFile="$(var.RepoDir)\marca\icono.ico"
       Compressed="yes">
 
     <BootstrapperApplication>
