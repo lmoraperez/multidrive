@@ -354,14 +354,27 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       promete la política de privacidad, no una promesa
 - [x] Aplicación registrada en **Google Cloud**, cliente de tipo escritorio, y política de
       privacidad publicada en libredisk.chambaya.net
-- [ ] **Topología lineal: que las capacidades desiguales se sumen.** Hoy manda el proveedor
-      con menos sitio, así que 15 GB + 5 GB + 1 TB dan 15 GB y no 1,02 TB. Comparación
-      completa en
-      [ARQUITECTURA.md](ARQUITECTURA.md#topología-lineal-lo-que-hay-contra-lo-que-daría):
-      al analizarla salió que **no es solo capacidad** —también lee más barato, dice qué se
-      perdió cuando cae un proveedor, y ampliar mueve una fracción en vez del volumen
-      entero— y que `scrub` y `rescue` **sobreviven** si la colocación se deriva del propio
-      trozo en vez de decidirse sobre la marcha, que era lo que parecía que iba a romperse
+- [x] **Topología `lineal`: las capacidades desiguales se suman.** Cada trozo va **entero** a
+      un proveedor, elegido a partir de su propio identificador en proporción a lo que cada
+      uno aporta. Con 15 GB + 5 GB + 1 TB da **1,02 TB**, donde espejo da 5 y unión 15.
+      Comparación en [ARQUITECTURA.md](ARQUITECTURA.md#union-contra-lineal)
+- [x] La colocación **se calcula, no se apunta**, y eso es lo que mantiene en pie el resto:
+      `scrub` sigue enumerando una vez por proveedor y `rescue` sigue reconstruyendo sin
+      ninguna base de datos local. Una tabla de colocación *sería* esa base de datos, y
+      perderla sería perder el volumen
+- [x] Reparto por máximo ponderado y no un resto de división: con el resto, añadir un
+      proveedor movería casi **todos** los trozos. Medido en un test: añadir el cuarto a tres
+      mueve el 25 % y **solo hacia el nuevo**, nunca entre los viejos
+- [x] `tolerated_failures` deja de derivarse de una resta. En `lineal`, «hace falta 1
+      fragmento de n» no significa que sobren `n − 1`: significa que cada trozo está en uno
+      concreto. La resta habría dicho que aguanta `n − 1` caídas, que es la mentira más cara
+      que puede decir esa función porque es el número con el que se elige la topología
+- [x] Leer en `lineal` es **una petición**, no una por proveedor. Lo fija un test que cuenta
+      llamadas
+- [ ] Añadir un proveedor a un volumen lineal que ya existe. Es lo que abarata el reparto por
+      máximo, pero el rebalanceo todavía no sabe mover solo la fracción que cambia: el camino
+      que hay reescribiría el volumen entero, así que de momento se rechaza en vez de hacer lo
+      caro fingiendo que es lo barato
 - [ ] Registrar la aplicación en **Azure** para OneDrive. Los pasos están en
       [APLICACION-OAUTH.md](APLICACION-OAUTH.md); es bastante menos trámite que Google, porque
       Microsoft no exige evaluación de ámbitos ni pone tope de usuarios

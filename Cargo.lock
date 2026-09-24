@@ -2376,6 +2376,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
+ "futures",
  "libredisk-backend",
  "libredisk-core",
  "libredisk-crypto",

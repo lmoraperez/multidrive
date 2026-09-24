@@ -311,6 +311,7 @@ async function ofrecerCreacion(proveedores) {
     op.dataset.sinRed = o.sin_red ? "1" : "";
     if (o.libre !== null) op.dataset.libre = String(o.libre);
     if (o.sin_medir.length) op.dataset.sinMedir = o.sin_medir.join(", ");
+    if (o.suma) op.dataset.suma = "1";
     sel.append(op);
   }
   // La primera de la lista es la que más aguanta. Que el valor por defecto sea el prudente
@@ -340,10 +341,13 @@ function mostrarPrecio() {
     // Sin redundancia, el aviso no es un matiz del precio: es lo único que hay que saber
     // antes de elegirlo. Va en rojo y con todas las letras.
     detalle.className = "aviso mal";
-    detalle.textContent =
-      "NO aguanta ninguna caída: si un proveedor falla o te cierra la cuenta, pierdes el " +
-      "volumen ENTERO, no una parte. A cambio aprovechas el 100 % del espacio y repartes " +
-      "la lectura y la escritura entre todos.";
+    detalle.textContent = op.dataset.suma
+      ? "NO aguanta ninguna caída: si un proveedor falla o te cierra la cuenta, pierdes el " +
+        "volumen ENTERO. A cambio suma el espacio de todos, aunque sean de tamaños muy " +
+        "distintos, y leer cuesta una petición en vez de una por proveedor."
+      : "NO aguanta ninguna caída: si un proveedor falla o te cierra la cuenta, pierdes el " +
+        "volumen ENTERO, no una parte. A cambio aprovechas el 100 % del espacio y repartes " +
+        "la lectura y la escritura entre todos.";
   } else {
     detalle.className = "nota";
     detalle.textContent =
@@ -355,20 +359,29 @@ function mostrarPrecio() {
 
   if (op.dataset.libre) {
     // La letra pequeña no es un descargo: es lo que evita que alguien planifique con una
-    // cifra que no significa lo que parece.
+    // cifra que no significa lo que parece. Y no significa lo mismo en las dos: al repartir
+    // cada trozo entre todos manda el más pequeño, y al poner cada trozo en uno se suman.
     caja.append(
       nota(
-        "Manda el proveedor con menos sitio: los trozos se reparten a partes iguales, así " +
-          "que cuando el más pequeño se llena no cabe nada más aunque a los otros les sobre. " +
-          "Y sale de lo que declara cada nube, que va por detrás de lo que acabas de escribir.",
+        op.dataset.suma
+          ? "Cada trozo va entero a un proveedor, elegido en proporción a lo que cada uno " +
+              "aporta, así que el espacio se suma aunque las cuentas sean muy desiguales. " +
+              "Sale de lo que declara cada nube, que va por detrás de lo que acabas de escribir."
+          : "Manda el proveedor con menos sitio: los trozos se reparten a partes iguales, " +
+              "así que cuando el más pequeño se llena no cabe nada más aunque a los otros " +
+              "les sobre. Y sale de lo que declara cada nube, que va por detrás de lo que " +
+              "acabas de escribir.",
       ),
     );
   }
   if (op.dataset.sinMedir) {
+    // En las que reparten, dejar fuera a uno da un número optimista: podría ser el más
+    // apretado. En la que suma es al revés — falta su aporte, así que se queda corto.
     const aviso = nota(
-      `Es un techo, no una medida: ${op.dataset.sinMedir} no declara${
-        op.dataset.sinMedir.includes(",") ? "n" : ""
-      } su cupo, así que la cifra se ha calculado sin contarlo.`,
+      `${op.dataset.suma ? "Se queda corta" : "Es un techo, no una medida"}: ` +
+        `${op.dataset.sinMedir} no declara${
+          op.dataset.sinMedir.includes(",") ? "n" : ""
+        } su cupo, así que la cifra se ha calculado sin contarlo.`,
     );
     aviso.className = "aviso";
     caja.append(aviso);

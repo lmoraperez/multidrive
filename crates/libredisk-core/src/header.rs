@@ -62,6 +62,17 @@ pub struct Header {
     /// posicion de su proveedor, asi que abrir el volumen con los mismos proveedores en otro
     /// orden leeria cada fragmento del sitio equivocado.
     pub backends: Vec<String>,
+    /// Cuanto aporta cada proveedor, **en el mismo orden**.
+    ///
+    /// Solo lo usa `lineal`, que elige a que proveedor va cada trozo a partir de estos
+    /// pesos. Va en la cabecera y no se recalcula al arrancar **a proposito**: si dependiera
+    /// de lo que cada nube declare libre en cada momento, un trozo escrito ayer se buscaria
+    /// hoy en otro sitio y el volumen se desmontaria solo.
+    ///
+    /// Vacio en las demas topologias, y con valor por defecto para que las cabeceras
+    /// escritas antes de que esto existiera se sigan leyendo.
+    #[serde(default)]
+    pub pesos: Vec<u64>,
 }
 
 impl Header {
@@ -90,7 +101,8 @@ impl Header {
         let key = MasterKey::derive(frase, &self.salt)?;
         Ok(ChunkStore::new(layout, backends, key)?
             .with_cache(cache_bytes)
-            .with_reparto(self.reparto))
+            .with_reparto(self.reparto)
+            .with_pesos(self.pesos.clone()))
     }
 
     /// La topologia que declara, ya interpretada.
@@ -143,6 +155,7 @@ pub async fn crear(
     backends: Vec<Arc<dyn Backend>>,
     layout: Layout,
     frase: &str,
+    pesos: Vec<u64>,
 ) -> Result<ChunkStore, CoreError> {
     if backends.len() != layout.shard_count() {
         return Err(CoreError::BackendCount {
@@ -162,11 +175,12 @@ pub async fn crear(
         reparto: 0,
         salt: salt.to_vec(),
         backends: backends.iter().map(|b| b.name().to_string()).collect(),
+        pesos: pesos.clone(),
     };
     write(&backends, &header).await?;
 
     let key = MasterKey::derive(frase, &salt)?;
-    ChunkStore::new(layout, backends, key)
+    Ok(ChunkStore::new(layout, backends, key)?.with_pesos(pesos))
 }
 
 /// Escribe la cabecera en todos los proveedores.
@@ -278,6 +292,7 @@ mod tests {
             reparto: 0,
             salt: vec![1, 2, 3],
             backends: vec!["bueno".into(), "caido".into()],
+            pesos: Vec::new(),
         };
         write(std::slice::from_ref(&bueno), &h).await.unwrap();
 
@@ -296,6 +311,7 @@ mod tests {
             reparto: 0,
             salt: vec![7u8; 16],
             backends: (0..n).map(|i| format!("proveedor-{i}")).collect(),
+            pesos: Vec::new(),
         }
     }
 

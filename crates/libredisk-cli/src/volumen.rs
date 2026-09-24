@@ -165,6 +165,38 @@ pub async fn abrir_completo(cache_bytes: usize, disco_bytes: usize) -> Result<Vo
     }
 }
 
+/// Cuanto aporta cada proveedor, para las topologias que colocan por trozo.
+///
+/// Solo `lineal` los usa; para el resto se devuelve vacio y nadie los mira.
+///
+/// Salen de lo que cada proveedor declara **libre** ahora mismo, y se quedan fijos en la
+/// cabecera. Eso es deliberado: si se recalcularan en cada arranque, un trozo escrito ayer se
+/// buscaria hoy en otro proveedor y el volumen se desmontaria solo. Cuando las cuentas cambien
+/// de tamano habra que reescribir el reparto a proposito, no que cambie por su cuenta.
+///
+/// En gigabytes y no en bytes porque lo que importa es la proporcion, y numeros mas pequenos
+/// hacen la cabecera legible a ojo. Al que no declare cupo se le da el peso del mas pequeno
+/// que si lo declare: dejarlo en cero lo sacaria del volumen, y darle mucho le mandaria
+/// trozos que quiza no caben.
+async fn pesos_para(layout: Layout, backends: &[Arc<dyn Backend>]) -> Vec<u64> {
+    if !layout.coloca_por_trozo() {
+        return Vec::new();
+    }
+    const GIB: u64 = 1 << 30;
+
+    let cuotas = futures::future::join_all(backends.iter().map(|b| b.cuota())).await;
+    let libres: Vec<Option<u64>> = cuotas
+        .iter()
+        .map(|c| c.as_ref().ok().and_then(|c| c.libre()))
+        .collect();
+
+    let minimo = libres.iter().flatten().min().copied().unwrap_or(GIB);
+    libres
+        .iter()
+        .map(|l| (l.unwrap_or(minimo) / GIB).max(1))
+        .collect()
+}
+
 /// Crea un volumen sobre los proveedores del entorno.
 pub async fn create(spec: &str) -> Result<()> {
     let backends = proveedores()?;
@@ -172,7 +204,8 @@ pub async fn create(spec: &str) -> Result<()> {
         .parse()
         .with_context(|| format!("topologia invalida: {spec}"))?;
 
-    let store = header::crear(backends, layout, &frase()?)
+    let pesos = pesos_para(layout, &backends).await;
+    let store = header::crear(backends, layout, &frase()?, pesos)
         .await
         .map_err(|e| match e {
             CoreError::YaHayVolumen => anyhow::anyhow!(
@@ -1094,6 +1127,7 @@ pub async fn providers_add(cambio: Cambio) -> Result<()> {
 
     // El unico punto de compromiso. Hasta aqui el volumen se leia con lo de antes.
     let cabecera = Header {
+        pesos: Vec::new(),
         version: header.version,
         layout: destino.to_string(),
         reparto: reparto_nuevo,
@@ -1292,6 +1326,7 @@ pub async fn providers_remove(nombre: &str, sacrificio: Sacrificio) -> Result<()
 
     // El punto de compromiso.
     let cabecera = Header {
+        pesos: Vec::new(),
         version: header.version,
         layout: destino.to_string(),
         reparto: reparto_nuevo,

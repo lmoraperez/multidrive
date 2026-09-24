@@ -59,7 +59,7 @@ en Windows ya viene (WebView2), y en Linux hacen falta sus cabeceras
 —`libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev pkg-config` en Debian y derivados—.
 
 ```sh
-cargo test --workspace          # 308 tests
+cargo test --workspace          # 334 tests
 cargo run -- layout rs:4,2      # tolerancia y sobrecoste de una topología
 cargo run -- demo --layout rs:4,2 --kib 512
 cargo run -- check              # conformidad de los proveedores configurados
@@ -162,8 +162,8 @@ completos, ninguno puede leerlos, y la caída de uno no te deja sin volumen.**
 reparten a partes iguales entre todos, así que cuando el más pequeño se llena no cabe nada más
 aunque a los otros les sobre. Con 15 GB, 5 GB y 1 TB el volumen sale de **5 GB** en espejo y
 **15 GB** en unión, no de 1,02 TB. Esto decía «un solo volumen agregado», que se leía como que
-las capacidades se suman; no se suman. Sumar lo desigual pediría colocar cada trozo entero en
-un proveedor en vez de repartirlo, que es otra topología y todavía no existe.
+las capacidades se suman; no se suman. Para eso está `lineal`, que coloca cada trozo entero en un proveedor en vez de repartirlo y
+sí suma: con esos mismos números da 1,02 TB.
 
 ## Qué **no** es
 

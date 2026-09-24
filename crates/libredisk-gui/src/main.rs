@@ -175,6 +175,12 @@ struct Opcion {
     /// No aguanta ninguna caida. La ventana lo pinta en rojo y lo dice con todas las letras:
     /// elegir esto sin enterarse es perder el volumen entero el dia que caiga un proveedor.
     sin_red: bool,
+    /// Coloca cada trozo entero en un proveedor, en vez de partirlo entre todos.
+    ///
+    /// Cambia lo que significa la cifra de espacio: en las demas es el mas apretado por un
+    /// factor --un **techo**-- y aqui es la suma de lo que declara cada uno, que con alguno
+    /// mudo se queda **corta**. Lo contrario.
+    suma: bool,
     /// Lo que quedaria libre en el volumen, si se pudo preguntar.
     ///
     /// Es la cifra con la que de verdad se elige: «aprovechas el 50 %» no dice si te quedan
@@ -192,6 +198,7 @@ fn opciones(n: usize) -> Vec<Opcion> {
         sobrecoste: l.storage_overhead(),
         aprovechado: l.shards_needed() as f64 / l.shard_count() as f64,
         sin_red: l.tolerated_failures() == 0,
+        suma: l.coloca_por_trozo(),
         libre: None,
         sin_medir: Vec::new(),
     };
@@ -220,14 +227,18 @@ fn opciones(n: usize) -> Vec<Opcion> {
         out.push(describir(Layout::ReedSolomon { k, m }));
     }
 
-    // Y al final del todo, sin redundancia ninguna: toda la capacidad sumada a cambio de que
-    // perder un proveedor pierda el volumen entero. Va la ultima porque la lista se lee de mas
-    // segura a mas aprovechada, y porque nadie deberia toparsela antes que las demas.
-    out.push(describir(if n > 1 {
-        Layout::Stripe { n }
+    // Y al final del todo, las que no tienen redundancia ninguna. Van las ultimas porque la
+    // lista se lee de mas segura a mas aprovechada, y porque nadie deberia toparselas antes
+    // que las demas.
+    if n > 1 {
+        // `lineal` antes que `union` porque de las dos es la que mas da: con proveedores
+        // desiguales suma lo que cada uno aporta, mientras que `union` se queda en n veces
+        // el mas pequeno. Con proveedores iguales dan lo mismo y el orden da igual.
+        out.push(describir(Layout::Lineal { n }));
+        out.push(describir(Layout::Stripe { n }));
     } else {
-        Layout::Concat
-    }));
+        out.push(describir(Layout::Concat));
+    }
     out
 }
 
@@ -404,7 +415,8 @@ async fn crear(
         .parse()
         .map_err(|_| format!("topologia invalida: {spec}"))?;
 
-    let store = header::crear(backends.clone(), layout, &frase)
+    let pesos = pesos_para(layout, &backends).await;
+    let store = header::crear(backends.clone(), layout, &frase, pesos)
         .await
         .map_err(|e| match e {
             libredisk_core::CoreError::YaHayVolumen => {
@@ -1006,6 +1018,38 @@ async fn borrar_volumen(
     ))
 }
 
+/// Cuanto aporta cada proveedor, para las topologias que colocan por trozo.
+///
+/// Solo `lineal` los usa; para el resto se devuelve vacio y nadie los mira.
+///
+/// Salen de lo que cada proveedor declara **libre** ahora mismo, y se quedan fijos en la
+/// cabecera. Eso es deliberado: si se recalcularan en cada arranque, un trozo escrito ayer se
+/// buscaria hoy en otro proveedor y el volumen se desmontaria solo. Cuando las cuentas cambien
+/// de tamano habra que reescribir el reparto a proposito, no que cambie por su cuenta.
+///
+/// En gigabytes y no en bytes porque lo que importa es la proporcion, y numeros mas pequenos
+/// hacen la cabecera legible a ojo. Al que no declare cupo se le da el peso del mas pequeno
+/// que si lo declare: dejarlo en cero lo sacaria del volumen, y darle mucho le mandaria
+/// trozos que quiza no caben.
+async fn pesos_para(layout: Layout, backends: &[Arc<dyn Backend>]) -> Vec<u64> {
+    if !layout.coloca_por_trozo() {
+        return Vec::new();
+    }
+    const GIB: u64 = 1 << 30;
+
+    let cuotas = futures::future::join_all(backends.iter().map(|b| b.cuota())).await;
+    let libres: Vec<Option<u64>> = cuotas
+        .iter()
+        .map(|c| c.as_ref().ok().and_then(|c| c.libre()))
+        .collect();
+
+    let minimo = libres.iter().flatten().min().copied().unwrap_or(GIB);
+    libres
+        .iter()
+        .map(|l| (l.unwrap_or(minimo) / GIB).max(1))
+        .collect()
+}
+
 /// Reparte los trozos en tres categorias **excluyentes**, y el orden importa.
 ///
 /// Un trozo del que no quedan fragmentos suficientes ya no se lee. Llamarlo degradado seria
@@ -1069,16 +1113,26 @@ mod tests {
     ///
     /// Se comprueba por la propiedad y no por los nombres, para que cace tambien el duplicado
     /// que aparezca al anadir una topologia nueva.
+    ///
+    /// La comparacion es por **lo que el usuario lee al elegir**, no por la forma interna:
+    /// cuantas caidas aguanta, cuanto ocupa de mas, y si coloca cada trozo entero en un
+    /// proveedor. Esa tercera parte hizo falta al llegar `lineal`: mirando solo fragmentos
+    /// necesarios y totales, `lineal:2` y `espejo:2` parecen la misma cosa --uno de dos-- y
+    /// no lo son en absoluto, porque el espejo aguanta una caida y lineal ninguna.
     #[test]
     fn ninguna_opcion_se_repite_con_otro_nombre() {
         for n in 1..=8 {
-            let mut vistas: Vec<(usize, usize)> = Vec::new();
+            let mut vistas: Vec<(usize, u64, bool)> = Vec::new();
             for o in opciones(n) {
                 let l: Layout = o.spec.parse().unwrap();
-                let clave = (l.shard_count(), l.shards_needed());
+                let clave = (
+                    l.tolerated_failures(),
+                    l.storage_overhead().to_bits(),
+                    l.coloca_por_trozo(),
+                );
                 assert!(
                     !vistas.contains(&clave),
-                    "con {n} proveedores, '{}' aguanta y cuesta lo mismo que otra de la lista",
+                    "con {n} proveedores, '{}' promete lo mismo que otra de la lista",
                     o.spec
                 );
                 vistas.push(clave);
@@ -1086,56 +1140,94 @@ mod tests {
         }
     }
 
-    /// Con tres, tres opciones de verdad: espejo, paridad y reparto puro.
-    #[test]
-    fn con_tres_proveedores_hay_tres_opciones() {
-        let specs: Vec<String> = opciones(3).into_iter().map(|o| o.spec).collect();
-        assert_eq!(specs, vec!["espejo:3", "rs:2,1", "union:3"]);
-    }
-
-    /// Con dos no cabe la paridad: `rs:1,1` seria el mismo espejo con otro nombre.
-    #[test]
-    fn con_dos_proveedores_solo_espejo_y_reparto() {
-        let specs: Vec<String> = opciones(2).into_iter().map(|o| o.spec).collect();
-        assert_eq!(specs, vec!["espejo:2", "union:2"]);
-    }
-
-    /// La sin redundancia va **la ultima**, y es la unica marcada como tal.
+    /// Las que no aguantan nada van **al final** y van marcadas, todas ellas.
     ///
-    /// El orden no es estetico: la primera es el valor por defecto, y quien no sepa elegir se
-    /// queda con ella. La que puede perderlo todo tiene que estar lo mas lejos posible de ahi.
+    /// Son dos desde que existe `lineal`, y las dos tienen que llevar el aviso: lo que hace
+    /// falta no es que haya una sino que ninguna se cuele entre las que si aguantan.
     #[test]
-    fn la_que_no_aguanta_nada_va_la_ultima_y_va_marcada() {
+    fn las_que_no_aguantan_nada_van_al_final_y_van_marcadas() {
         for n in 2..=8 {
             let ops = opciones(n);
-            let marcadas: Vec<&Opcion> = ops.iter().filter(|o| o.sin_red).collect();
-            assert_eq!(marcadas.len(), 1, "con {n} proveedores");
+            let sin_red: Vec<usize> = ops
+                .iter()
+                .enumerate()
+                .filter(|(_, o)| o.sin_red)
+                .map(|(i, _)| i)
+                .collect();
+
+            assert!(!sin_red.is_empty(), "con {n} proveedores no hay ninguna");
+            // Las ultimas posiciones de la lista, sin huecos: ninguna colada en medio.
+            let primera = ops.len() - sin_red.len();
             assert_eq!(
-                marcadas[0].spec,
-                ops.last().unwrap().spec,
-                "con {n} proveedores, la que no aguanta nada no es la ultima"
+                sin_red,
+                (primera..ops.len()).collect::<Vec<_>>(),
+                "con {n} proveedores hay una sin redundancia en medio de la lista"
             );
-            assert_eq!(marcadas[0].tolera, 0);
-            assert_eq!(
-                marcadas[0].sobrecoste, 1.0,
-                "no ocupa de mas: es su razon de ser"
-            );
+            for i in &sin_red {
+                assert_eq!(ops[*i].tolera, 0);
+                assert_eq!(
+                    ops[*i].sobrecoste, 1.0,
+                    "no ocupa de mas: es su razon de ser"
+                );
+            }
         }
     }
 
-    /// Y la lista va de mas segura a mas aprovechada, de principio a fin.
+    /// Con dos proveedores: espejo, y las dos formas de no tener redundancia.
+    ///
+    /// No cabe la paridad: `rs:1,1` seria el mismo espejo con otro nombre.
+    #[test]
+    fn con_dos_proveedores_hay_tres_opciones() {
+        let specs: Vec<String> = opciones(2).into_iter().map(|o| o.spec).collect();
+        assert_eq!(specs, vec!["espejo:2", "lineal:2", "union:2"]);
+    }
+
+    /// Con tres entra ademas la paridad.
+    #[test]
+    fn con_tres_proveedores_entra_la_paridad() {
+        let specs: Vec<String> = opciones(3).into_iter().map(|o| o.spec).collect();
+        assert_eq!(specs, vec!["espejo:3", "rs:2,1", "lineal:3", "union:3"]);
+    }
+
+    /// Con uno solo no hay nada que repartir.
+    #[test]
+    fn con_un_solo_proveedor_solo_cabe_concat() {
+        let specs: Vec<String> = opciones(1).into_iter().map(|o| o.spec).collect();
+        assert_eq!(specs, vec!["concat"]);
+    }
+
+    /// La lista va de mas segura a mas aprovechada.
+    ///
+    /// **No estrictamente**: `lineal` y `union` aguantan las dos cero, asi que van seguidas.
+    /// Lo que no puede pasar es que una que aguanta menos vaya antes que una que aguanta
+    /// mas, porque el orden es lo que hace que el valor por defecto sea el prudente.
     #[test]
     fn la_lista_va_de_mas_segura_a_mas_aprovechada() {
         for n in 2..=8 {
             let ops = opciones(n);
             for par in ops.windows(2) {
                 assert!(
-                    par[0].tolera > par[1].tolera,
-                    "con {n}: '{}' va antes que '{}' y no aguanta mas",
+                    par[0].tolera >= par[1].tolera,
+                    "con {n}: '{}' va antes que '{}' y aguanta menos",
                     par[0].spec,
                     par[1].spec
                 );
             }
+        }
+    }
+
+    /// Y entre las dos sin redundancia, **`lineal` va primera**: de las dos es la que mas da.
+    ///
+    /// Con proveedores desiguales suma lo que cada uno aporta, mientras que `union` se queda
+    /// en n veces el mas pequeno. Quien llegue hasta el final de la lista deberia encontrarse
+    /// antes la mejor de las dos.
+    #[test]
+    fn entre_las_dos_sin_red_lineal_va_antes_que_union() {
+        for n in 2..=8 {
+            let specs: Vec<String> = opciones(n).into_iter().map(|o| o.spec).collect();
+            let lineal = specs.iter().position(|s| s.starts_with("lineal")).unwrap();
+            let union = specs.iter().position(|s| s.starts_with("union")).unwrap();
+            assert!(lineal < union, "con {n} proveedores: {specs:?}");
         }
     }
 

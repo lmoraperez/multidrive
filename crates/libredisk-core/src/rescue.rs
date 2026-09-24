@@ -254,7 +254,9 @@ fn candidatas(layout: libredisk_raid::Layout, tam: usize) -> Vec<usize> {
     use libredisk_raid::Layout;
     match layout {
         // Aqui el fragmento es el blob entero: no hay nada que deducir.
-        Layout::Concat | Layout::Mirror { .. } => vec![tam],
+        // Aqui el fragmento es el blob entero: no hay nada que deducir. En lineal tambien,
+        // porque el trozo va sin cortar aunque no vaya a todos.
+        Layout::Concat | Layout::Mirror { .. } | Layout::Lineal { .. } => vec![tam],
         // El mismo reparto que Reed-Solomon con `k = n`, asi que la misma deduccion.
         Layout::ReedSolomon { k: partes, .. } | Layout::Stripe { n: partes } => {
             let alto = partes * tam;

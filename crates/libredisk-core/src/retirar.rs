@@ -121,14 +121,8 @@ pub async fn retirar(backends: &[Arc<dyn Backend>]) -> Result<Inventario, CoreEr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testutil::clave;
+    use crate::testutil::{clave, memoria};
     use libredisk_backend::OpendalBackend;
-
-    fn memoria(n: usize) -> Vec<Arc<dyn Backend>> {
-        (0..n)
-            .map(|i| Arc::new(OpendalBackend::memory(format!("p{i}")).unwrap()) as Arc<dyn Backend>)
-            .collect()
-    }
 
     /// Lo que no es del volumen sobrevive.
     ///
@@ -182,6 +176,7 @@ mod tests {
             reparto: 0,
             salt: vec![1, 2, 3],
             backends: vec!["p0".into(), "p1".into()],
+            pesos: Vec::new(),
         };
         crate::header::write(&backends, &h).await.unwrap();
         assert!(crate::header::read(&backends).await.unwrap().is_some());

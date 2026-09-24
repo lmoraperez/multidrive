@@ -43,6 +43,10 @@ pub enum CoreError {
         "no se pudo leer la cabecera en ningun proveedor, asi que no se sabe si hay volumen: \n         {0}"
     )]
     CabeceraIlegible(String),
+    #[error(
+        "no queda sitio en ningun proveedor: todos estan al limite de lo que declararon. \n         Anade otro o libera espacio"
+    )]
+    SinSitio,
     #[error("ya hay un volumen en estos proveedores")]
     YaHayVolumen,
     #[error("el proveedor '{proveedor}' no se dejo enumerar: {motivo}")]
@@ -281,6 +285,13 @@ pub struct ChunkStore {
     /// Cola de escritura diferida. Con ella, escribir no sube nada: prepara en local y
     /// espera a `sync`.
     pending: Option<Arc<writeback::WriteQueue>>,
+    /// Cuanto aporta cada proveedor, para las topologias que colocan por trozo.
+    ///
+    /// Solo lo usa `lineal`; las demas mandan el fragmento `i` al proveedor `i` y no tienen
+    /// nada que decidir. Va en la cabecera del volumen, fijado al crear: si cambiara con lo
+    /// que cada nube declare en cada momento, un trozo escrito ayer podria buscarse hoy en
+    /// otro sitio.
+    pesos: Vec<u64>,
 }
 
 impl std::fmt::Debug for ChunkStore {
@@ -311,6 +322,7 @@ impl ChunkStore {
         }
         Ok(Self {
             layout,
+            pesos: Vec::new(),
             reparto: 0,
             backends,
             key,
@@ -338,6 +350,49 @@ impl ChunkStore {
         )
         .await;
         espacio::combinar(self.layout, &self.nombres(), &cuotas)
+    }
+
+    /// Fija cuanto aporta cada proveedor, para las topologias que colocan por trozo.
+    ///
+    /// Solo lo usa `lineal`. Los pesos salen de lo que cada proveedor declara libre **al
+    /// crear el volumen** y se guardan en la cabecera: si se recalcularan en cada arranque,
+    /// un trozo escrito ayer podria buscarse hoy en otro proveedor, y el volumen se
+    /// desmontaria solo.
+    pub fn with_pesos(mut self, pesos: Vec<u64>) -> Self {
+        self.pesos = pesos;
+        self
+    }
+
+    /// Con que pesos coloca. Todos iguales si no se dijo otra cosa.
+    ///
+    /// El reparto uniforme es un respaldo razonable, no un valor util: reparte igual entre
+    /// proveedores desiguales, que es justo lo que `lineal` existe para evitar. Quien cree un
+    /// volumen lineal deberia pasar los de verdad.
+    fn pesos_efectivos(&self) -> Vec<u64> {
+        if self.pesos.len() == self.backends.len() {
+            self.pesos.clone()
+        } else {
+            vec![1; self.backends.len()]
+        }
+    }
+
+    /// A que proveedor va cada fragmento de este trozo.
+    ///
+    /// La posicion es el indice del fragmento tal y como lo devuelve `split`, y el valor es
+    /// el proveedor al que le toca. Para todas las topologias menos `lineal` es la identidad
+    /// --el fragmento `i` al proveedor `i`-- y por eso el resto del motor no tuvo nunca que
+    /// hacer esta distincion.
+    ///
+    /// Vacio significa que no hay ningun proveedor con sitio, que es un error y no un caso
+    /// normal: quien llame tiene que decirlo en vez de escribir en el cero de turno.
+    pub(crate) fn destinos(&self, id: &ChunkId) -> Vec<usize> {
+        if !self.layout.coloca_por_trozo() {
+            return (0..self.layout.shard_count()).collect();
+        }
+        match libredisk_raid::reparto::elegir(id.as_str(), &self.pesos_efectivos()) {
+            Some(i) => vec![i],
+            None => Vec::new(),
+        }
     }
 
     /// Nombres de los proveedores, en el mismo orden en que se indexan los fragmentos.
@@ -563,11 +618,15 @@ impl ChunkStore {
         sealed: &[u8],
     ) -> Result<Vec<String>, CoreError> {
         let shards = libredisk_raid::split(self.layout, sealed)?;
+        let destinos = self.destinos(id);
+        if destinos.is_empty() {
+            return Err(CoreError::SinSitio);
+        }
 
-        let writes = shards.into_iter().enumerate().map(|(i, shard)| {
-            let backend = &self.backends[i];
-            let key = id.shard_key(self.reparto, i);
-            async move { (i, backend.put(&key, shard).await) }
+        let writes = shards.into_iter().zip(&destinos).map(|(shard, &dest)| {
+            let backend = &self.backends[dest];
+            let key = id.shard_key(self.reparto, dest);
+            async move { (dest, backend.put(&key, shard).await) }
         });
 
         let mut degraded = Vec::new();
@@ -577,7 +636,7 @@ impl ChunkStore {
             }
         }
 
-        let written = self.layout.shard_count() - degraded.len();
+        let written = destinos.len() - degraded.len();
         if written < self.layout.shards_needed() {
             return Err(CoreError::Unrecoverable {
                 id: id.clone(),
@@ -693,7 +752,11 @@ impl ChunkStore {
 
     /// Revisa que fragmentos siguen vivos, sin descargarlos.
     pub async fn scrub(&self, chunk: &ChunkRef) -> ChunkHealth {
-        let checks = self.backends.iter().enumerate().map(|(i, backend)| {
+        // Solo se pregunta a los que les toca. En `lineal`, los demas no tienen ese trozo
+        // porque nunca lo tuvieron, y contarlos como ausentes lo daria por degradado.
+        let destinos = self.destinos(&chunk.id);
+        let checks = destinos.iter().map(|&i| {
+            let backend = &self.backends[i];
             let key = chunk.id.shard_key(self.reparto, i);
             async move { (i, backend.exists(&key).await.unwrap_or(false)) }
         });
@@ -750,9 +813,12 @@ impl ChunkStore {
         let health = chunks
             .iter()
             .map(|chunk| {
+                // Solo cuentan los proveedores a los que les toca este trozo. Con `lineal`
+                // es uno solo, y mirar los demas lo daria por degradado por no tener algo
+                // que nunca tuvo.
                 let (mut present, mut missing) = (Vec::new(), Vec::new());
-                for (i, vistas) in presentes.iter().enumerate() {
-                    if vistas.contains(&chunk.id.shard_key(self.reparto, i)) {
+                for i in self.destinos(&chunk.id) {
+                    if presentes[i].contains(&chunk.id.shard_key(self.reparto, i)) {
                         present.push(i);
                     } else {
                         missing.push(i);
@@ -804,12 +870,16 @@ impl ChunkStore {
         // byte a byte, a los que se perdieron.
         let (sealed, _) = self.recover(chunk).await?;
         let shards = libredisk_raid::split(self.layout, &sealed)?;
+        let destinos = self.destinos(&chunk.id);
 
-        let writes = health.missing.iter().map(|&i| {
+        // `missing` viene de `scrub`, que ya solo mira a los que les toca, asi que cada uno
+        // esta en `destinos` y su posicion ahi es la del fragmento que le corresponde.
+        let writes = health.missing.iter().filter_map(|&i| {
+            let pos = destinos.iter().position(|&d| d == i)?;
             let backend = &self.backends[i];
             let key = chunk.id.shard_key(self.reparto, i);
-            let shard = shards[i].clone();
-            async move { (i, backend.put(&key, shard).await) }
+            let shard = shards[pos].clone();
+            Some(async move { (i, backend.put(&key, shard).await) })
         });
 
         let mut repaired = Vec::new();
@@ -823,7 +893,11 @@ impl ChunkStore {
     }
 
     async fn fetch_shards(&self, id: &ChunkId) -> Vec<Option<Vec<u8>>> {
-        let reads = self.backends.iter().enumerate().map(|(i, backend)| {
+        // Solo a los que les toca. Con las topologias que reparten entre todos eso son todos
+        // --no cambia nada-- y con `lineal` es **una sola peticion** en vez de n, que es una
+        // de las cosas que esa topologia compra.
+        let reads = self.destinos(id).into_iter().map(|i| {
+            let backend = &self.backends[i];
             let key = id.shard_key(self.reparto, i);
             async move { (i, backend.get(&key).await.ok()) }
         });
@@ -839,7 +913,7 @@ impl ChunkStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testutil::NoEnumera;
+    use crate::testutil::{NoEnumera, memoria};
     use std::sync::atomic::Ordering;
 
     use libredisk_backend::OpendalBackend;
@@ -856,6 +930,134 @@ mod tests {
 
     fn datos(n: usize) -> Vec<u8> {
         (0..n).map(|i| (i % 251) as u8).collect()
+    }
+
+    /// **Lo que persigue toda la topologia.** Con proveedores desiguales, cada uno recibe en
+    /// proporcion a lo que aporta, en vez de que mande el mas pequeno.
+    ///
+    /// Aqui se mide sobre lo escrito de verdad: se suben cien trozos y se cuenta cuantos
+    /// objetos acabo teniendo cada proveedor.
+    #[tokio::test]
+    async fn lineal_reparte_en_proporcion_a_lo_que_aporta_cada_uno() {
+        let backends = memoria(3);
+        // Uno pequeno, uno mediano y uno grande: 1, 3 y 6 partes de diez.
+        let s = ChunkStore::new(Layout::Lineal { n: 3 }, backends.clone(), clave())
+            .unwrap()
+            .with_pesos(vec![1, 3, 6]);
+
+        let cuantos = 400;
+        for i in 0..cuantos {
+            s.put(&datos(1000 + i)).await.unwrap();
+        }
+
+        let mut reparto = Vec::new();
+        for b in &backends {
+            reparto.push(b.list(SHARD_PREFIX).await.unwrap().len());
+        }
+        assert_eq!(
+            reparto.iter().sum::<usize>(),
+            cuantos,
+            "ni uno de mas ni de menos"
+        );
+
+        for (i, esperado) in [0.1, 0.3, 0.6].iter().enumerate() {
+            let visto = reparto[i] as f64 / cuantos as f64;
+            assert!(
+                (visto - esperado).abs() < 0.07,
+                "proveedor {i}: esperado ~{:.0} %, visto {:.0} %",
+                esperado * 100.0,
+                visto * 100.0
+            );
+        }
+    }
+
+    /// Cada trozo va **entero a un solo proveedor**, no partido entre todos.
+    ///
+    /// Es la diferencia con `union`, y la que hace que leer cueste una peticion.
+    #[tokio::test]
+    async fn en_lineal_cada_trozo_vive_en_un_solo_sitio() {
+        let backends = memoria(4);
+        let s = ChunkStore::new(Layout::Lineal { n: 4 }, backends.clone(), clave()).unwrap();
+
+        let r = s.put(&datos(5000)).await.unwrap();
+
+        let mut donde = Vec::new();
+        for (i, b) in backends.iter().enumerate() {
+            if !b.list(SHARD_PREFIX).await.unwrap().is_empty() {
+                donde.push(i);
+            }
+        }
+        assert_eq!(
+            donde.len(),
+            1,
+            "esta en {donde:?}, deberia estar en uno solo"
+        );
+
+        // Y se lee de vuelta igual.
+        assert_eq!(s.get(&r.chunk).await.unwrap(), datos(5000));
+    }
+
+    /// Leer un trozo en `lineal` es **una peticion**, no una por proveedor.
+    #[tokio::test]
+    async fn leer_en_lineal_no_molesta_a_los_demas() {
+        let cs = contadores(4);
+        let s = ChunkStore::new(Layout::Lineal { n: 4 }, como_backends(&cs), clave()).unwrap();
+        let r = s.put(&datos(2000)).await.unwrap();
+        reiniciar(&cs);
+
+        // Sin cache, para medir lo que va a la red y no lo que ya estaba a mano.
+        s.get(&r.chunk).await.unwrap();
+
+        let pedidos: usize = cs.iter().map(|c| c.gets.load(Ordering::Relaxed)).sum();
+        assert_eq!(pedidos, 1, "una peticion, no una por proveedor");
+    }
+
+    /// Un trozo sano en `lineal` **no esta degradado** por faltar en los otros tres.
+    ///
+    /// Es el error que habria salido de reutilizar tal cual la cuenta de las demas
+    /// topologias: el trozo esta donde tiene que estar, y los otros no lo tienen porque
+    /// nunca lo tuvieron.
+    #[tokio::test]
+    async fn en_lineal_estar_en_uno_solo_es_estar_sano() {
+        let backends = memoria(4);
+        let s = ChunkStore::new(Layout::Lineal { n: 4 }, backends, clave()).unwrap();
+        let r = s.put(&datos(1234)).await.unwrap();
+
+        let salud = s.scrub(&r.chunk).await;
+        assert_eq!(salud.present.len(), 1);
+        assert!(salud.missing.is_empty(), "falta en {:?}", salud.missing);
+        assert!(salud.is_readable());
+        assert_eq!(salud.remaining_tolerance, 0, "no aguanta ninguna caida");
+    }
+
+    /// Y si se cae el proveedor que lo tenia, **ese trozo se pierde**: no hay de donde
+    /// sacarlo. `lineal` no anade ni una caida de margen.
+    #[tokio::test]
+    async fn en_lineal_perder_su_proveedor_pierde_el_trozo() {
+        let backends = memoria(3);
+        let s = ChunkStore::new(Layout::Lineal { n: 3 }, backends.clone(), clave()).unwrap();
+        let r = s.put(&datos(777)).await.unwrap();
+
+        // Se vacia el que lo tenia.
+        let suyo = s.destinos(&r.chunk.id)[0];
+        for o in backends[suyo].list(SHARD_PREFIX).await.unwrap() {
+            backends[suyo].delete(&o.clave).await.unwrap();
+        }
+
+        assert!(!s.scrub(&r.chunk).await.is_readable());
+        assert!(s.get(&r.chunk).await.is_err());
+    }
+
+    /// Sin sitio en ninguna parte no se escribe: se dice.
+    #[tokio::test]
+    async fn lineal_sin_ningun_proveedor_con_sitio_lo_dice() {
+        let backends = memoria(2);
+        let s = ChunkStore::new(Layout::Lineal { n: 2 }, backends, clave())
+            .unwrap()
+            .with_pesos(vec![0, 0]);
+
+        let e = s.put(&datos(100)).await.unwrap_err().to_string();
+        assert!(e.contains("no queda sitio"), "{e}");
     }
 
     #[tokio::test]
