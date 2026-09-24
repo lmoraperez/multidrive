@@ -260,6 +260,13 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       y si alguien abusa lo pagan todos los de esa versión
 - [x] `libredisk config ver` dice si esta copia trae aplicación registrada. Es lo que decide
       si al usuario se le piden dos datos de desarrollador o solo se le pide pulsar un botón
+- [x] **Conectar una cuenta de nube la guarda, sin pedir otro clic.** Conectar la cuenta *es*
+      configurar el proveedor: obligar a pulsar «Probar y guardar» después era trabajo que no
+      aportaba nada. Sigue probando antes de escribir, como siempre
+- [x] Y la pantalla se refresca sola: el proveedor aparece en la lista de arriba y el
+      formulario queda listo para el siguiente, con la ranura que toca ahora. Añadir varias
+      cuentas seguidas es el caso normal, no la excepción
+- [x] Los botones de probar y guardar solo salen en los tipos que se rellenan a mano
 - [x] **Varias cuentas del mismo servicio, de verdad.** Ya cabían por las ranuras numeradas,
       pero faltaban las dos cosas que hacen que sirvan: que el navegador deje **elegir** la
       cuenta, y que no se pueda meter la misma dos veces

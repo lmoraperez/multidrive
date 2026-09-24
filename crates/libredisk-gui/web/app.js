@@ -504,6 +504,10 @@ async function prepararAlta() {
     return;
   }
   const sel = $("tipo-proveedor");
+  // Se conserva el tipo elegido al repintar. Tras guardar una cuenta de Drive, lo normal es
+  // querer añadir otra de Drive; volver a «Carpeta local» sería mandar al usuario a
+  // recorrer la lista otra vez.
+  const antes = sel.value;
   sel.replaceChildren();
   for (const t of tipos) {
     const op = document.createElement("option");
@@ -511,6 +515,7 @@ async function prepararAlta() {
     op.textContent = t.etiqueta;
     sel.append(op);
   }
+  if (tipos.some((t) => t.clave === antes)) sel.value = antes;
   pintarFormularioProveedor();
 }
 
@@ -564,7 +569,8 @@ function pintarFormularioProveedor() {
       // caracteres, y el token tampoco pasa por esta página: se queda en el proceso.
       const boton = document.createElement("button");
       boton.type = "button";
-      boton.className = "secundario";
+      // Sin `secundario`: para un proveedor de nube, este botón **es** la acción. Conectar
+      // la cuenta es configurarlo entero, así que no hay nada más que rellenar después.
       boton.textContent = `Conectar con ${t.etiqueta}`;
       const aviso = nota("");
       aviso.hidden = true;
@@ -574,11 +580,15 @@ function pintarFormularioProveedor() {
         aviso.className = "nota";
         aviso.textContent = "Abriendo el navegador. Entra en tu cuenta y da permiso…";
         try {
-          aviso.textContent = await invoke("conectar_nube", {
-            tipo: t.clave,
-            campos: campos(),
-          });
+          await invoke("conectar_nube", { tipo: t.clave, campos: campos() });
           conectado.add(t.clave);
+          // Y se guarda sin pedir otro clic. Conectar la cuenta es lo que configura el
+          // proveedor; obligar a pulsar un segundo botón era trabajo que no aportaba nada.
+          // `guardar_proveedor` sigue probando antes de escribir, como siempre.
+          aviso.textContent = "Conectada. Comprobando que escribe y lee…";
+          await guardado(
+            await invoke("guardar_proveedor", { tipo: t.clave, campos: campos() }),
+          );
         } catch (err) {
           // En rojo y con todas las letras: una línea gris debajo de un botón se pasa por
           // alto, y entonces parece que no ha pasado nada cuando lo que ha pasado es que
@@ -616,6 +626,9 @@ function pintarFormularioProveedor() {
   }
 
   caja.replaceChildren(...partes);
+  // Los botones de probar y guardar solo tienen sentido en los tipos que se rellenan a
+  // mano. En los de nube, el botón de conectar ya lo hace todo.
+  $("botones-manual").hidden = t.oauth;
   $("resultado-proveedor").hidden = true;
 }
 
@@ -650,34 +663,14 @@ $("probar-proveedor").addEventListener("click", async () => {
 $("guardar-proveedor").addEventListener("click", async () => {
   const boton = $("guardar-proveedor");
   boton.disabled = true;
-  // Sin la cuenta conectada no hay token que guardar, y el proveedor fallaria la prueba
-  // con un error de credenciales que no dice lo que de verdad falta.
-  const tipo = tipoElegido();
-  if (tipo?.campos.some((c) => c.navegador) && !conectado.has(tipo.clave)) {
-    resultado("Antes hay que conectar la cuenta con el botón de arriba.", true);
-    boton.disabled = false;
-    return;
-  }
   resultado("Probando antes de guardar…");
   try {
-    const g = await invoke("guardar_proveedor", {
-      tipo: $("tipo-proveedor").value,
-      campos: campos(),
-    });
-    conectado.delete($("tipo-proveedor").value);
-    let texto = `Guardado como «${g.nombre}» en ${g.fichero}.`;
-    if (g.hay_volumen) {
-      // Configurar no es meterlo en el volumen, y son cosas de coste muy distinto. Decir
-      // aquí que ya está dentro sería la mentira más cara de esta pantalla.
-      texto +=
-        "\n\nOJO: ya hay un volumen, y esto NO lo mete dentro. Para eso hay que mover " +
-        "fragmentos, y hay que elegir para qué:\n" +
-        "  libredisk providers add --mas-seguridad   (aguanta una caída más; barato)\n" +
-        "  libredisk providers add --mas-espacio     (más capacidad; reescribe el volumen entero)";
-    }
-    resultado(texto);
-    tecleado.clear();
-    await arrancar();
+    await guardado(
+      await invoke("guardar_proveedor", {
+        tipo: $("tipo-proveedor").value,
+        campos: campos(),
+      }),
+    );
   } catch (err) {
     resultado(String(err), true);
   } finally {
@@ -703,3 +696,30 @@ $("cerrar-alta").addEventListener("click", () => {
   // por qué seguir en memoria porque alguien haya dejado el formulario a medias.
   tecleado.clear();
 });
+/**
+ * Lo que pasa después de que un proveedor quede guardado, venga del botón que venga.
+ *
+ * Refresca la pantalla y **deja el formulario listo para el siguiente**: con la ranura que
+ * toca ahora («gdrive1» después de guardar «gdrive») y la cuenta ya contada. Añadir varias
+ * cuentas seguidas es el caso normal, no la excepción.
+ *
+ * El `arrancar()` es lo que actualiza la lista de proveedores y las barras de espacio. Sin
+ * él, el proveedor está guardado pero la pantalla sigue diciendo «ninguno», y lo que el
+ * usuario ve no es lo que hay.
+ */
+async function guardado(g) {
+  let texto = `Guardado como «${g.nombre}». Ya aparece en la lista de arriba.`;
+  if (g.hay_volumen) {
+    // Configurar no es meterlo en el volumen, y son cosas de coste muy distinto. Decir aquí
+    // que ya está dentro sería la mentira más cara de esta pantalla.
+    texto +=
+      "\n\nOJO: ya hay un volumen, y esto NO lo mete dentro. Para eso hay que mover " +
+      "fragmentos, y hay que elegir para qué:\n" +
+      "  libredisk providers add --mas-seguridad   (aguanta una caída más; barato)\n" +
+      "  libredisk providers add --mas-espacio     (más capacidad; reescribe el volumen entero)";
+  }
+  await arrancar();
+  // Después de repintar, porque repintar borra el resultado anterior.
+  await prepararAlta();
+  resultado(texto);
+}
