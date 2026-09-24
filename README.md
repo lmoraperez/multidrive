@@ -58,8 +58,22 @@ Requiere Rust estable (edición 2024). La ventana de escritorio usa el webview d
 en Windows ya viene (WebView2), y en Linux hacen falta sus cabeceras
 —`libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev pkg-config` en Debian y derivados—.
 
+**En Windows hace falta el toolchain MSVC**, no el GNU: `winfsp-sys` —lo que permite montar
+la unidad— no compila con `x86_64-pc-windows-gnu` y lo dice con un `unsupported triple` en
+mitad de la compilación, que no se parece en nada al problema que es. Si `rustup show
+active-toolchain` dice `gnu`:
+
 ```sh
-cargo test --workspace          # 334 tests
+rustup toolchain install stable-x86_64-pc-windows-msvc
+rustup override set stable-x86_64-pc-windows-msvc    # solo para este directorio
+```
+
+Es un `override` **por ruta**: si mueves o renombras la carpeta del repositorio, se queda
+huérfano y la compilación vuelve a caer en GNU. `rustup override unset --nonexistent` limpia
+los que sobran.
+
+```sh
+cargo test --workspace          # 356 tests
 cargo run -- layout rs:4,2      # tolerancia y sobrecoste de una topología
 cargo run -- demo --layout rs:4,2 --kib 512
 cargo run -- check              # conformidad de los proveedores configurados
