@@ -17,9 +17,10 @@ use crate::{Backend, BackendError, OauthCreds, OpendalBackend};
 
 const PREFIJO: &str = "MULTIDRIVE_";
 
-/// El prefijo con el que nacio esto, cuando solo configuraba la suite de conformidad. Se
-/// sigue aceptando: quien ya tenia un `.env` escrito no deberia tener que reescribirlo
-/// porque el proyecto haya crecido. El nuevo gana si estan los dos.
+/// El prefijo con el que nacio esto, cuando solo configuraba la suite de conformidad: era
+/// `LIBREDISK_TEST_` y el cambio de marca lo dejo en este. Se sigue aceptando: quien ya tenia
+/// un `.env` escrito no deberia tener que reescribirlo porque el proyecto haya crecido. El
+/// nuevo gana si estan los dos.
 const PREFIJO_VIEJO: &str = "MULTIDRIVE_TEST_";
 
 /// Carpeta por defecto dentro de la cuenta.
@@ -27,11 +28,11 @@ const PREFIJO_VIEJO: &str = "MULTIDRIVE_TEST_";
 /// Dedicada a proposito: dentro solo hay blobs opacos, y no deben compartir carpeta con los
 /// archivos del usuario.
 ///
-/// Se llamaba `/multidrive-pruebas` de cuando esto solo configuraba la suite de conformidad.
-/// Ahora configura volumenes de verdad, y una carpeta llamada «pruebas» en la cuenta de
-/// alguien invita a borrarla. **Quien tuviera un volumen en la carpeta vieja sin declararla
-/// tiene que escribir `MULTIDRIVE_<PROVEEDOR>_ROOT=/multidrive-pruebas`**; si no, el programa
-/// mirara en otro sitio y dira que no hay volumen.
+/// **Quien tenga un volumen de antes del cambio de marca lo tiene en `/libredisk`**, con su
+/// cabecera llamandose `libredisk-volume.json`. Para que aparezca hay que renombrar las dos
+/// cosas en cada cuenta; si no, el programa mirara aqui y dira que no hay volumen. Lo mismo
+/// vale para `/libredisk-pruebas`, que es donde caian los volumenes de cuando esto solo
+/// configuraba la suite de conformidad.
 const RAIZ_POR_DEFECTO: &str = "/multidrive";
 
 /// Cuantas ranuras numeradas se buscan de cada tipo.
