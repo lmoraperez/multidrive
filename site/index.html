@@ -143,11 +143,18 @@ un proveedor, que sí se repiten, y se desconfía de las que comparan dos</td>
 <section>
   <h2>Qué resuelve</h2>
   <table class="tbl">
-    <tr><td>Tengo 15 GB aquí, 5 GB allá, 1 TB en otro lado</td><td>Un solo volumen agregado</td></tr>
+    <tr><td>Tengo cuentas sueltas en varios sitios</td><td>Un solo volumen sobre todas, cifrado y con RAID</td></tr>
     <tr><td>Si el proveedor me suspende la cuenta, lo pierdo todo</td><td>Paridad <em>k de n</em>: sobrevive a la pérdida de <em>m</em> proveedores</td></tr>
     <tr><td>El proveedor puede leer mis archivos</td><td>Cifrado en cliente, nombres incluidos</td></tr>
     <tr><td>Vendor lock-in</td><td>Añade o retira proveedores y el volumen se rebalancea</td></tr>
   </table>
+  <p class="nota"><strong>Sobre el espacio, con todas las letras: manda el proveedor con
+  menos sitio.</strong> Los trozos se reparten a partes iguales entre todos, así que cuando el
+  más pequeño se llena no cabe nada más aunque a los otros les sobre. Con 15 GB, 5 GB y 1 TB
+  el volumen sale de <strong>5 GB</strong> en espejo y <strong>15 GB</strong> en unión, no de
+  1,02 TB. Esta página decía «un solo volumen agregado», que se leía como que las capacidades
+  se suman; no se suman. Sumar lo desigual pediría colocar cada trozo entero en un proveedor
+  en vez de repartirlo, que es otra topología y todavía no existe.</p>
 </section>
 
 <section>
