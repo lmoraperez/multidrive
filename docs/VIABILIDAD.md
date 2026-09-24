@@ -19,7 +19,7 @@ Nada de esto invalida el proyecto, pero hay que conocerlo antes de escribir una 
 | **Storj** | Erasure coding sobre nodos | Es un proveedor, no un agregador de tus cuentas |
 | **Cryptomator** | Cifrado de conocimiento cero sobre una nube | Solo cifra, no agrega ni da paridad |
 
-**El hueco real que ocupa LibreDisk:** nadie ofrece *libre + multiproveedor + paridad real
+**El hueco real que ocupa MultiDrive:** nadie ofrece *libre + multiproveedor + paridad real
 + cifrado en cliente + multiplataforma con GUI*. Eso sí es un producto que no existe.
 
 ## 2. Los siete problemas duros
@@ -102,7 +102,7 @@ Windows, GUI y Google/Dropbox/OneDrive vienen después. Ver [ROADMAP.md](ROADMAP
 
 ## 5. Medidas reales contra Google Drive
 
-Cinco pasadas de la suite de conformidad (`libredisk check --pasadas 5`) contra una cuenta
+Cinco pasadas de la suite de conformidad (`multidrive check --pasadas 5`) contra una cuenta
 real, el 2026-09-18. **Las nueve comprobaciones pasan en las cinco**: Drive cumple el
 contrato de `Backend`.
 
@@ -460,7 +460,7 @@ todo lo controlable, así que atribuir a «lo que hay en la cuenta» una diferen
 dos días distintos es contar una historia sobre ruido. La hipótesis no queda refutada: queda
 **descartada por no ser comprobable con esta medición**. Comprobarla exigiría un experimento
 de verdad —la misma cuenta poblada y vacía, alternando, muchas repeticiones— y eso mide una
-propiedad de Google, no de LibreDisk.
+propiedad de Google, no de MultiDrive.
 
 Lo que sí se puede cerrar es la cifra: **el «4,7 veces más barato por operación» de §6 no se
 sostiene y no debe citarse.** En tres tandas ha salido 4,7×, 1,6× y 2,5×. Lo único constante
@@ -571,7 +571,7 @@ Una petición por proveedor, no una enumeración:
 | Google Drive | 17,0 GiB | 13,5 GiB (79 %) | 20,0 MiB |
 
 Las dos primeras columnas son de la cuenta entera —las fotos del usuario cuentan tanto como
-los fragmentos— y salen de la API de cupo de cada servicio. La tercera es de LibreDisk y sale
+los fragmentos— y salen de la API de cupo de cada servicio. La tercera es de MultiDrive y sale
 de la enumeración. Son cifras distintas y cuestan cosas distintas: por eso en la línea de
 órdenes la tercera va detrás de `--medir`.
 
@@ -584,7 +584,7 @@ proveedor **va por detrás de lo que uno acaba de escribir**. Cuánto por detrá
 experimento no lo dice.
 
 Eso tiene una consecuencia directa en la interfaz, y está implementada: el tramo de la barra
-que corresponde a LibreDisk se recorta a lo que el proveedor dice que hay ocupado
+que corresponde a MultiDrive se recorta a lo que el proveedor dice que hay ocupado
 (`min(del_volumen, usado)`). Sin ese recorte, un volumen recién escrito pintaría un tramo
 mayor que la barra entera y la ventana enseñaría más del 100 % de una cuenta que está al 6 %.
 
@@ -613,12 +613,12 @@ y exige una evaluación de seguridad anual de terceros.
 | Enumerar el volumen entero (`scrub`) | 6,6 s, 3 trozos, 0 degradados |
 | Medir lo que ocupa | 3,0 MiB |
 
-**Todo lo que LibreDisk hace cabe dentro de `drive.file`.**
+**Todo lo que MultiDrive hace cabe dentro de `drive.file`.**
 
 ### 10.1 Y no ve lo que no creó
 
 La otra mitad, que es la que sostiene lo que promete la política de privacidad. Apuntando la
-aplicación nueva a `/libredisk-pruebas` —la carpeta donde vive el volumen de §9, creado por
+aplicación nueva a `/multidrive-pruebas` —la carpeta donde vive el volumen de §9, creado por
 una aplicación **distinta** con permiso total— la respuesta es:
 
 ```
@@ -626,7 +626,7 @@ no hay ningun volumen en estos proveedores
 ```
 
 No es que no sepa leerlo: es que **no lo ve**. Para esa aplicación esos ficheros no existen.
-Es la comprobación directa de que «solo los ficheros que LibreDisk crea» describe lo que pasa
+Es la comprobación directa de que «solo los ficheros que MultiDrive crea» describe lo que pasa
 y no lo que nos gustaría que pasara.
 
 ### 10.2 Lo que esto ahorra

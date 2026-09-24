@@ -2371,112 +2371,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
-name = "libredisk"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "clap",
- "futures",
- "libredisk-backend",
- "libredisk-core",
- "libredisk-crypto",
- "libredisk-mount",
- "libredisk-raid",
- "serde_json",
- "tokio",
- "winfsp",
- "winreg 0.56.0",
-]
-
-[[package]]
-name = "libredisk-backend"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "libc",
- "opendal",
- "rand",
- "reqwest",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.20",
- "tokio",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "libredisk-core"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "blake3",
- "futures",
- "libredisk-backend",
- "libredisk-crypto",
- "libredisk-raid",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
-]
-
-[[package]]
-name = "libredisk-crypto"
-version = "0.0.1"
-dependencies = [
- "argon2",
- "chacha20poly1305",
- "rand",
- "thiserror 2.0.20",
- "zeroize",
-]
-
-[[package]]
-name = "libredisk-gui"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "futures",
- "libredisk-backend",
- "libredisk-core",
- "libredisk-crypto",
- "libredisk-mount",
- "libredisk-raid",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tokio",
- "winfsp",
-]
-
-[[package]]
-name = "libredisk-mount"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "fuser",
- "libc",
- "libredisk-backend",
- "libredisk-core",
- "libredisk-crypto",
- "libredisk-raid",
- "thiserror 2.0.20",
- "tokio",
- "widestring",
- "windows-sys 0.61.2",
- "winfsp",
-]
-
-[[package]]
-name = "libredisk-raid"
-version = "0.0.1"
-dependencies = [
- "reed-solomon-erasure",
- "thiserror 2.0.20",
-]
-
-[[package]]
 name = "libredox"
 version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2647,6 +2541,112 @@ dependencies = [
  "serde",
  "thiserror 2.0.20",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "multidrive"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "futures",
+ "multidrive-backend",
+ "multidrive-core",
+ "multidrive-crypto",
+ "multidrive-mount",
+ "multidrive-raid",
+ "serde_json",
+ "tokio",
+ "winfsp",
+ "winreg 0.56.0",
+]
+
+[[package]]
+name = "multidrive-backend"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "libc",
+ "opendal",
+ "rand",
+ "reqwest",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.20",
+ "tokio",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "multidrive-core"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "blake3",
+ "futures",
+ "multidrive-backend",
+ "multidrive-crypto",
+ "multidrive-raid",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
+name = "multidrive-crypto"
+version = "0.0.1"
+dependencies = [
+ "argon2",
+ "chacha20poly1305",
+ "rand",
+ "thiserror 2.0.20",
+ "zeroize",
+]
+
+[[package]]
+name = "multidrive-gui"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "futures",
+ "multidrive-backend",
+ "multidrive-core",
+ "multidrive-crypto",
+ "multidrive-mount",
+ "multidrive-raid",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tokio",
+ "winfsp",
+]
+
+[[package]]
+name = "multidrive-mount"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "fuser",
+ "libc",
+ "multidrive-backend",
+ "multidrive-core",
+ "multidrive-crypto",
+ "multidrive-raid",
+ "thiserror 2.0.20",
+ "tokio",
+ "widestring",
+ "windows-sys 0.61.2",
+ "winfsp",
+]
+
+[[package]]
+name = "multidrive-raid"
+version = "0.0.1"
+dependencies = [
+ "reed-solomon-erasure",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

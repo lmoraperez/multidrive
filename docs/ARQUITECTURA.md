@@ -85,7 +85,7 @@ vez de esconderse en un cero.
 
 ### Configurar proveedores
 
-Un proveedor se describe con variables `LIBREDISK_<RANURA>_<CAMPO>`, que se leen del entorno
+Un proveedor se describe con variables `MULTIDRIVE_<RANURA>_<CAMPO>`, que se leen del entorno
 o de un fichero de configuración; el entorno gana, porque quien exporta una variable está
 diciendo algo sobre *esta* ejecución.
 
@@ -103,12 +103,12 @@ equivocado.
 de cada tipo va la ranura sin número antes que las numeradas. Añadir un proveedor mueve a los
 que vienen detrás, y eso no corrompe nada: `Header::check_backends` se niega a abrir un
 volumen cuyos proveedores no casen con los de su cabecera. Lo que arregla el desajuste es
-`libredisk providers add`, que reescribe la cabecera moviendo los fragmentos que haga falta.
+`multidrive providers add`, que reescribe la cabecera moviendo los fragmentos que haga falta.
 
 #### Un solo catálogo
 
-Qué tipos hay y qué campos pide cada uno vive en un sitio: `libredisk-backend::catalogo`. De
-ahí salen los formularios de la ventana, la ayuda de `libredisk config ver` y la validación
+Qué tipos hay y qué campos pide cada uno vive en un sitio: `multidrive-backend::catalogo`. De
+ahí salen los formularios de la ventana, la ayuda de `multidrive config ver` y la validación
 al guardar. Antes eran tres copias de la misma lista, y una copia de una lista es una lista
 que acaba discrepando: al numerar todos los tipos, el texto de ayuda habría seguido diciendo
 que solo se numeran las carpetas locales.
@@ -125,12 +125,12 @@ el navegador en la página del proveedor, el usuario entra en su cuenta y da per
 flujo de código de autorización con redirección a `localhost`, el que usan las aplicaciones
 de escritorio:
 
-1. LibreDisk abre un servidor en `127.0.0.1`, con el puerto que le dé el sistema. Los dos
+1. MultiDrive abre un servidor en `127.0.0.1`, con el puerto que le dé el sistema. Los dos
    proveedores admiten cualquier puerto de loopback sin declararlo por adelantado, justamente
    para esto; fijar uno sería fallar el día que estuviera ocupado.
 2. Manda el navegador a la página del proveedor diciéndole que al terminar redirija a ese
    puerto.
-3. **Las credenciales del usuario no pasan por LibreDisk.** Van del navegador al proveedor.
+3. **Las credenciales del usuario no pasan por MultiDrive.** Van del navegador al proveedor.
    Aquí solo llega un código de un solo uso.
 4. Ese código se canjea por un token de refresco, que es lo único que se guarda.
 
@@ -145,7 +145,7 @@ El token de refresco **no pasa por la página**: se queda en el estado del proce
 se guarda, y se borra de memoria en cuanto está en el fichero. Que la página sea nuestra y
 corra en el mismo proceso no es motivo para pasear por ella acceso permanente a una cuenta.
 
-A Google se le pide `drive.file`, o sea **solo los ficheros que LibreDisk cree**, que es todo
+A Google se le pide `drive.file`, o sea **solo los ficheros que MultiDrive cree**, que es todo
 lo que necesita: crea su propia carpeta y todo lo que hay dentro. Pedir el Drive entero sería
 pedir permiso sobre las fotos del usuario para guardar en una carpeta, y además Google lo
 clasifica como ámbito restringido, lo que obliga a una evaluación de seguridad anual de
@@ -153,7 +153,7 @@ terceros. El ámbito de OneDrive no se elige: es `offline_access Files.ReadWrite
 que OpenDAL usa al renovar**, y pedir aquí otro daría un token que deja de valer en la
 primera renovación.
 
-Lo que falta para que esto sea de verdad un botón y nada más: una aplicación de LibreDisk
+Lo que falta para que esto sea de verdad un botón y nada más: una aplicación de MultiDrive
 registrada en Google y en Azure. Mientras no la haya, el ID y el secreto de *alguna*
 aplicación hay que pegarlos una vez, y eso sigue siendo un paso de desarrollador.
 
@@ -163,12 +163,12 @@ Añadir un proveedor escribe, lee, compara y borra un objeto pequeño, y solo si
 escribe la configuración. Comprueba lo que descarta los fallos de configurar —credenciales
 malas, carpeta inexistente, permisos de solo lectura— y sobre todo **que lo leído sea lo
 escrito**: un proveedor que acepta escrituras y devuelve otra cosa es peor que uno que falla,
-porque el fallo aparece mucho más tarde y lejos. No sustituye a `libredisk check`, que son
+porque el fallo aparece mucho más tarde y lejos. No sustituye a `multidrive check`, que son
 once comprobaciones y minutos contra una nube.
 
 #### Dónde van las credenciales
 
-En el fichero del **usuario** (`%APPDATA%\LibreDisk`, `~/.config/libredisk`), nunca en el de
+En el fichero del **usuario** (`%APPDATA%\MultiDrive`, `~/.config/multidrive`), nunca en el de
 la máquina. `ProgramData` y `/etc` los lee cualquier usuario del equipo, y lo que se guarda
 aquí son tokens de refresco y claves secretas, o sea acceso permanente a las cuentas. En Unix
 el fichero nace con permisos `0600`, desde que nace y no después: entre crearlo y un `chmod`
@@ -176,7 +176,7 @@ posterior hay una ventana en la que es legible por todo el mundo.
 
 Un servicio sí necesita el fichero de máquina, porque arranca como LocalSystem y no ve el
 perfil de nadie. Esa es una decisión que hay que tomar a sabiendas y a mano; nada de lo que
-LibreDisk escribe solo va allí.
+MultiDrive escribe solo va allí.
 
 
 ### Cuánto espacio queda
@@ -210,7 +210,7 @@ proveedor es lo que ocupa y las versiones viejas ocupan.
 **Las dos medidas no se restan.** Medido contra OneDrive el 2026-09-22: después de escribir
 20 MiB, la cuenta de uso del proveedor seguía dando la misma cifra un cuarto de hora
 después. La cuenta de la nube va por detrás de lo que uno acaba de escribir, así que el tramo
-de la barra que corresponde a LibreDisk se recorta a lo que el proveedor dice que hay
+de la barra que corresponde a MultiDrive se recorta a lo que el proveedor dice que hay
 ocupado. Sin ese recorte, un volumen recién escrito pintaría más del 100 % de una cuenta que
 está al 6 %. Detalle en [VIABILIDAD.md §9](VIABILIDAD.md#9-primer-volumen-real-sobre-dos-nubes-y-qué-dice-cada-una-de-su-espacio).
 
@@ -220,7 +220,7 @@ está al 6 %. Detalle en [VIABILIDAD.md §9](VIABILIDAD.md#9-primer-volumen-real
 El Explorador y `df` solo tienen **dos** números donde aquí hay tres, así que declaran el de
 las cuentas: total y libre. Lo ocupado que enseña el Explorador es, por tanto, *lo ocupado en
 las cuentas* —fotos del usuario incluidas—, no lo que ocupa este volumen. El desglose de las
-tres cifras está en la ventana y en `libredisk espacio`.
+tres cifras está en la ventana y en `multidrive espacio`.
 
 Un volumen no tiene tamaño propio: lo tiene prestado, y la topología decide cuánto de ese
 préstamo se aprovecha. La regla cabe en una línea: **manda el proveedor más apretado**, y lo
@@ -269,7 +269,7 @@ segundos. **El escritor de metadatos no puede ser síncrono.**
 Tres cosas distintas se apoyan en que la verdad esté fuera:
 
 - Perder el disco local no puede significar perder el volumen.
-- `libredisk rescue` reconstruye el árbol escaneando los proveedores aunque no quede ninguna
+- `multidrive rescue` reconstruye el árbol escaneando los proveedores aunque no quede ninguna
   copia local del puntero de raíz. **Implementado**, y sin necesitar la cabecera
   autodescriptiva por trozo que este documento preveía: la longitud sellada se deduce, porque
   `split` rellena hasta un múltiplo de *k* y solo hay *k* candidatos, y el tag de
@@ -306,14 +306,14 @@ Los riesgos reales, por gravedad:
 1. **La frase de paso.** Trátala como la semilla de una cartera: gestor de contraseñas y
    copia en papel en otro sitio físico.
 2. **La cabecera.** Lleva la sal, y sin sal no hay clave con la que descifrar nada. Va
-   replicada en todos los proveedores, pero `libredisk header export` la vuelca a un fichero
+   replicada en todos los proveedores, pero `multidrive header export` la vuelca a un fichero
    para guardarla junto a la frase. Sin ella los trozos son ilegibles para siempre.
 3. **Perder una cuenta de nube.** Con `rs(k,m)` sobrevives a perder *m*. Por eso los
    proveedores deben estar en cuentas, e idealmente en empresas, distintas.
 4. **Usar un directorio local como proveedor.** Muere con la máquina y consume presupuesto de
    redundancia.
 
-Si se pierde el puntero de raíz pero queda la cabecera, `libredisk rescue` enumera los
+Si se pierde el puntero de raíz pero queda la cabecera, `multidrive rescue` enumera los
 trozos, los descifra y encuentra los directorios a los que no apunta nadie: son las raíces
 candidatas. Como aquí nada se sobrescribe, aparecen también las de versiones anteriores, y el
 rescate las describe por su contenido —cuántos ficheros, qué rutas— para poder elegir sin
@@ -327,7 +327,7 @@ mirar hashes. Adoptar una no borra las demás.
 > **La escritura diferida rompe esto a propósito, y hay que saberlo.** Entre `put --diferido`
 > y `sync` hay datos que **solo existen en esta máquina**: si muere en esa ventana, se
 > pierden. No es evitable —es la definición de diferir— pero sí decible, y por eso
-> `libredisk status` distingue "pendiente" de "a salvo en los proveedores" y `put --diferido`
+> `multidrive status` distingue "pendiente" de "a salvo en los proveedores" y `put --diferido`
 > lo avisa en mayúsculas.
 
 ### Concurrencia
@@ -346,27 +346,27 @@ depositado en uno de los proveedores.
 
 ```
 crates/
-  libredisk-core/      VFS, inodos, manifiestos, COW
-  libredisk-raid/      Reed-Solomon, espejo, concat, reconstrucción
-  libredisk-crypto/    Argon2id, XChaCha20-Poly1305, gestión de claves
-  libredisk-backend/   trait Backend + adaptadores (OpenDAL)
-  libredisk-cache/     caché en disco, cola de subida
-  libredisk-mount/     fuser (Linux) / winfsp (Windows)
-  libredisk-cli/       binario `libredisk`
+  multidrive-core/      VFS, inodos, manifiestos, COW
+  multidrive-raid/      Reed-Solomon, espejo, concat, reconstrucción
+  multidrive-crypto/    Argon2id, XChaCha20-Poly1305, gestión de claves
+  multidrive-backend/   trait Backend + adaptadores (OpenDAL)
+  multidrive-cache/     caché en disco, cola de subida
+  multidrive-mount/     fuser (Linux) / winfsp (Windows)
+  multidrive-cli/       binario `multidrive`
 docs/
 ```
 
 ## CLI prevista
 
 ```
-libredisk volume create mivolumen --layout rs:4,2
-libredisk backend add b2     --type s3 --endpoint ...
-libredisk backend add nube   --type webdav --url https://nextcloud...
-libredisk mount mivolumen /mnt/libredisk
-libredisk status                 # salud, cola de subida, coste estimado
-libredisk scrub mivolumen        # verificar integridad
-libredisk rebuild mivolumen      # reconstruir tras perder un proveedor
-libredisk rescue --from-backends # reconstruir metadatos desde cero
+multidrive volume create mivolumen --layout rs:4,2
+multidrive backend add b2     --type s3 --endpoint ...
+multidrive backend add nube   --type webdav --url https://nextcloud...
+multidrive mount mivolumen /mnt/multidrive
+multidrive status                 # salud, cola de subida, coste estimado
+multidrive scrub mivolumen        # verificar integridad
+multidrive rebuild mivolumen      # reconstruir tras perder un proveedor
+multidrive rescue --from-backends # reconstruir metadatos desde cero
 ```
 ## `union` contra `lineal`
 

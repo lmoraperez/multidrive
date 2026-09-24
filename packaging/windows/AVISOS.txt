@@ -1,11 +1,11 @@
 AVISOS DE SOFTWARE DE TERCEROS
 ==============================
 
-LibreDisk
+MultiDrive
 ---------
 
-Copyright (C) 2026 LibreDisk
-https://github.com/lmoraperez/libredisk
+Copyright (C) 2026 MultiDrive
+https://github.com/lmoraperez/multidrive
 
 Distribuido bajo la GNU Affero General Public License, version 3 o posterior
 (AGPL-3.0-or-later). El texto completo va en LICENSE, junto al programa.
@@ -19,7 +19,7 @@ WinFsp - Windows File System Proxy, Copyright (C) Bill Zissimopoulos
 https://github.com/winfsp/winfsp
 
 WinFsp es quien pone el controlador que hace que el volumen aparezca como una
-unidad de Windows. LibreDisk no lo incluye dentro de su propio paquete: el
+unidad de Windows. MultiDrive no lo incluye dentro de su propio paquete: el
 instalador completo **encadena el instalador de WinFsp sin modificar, tal y como
 lo publica el proyecto WinFsp**, firmado por NAVIMATICS LLC.
 
@@ -49,10 +49,10 @@ codigo abierto, que es la que permite lo anterior. Sus terminos, literales:
 
         3. Is not linked or distributed with proprietary (non-FLOSS) software.
 
-LibreDisk cumple las tres: se distribuye bajo AGPL-3.0, que satisface las dos
+MultiDrive cumple las tres: se distribuye bajo AGPL-3.0, que satisface las dos
 definiciones citadas; lleva el aviso y el enlace en este fichero, en la
 documentacion y en la propia orden de montaje; y no se distribuye con ningun
 componente propietario.
 
-Al desinstalar LibreDisk **no se desinstala WinFsp**. Puede haber otros
+Al desinstalar MultiDrive **no se desinstala WinFsp**. Puede haber otros
 programas usandolo.

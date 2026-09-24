@@ -19,14 +19,14 @@ Tres cosas, de menos a más grave:
 
 Lo tercero es la razón por la que esto está en el roadmap y no en la lista de «estaría bien».
 
-## Lo que LibreDisk **no** necesita
+## Lo que MultiDrive **no** necesita
 
 Un certificado **EV**, que es el caro y el que exige validación de organización.
 
 Los EV hacen falta para firmar **controladores de modo núcleo**, porque desde Windows 10 el
-portal de hardware de Microsoft solo acepta envíos firmados con EV. LibreDisk no trae ningún
+portal de hardware de Microsoft solo acepta envíos firmados con EV. MultiDrive no trae ningún
 controlador: el que monta la unidad es el de **WinFsp**, que ya viene firmado por su
-proyecto, y `libredisk.exe` es un proceso de usuario corriente.
+proyecto, y `multidrive.exe` es un proceso de usuario corriente.
 
 Un certificado **OV** basta. La diferencia práctica es que con EV la reputación de SmartScreen
 es inmediata y con OV hay que ganársela con descargas; para un proyecto que empieza, esa
@@ -41,7 +41,7 @@ existe el `.pfx` que te descargabas y guardabas en el portátil. Eso cambia las 
 | Vía | Coste | Qué exige | Dónde encaja |
 |---|---|---|---|
 | **Azure Artifact Signing** (antes Trusted Signing) | ~10 $/mes (nivel básico) | Identidad validada. Organizaciones: EE. UU., Canadá, UE, RU. **Particulares: solo EE. UU. y Canadá** | La más barata *si la geografía cuadra* |
-| **SignPath Foundation** | Gratis | Licencia OSI sin doble licencia comercial, **repositorio público**, proyecto ya publicado y mantenido | LibreDisk es AGPL-3.0: cumple todo menos que el repositorio sigue siendo privado |
+| **SignPath Foundation** | Gratis | Licencia OSI sin doble licencia comercial, **repositorio público**, proyecto ya publicado y mantenido | MultiDrive es AGPL-3.0: cumple todo menos que el repositorio sigue siendo privado |
 | **CA comercial (OV)** | Cientos de € al año, más el token | Validación de la organización y un token hardware o un HSM | La vía que siempre está disponible |
 
 ### Lo que bloquea cada una
@@ -52,7 +52,7 @@ en EE. UU., Canadá, la UE o el Reino Unido. Microsoft ha dicho que irá amplian
 comprobar la lista vigente antes de descartarla**, porque cambia.
 
 **SignPath** es gratis y es justo el caso de uso para el que existe, pero pide repositorio
-público y una versión ya publicada. Hoy el repositorio de LibreDisk es privado, así que esta
+público y una versión ya publicada. Hoy el repositorio de MultiDrive es privado, así que esta
 vía **depende de publicarlo**, que es una decisión de proyecto, no de empaquetado.
 
 **Una CA comercial** funciona siempre, y es la única que no depende ni de dónde estés ni de
@@ -70,14 +70,14 @@ de desarrollo.
 
 ```powershell
 # Con un certificado en el almacén de Windows (token hardware, HSM, Azure)
-$env:LIBREDISK_SIGN_SHA1 = "<huella del certificado>"
+$env:MULTIDRIVE_SIGN_SHA1 = "<huella del certificado>"
 
 # O con un fichero, que ya solo vale para certificados viejos o de prueba
-$env:LIBREDISK_SIGN_PFX  = "C:\ruta\al\certificado.pfx"
-$env:LIBREDISK_SIGN_PASS = "<contrasena>"
+$env:MULTIDRIVE_SIGN_PFX  = "C:\ruta\al\certificado.pfx"
+$env:MULTIDRIVE_SIGN_PASS = "<contrasena>"
 
 # Opcional: otro servidor de sellado de tiempo
-$env:LIBREDISK_SIGN_TS   = "http://timestamp.digicert.com"
+$env:MULTIDRIVE_SIGN_TS   = "http://timestamp.digicert.com"
 
 .\packaging\windows\construir-msi.ps1
 ```

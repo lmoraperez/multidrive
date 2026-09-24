@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Compila LibreDisk y empaqueta los dos instaladores.
+    Compila MultiDrive y empaqueta los dos instaladores.
 
 .DESCRIPTION
     Necesita el SDK de .NET y la herramienta WiX:
@@ -16,8 +16,8 @@
 
     Produce dos cosas:
 
-      libredisk-X.Y.Z-x64.msi            solo LibreDisk; exige WinFsp ya instalado
-      libredisk-X.Y.Z-x64-completo.exe   encadena el instalador de WinFsp y el MSI
+      multidrive-X.Y.Z-x64.msi            solo MultiDrive; exige WinFsp ya instalado
+      multidrive-X.Y.Z-x64-completo.exe   encadena el instalador de WinFsp y el MSI
 
     Los dos, y no uno: quien ya administra WinFsp por su cuenta --porque lo comparte con
     rclone, sshfs-win o Cyberduck-- no quiere que le llegue otro paquete que decida por el.
@@ -91,15 +91,15 @@ function Ejecutar {
     validar. Con ella siguen siendo validos para siempre.
 
     Variables:
-      LIBREDISK_SIGN_PFX   ruta al .pfx     (y LIBREDISK_SIGN_PASS, su contrasena)
-      LIBREDISK_SIGN_SHA1  huella de un certificado ya instalado en el almacen de Windows,
+      MULTIDRIVE_SIGN_PFX   ruta al .pfx     (y MULTIDRIVE_SIGN_PASS, su contrasena)
+      MULTIDRIVE_SIGN_SHA1  huella de un certificado ya instalado en el almacen de Windows,
                            que es lo que se usa con un token hardware o un HSM
 #>
 function Firmar {
     param([Parameter(Mandatory)][string]$Ruta)
 
-    $pfx  = $env:LIBREDISK_SIGN_PFX
-    $sha1 = $env:LIBREDISK_SIGN_SHA1
+    $pfx  = $env:MULTIDRIVE_SIGN_PFX
+    $sha1 = $env:MULTIDRIVE_SIGN_SHA1
     if (-not $pfx -and -not $sha1) {
         Write-Warning "sin certificado: $(Split-Path -Leaf $Ruta) queda SIN FIRMAR (ver docs/FIRMA.md)"
         return
@@ -114,11 +114,11 @@ function Firmar {
     }
     $signtool = if ($signtool -is [System.IO.FileInfo]) { $signtool.FullName } else { $signtool.Source }
 
-    $sello = if ($env:LIBREDISK_SIGN_TS) { $env:LIBREDISK_SIGN_TS } else { 'http://timestamp.digicert.com' }
+    $sello = if ($env:MULTIDRIVE_SIGN_TS) { $env:MULTIDRIVE_SIGN_TS } else { 'http://timestamp.digicert.com' }
     $parametros = @('sign', '/fd', 'SHA256', '/td', 'SHA256', '/tr', $sello)
     if ($pfx) {
         $parametros += @('/f', $pfx)
-        if ($env:LIBREDISK_SIGN_PASS) { $parametros += @('/p', $env:LIBREDISK_SIGN_PASS) }
+        if ($env:MULTIDRIVE_SIGN_PASS) { $parametros += @('/p', $env:MULTIDRIVE_SIGN_PASS) }
     } else {
         $parametros += @('/sha1', $sha1)
     }
@@ -205,7 +205,7 @@ function ObtenerWinFsp {
 function FirmarBundle {
     param([Parameter(Mandatory)][string]$Ruta)
 
-    if (-not $env:LIBREDISK_SIGN_PFX -and -not $env:LIBREDISK_SIGN_SHA1) {
+    if (-not $env:MULTIDRIVE_SIGN_PFX -and -not $env:MULTIDRIVE_SIGN_SHA1) {
         Write-Warning "sin certificado: $(Split-Path -Leaf $Ruta) queda SIN FIRMAR (ver docs/FIRMA.md)"
         return
     }
@@ -239,7 +239,7 @@ if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
     throw "falta la herramienta wix. Instalala con: dotnet tool install --global wix"
 }
 
-Write-Host "==> compilando libredisk.exe (release)"
+Write-Host "==> compilando multidrive.exe (release)"
 Push-Location $repo
 try {
     Ejecutar -Programa "cargo" -Argumentos @("build", "--release", "--locked")
@@ -248,7 +248,7 @@ try {
 }
 
 $bin = "$repo\target\release"
-$exe = "$bin\libredisk.exe"
+$exe = "$bin\multidrive.exe"
 if (-not (Test-Path $exe)) { throw "no existe $exe" }
 
 # Firmar el binario ANTES de empaquetarlo: al reves quedaria un MSI firmado con un
@@ -256,11 +256,11 @@ if (-not (Test-Path $exe)) { throw "no existe $exe" }
 Firmar $exe
 
 New-Item -ItemType Directory -Force $Salida | Out-Null
-$msi = Join-Path (Resolve-Path $Salida).Path "libredisk-$Version-x64.msi"
+$msi = Join-Path (Resolve-Path $Salida).Path "multidrive-$Version-x64.msi"
 
 Write-Host "==> empaquetando $msi"
 Ejecutar -Programa "wix" -Argumentos @(
-    "build", (Join-Path $PSScriptRoot "libredisk.wxs"),
+    "build", (Join-Path $PSScriptRoot "multidrive.wxs"),
     "-arch", "x64",
     "-d", "Version=$Version",
     "-d", "BinDir=$bin",
@@ -285,16 +285,16 @@ if ($SoloMsi) {
 # ---------------------------------------------------------------------------------------
 
 $winfsp = ObtenerWinFsp
-$bundle = Join-Path (Resolve-Path $Salida).Path "libredisk-$Version-x64-completo.exe"
+$bundle = Join-Path (Resolve-Path $Salida).Path "multidrive-$Version-x64-completo.exe"
 
 Write-Host "==> empaquetando $bundle"
 Ejecutar -Programa "wix" -Argumentos @(
-    "build", (Join-Path $PSScriptRoot "libredisk-bundle.wxs"),
+    "build", (Join-Path $PSScriptRoot "multidrive-bundle.wxs"),
     "-arch", "x64",
     "-ext", "WixToolset.BootstrapperApplications.wixext",
     "-d", "Version=$Version",
     "-d", "WinFspMsi=$winfsp",
-    "-d", "LibreDiskMsi=$msi",
+    "-d", "MultiDriveMsi=$msi",
     "-o", $bundle)
 
 FirmarBundle $bundle
