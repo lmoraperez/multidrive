@@ -667,7 +667,45 @@ Lo barato mientras tanto, para no perder la opción: un job de CI con
 `cargo check --target aarch64-linux-android` sobre `multidrive-crypto` y `multidrive-raid`.
 Pasan sin NDK, así que cuesta segundos y evita que la portabilidad se pudra sin avisar.
 
+## Llevarse la configuración a otro equipo
+
+Analizado el 25 de septiembre de 2026, sin decidir. Hoy, quien cambia de equipo vuelve a
+enlazar cada cuenta a mano: la pregunta era si la aplicación podría guardar volúmenes y
+proveedores tras un usuario y una contraseña creados en la web del proyecto.
+
+Lo primero, por lo que se suele pasar de largo: **eso no es «la configuración», son las
+llaves**. El fichero lleva `REFRESH_TOKEN`, `CLIENT_SECRET`, `ACCESS_KEY_ID` y
+`SECRET_ACCESS_KEY`, o sea acceso permanente a las nubes de quien lo tenga. Un servidor con
+las de todos los usuarios vale mucho más para un atacante que el portátil de cualquiera de
+ellos, y hoy [la política de privacidad](../site/privacidad.html) —la registrada en la
+pantalla de consentimiento de Google— dice que no hay servidores. Eso se puede cambiar, pero
+se cambia a sabiendas.
+
+Tres caminos, de menos a más infraestructura:
+
+- **La configuración en tu propia nube.** Al enlazar la primera cuenta, buscar ahí un bulto
+  sellado con la frase de paso, al lado de la cabecera del volumen que ya se guarda en cada
+  proveedor, y sacar de él los demás proveedores y el volumen. Equipo nuevo: entrar en una
+  cuenta y escribir la frase. Mismo resultado que las cuentas, sin servidor, sin correos que
+  custodiar y sin tocar la política. Es extender lo que el volumen ya hace.
+- **Exportar e importar un fichero cifrado.** Una orden que saca la configuración sellada y
+  otra que la mete. Un día de trabajo, cero infraestructura, todo a mano. Sirve de puente
+  hacia cualquiera de los otros dos.
+- **Cuentas en la web, con cifrado de extremo a extremo.** El modelo de 1Password o Bitwarden:
+  de la contraseña salen dos cosas, una que se envía para identificarse y otra que nunca sale
+  del equipo y es la que cifra; el servidor guarda un bulto que no puede abrir. Frente a un
+  gestor web tiene una ventaja real: al ser aplicación nativa, un servidor comprometido no
+  puede colar código. A cambio: un servicio que mantener y respaldar, obligaciones de
+  protección de datos por guardar correos, la política reescrita y actualizada en Google
+  Cloud, y que **olvidar la contraseña es perder la configuración** —si se pudiera recuperar,
+  es que alguien más puede leerla—.
+
+El orden de preferencia es ese mismo. Las cuentas solo se ganan el coste el día que haga falta
+**compartir** configuración entre varias personas, que es un problema distinto del de llevarse
+la propia de un equipo a otro.
+
 ## Fuera de alcance por ahora
 - Escritura concurrente desde varias máquinas (v1 es un solo escritor)
 - Uso como disco de sistema o volumen de base de datos
 - Móvil como volumen de escritura — ver [Móvil (Android)](#móvil-android): analizado, pospuesto, no descartado
+- Guardar las llaves de los proveedores en un servidor nuestro sin cifrado de extremo a extremo
