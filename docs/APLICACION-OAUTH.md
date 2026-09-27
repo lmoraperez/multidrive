@@ -81,15 +81,27 @@ Lo que más despista: **los ámbitos ya no están en la pantalla de consentimien
 El cliente va el último a propósito: las tres secciones anteriores definen lo que verá el
 usuario cuando lo pulse.
 
-### Mientras esté «en pruebas», solo entran los probadores
+### «En pruebas» y «en producción»
 
-Un proyecto recién creado nace en estado **en pruebas**, y ahí Google rechaza a cualquier
-cuenta que no esté en la lista de usuarios de prueba, con un `Error 403: access_denied` y el
-texto «la app se está probando y solo los verificadores aprobados por los desarrolladores
-pueden acceder a ella».
+> **La aplicación de MultiDrive ya está publicada en producción** (27 de septiembre de 2026).
+> Lo que sigue explica los dos estados, porque hace falta para entender los tokens caducados
+> de antes y para quien registre su propia aplicación.
 
-Para probar con una cuenta concreta: **Público → Usuarios de prueba** y añadirla. Hay un tope
-de cuentas de prueba.
+Un proyecto recién creado nace **en pruebas**, y ahí pasan dos cosas:
+
+- Google rechaza a cualquier cuenta que no esté en la lista de usuarios de prueba, con un
+  `Error 403: access_denied` y el texto «la app se está probando y solo los verificadores
+  aprobados por los desarrolladores pueden acceder a ella». Se arregla en **Público →
+  Usuarios de prueba**, que tiene tope.
+- **Los tokens de refresco caducan a los siete días.** Este es el que muerde sin avisar: la
+  cuenta se enlaza, funciona toda la semana, y el lunes siguiente deja de funcionar sin que
+  nadie haya tocado nada. Publicar la aplicación deja de emitirlos con fecha de caducidad,
+  pero **no resucita los que ya se emitieron**: las cuentas enlazadas durante las pruebas hay
+  que volver a enlazarlas una vez.
+
+En producción no hay tope de usuarios ni caducidad a los siete días. Un token de refresco solo
+deja de valer si el usuario retira el permiso, si la cuenta pasa seis meses sin usarse, o si se
+borra el cliente OAuth en la consola.
 
 ### Publicar: no hace falta verificación
 

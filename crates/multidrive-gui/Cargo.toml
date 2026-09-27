@@ -26,3 +26,9 @@ tauri-build = { version = "2.6", features = [] }
 
 [target."cfg(windows)".build-dependencies]
 winfsp = "0.13"
+
+# Para poder decir por que no se abrio la ventana cuando no hay ventana donde decirlo. No
+# entra nada nuevo en el arbol: `multidrive-backend` ya la usa, y se pide la misma version con
+# la caracteristica que trae `MessageBoxW`.
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }

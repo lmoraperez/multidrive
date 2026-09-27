@@ -239,7 +239,7 @@ if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
     throw "falta la herramienta wix. Instalala con: dotnet tool install --global wix"
 }
 
-Write-Host "==> compilando multidrive.exe (release)"
+Write-Host "==> compilando multidrive.exe y multidrive-gui.exe (release)"
 Push-Location $repo
 try {
     Ejecutar -Programa "cargo" -Argumentos @("build", "--release", "--locked")
@@ -249,11 +249,17 @@ try {
 
 $bin = "$repo\target\release"
 $exe = "$bin\multidrive.exe"
-if (-not (Test-Path $exe)) { throw "no existe $exe" }
+$ventana = "$bin\multidrive-gui.exe"
+foreach ($f in @($exe, $ventana)) {
+    if (-not (Test-Path $f)) { throw "no existe $f" }
+}
 
-# Firmar el binario ANTES de empaquetarlo: al reves quedaria un MSI firmado con un
-# ejecutable sin firmar dentro, que es justo lo que mira SmartScreen al ejecutarlo.
+# Firmar los binarios ANTES de empaquetarlos: al reves quedaria un MSI firmado con
+# ejecutables sin firmar dentro, que es justo lo que mira SmartScreen al ejecutarlos. Los dos,
+# no solo la orden: desde que el instalador trae la ventana, es la ventana la que abre la
+# gente, y la que mas aviso se come si va sin firma.
 Firmar $exe
+Firmar $ventana
 
 New-Item -ItemType Directory -Force $Salida | Out-Null
 $msi = Join-Path (Resolve-Path $Salida).Path "multidrive-$Version-x64.msi"
