@@ -24,8 +24,14 @@ Hay dos descargas en la página de publicaciones, y la que quieres casi seguro e
 | `multidrive-X.Y.Z-x64-completo.exe` | Instala **WinFsp y MultiDrive**. Es lo normal. |
 | `multidrive-X.Y.Z-x64.msi` | Solo MultiDrive; se niega a instalarse si no hay WinFsp. Para quien ya administra WinFsp por su cuenta. |
 
-Los dos instalan **la ventana y la orden**: el acceso directo «MultiDrive» del menú de inicio
-abre la ventana, y `multidrive` queda en el PATH para cualquier consola.
+Los dos instalan **la ventana y la orden**: dejan un acceso directo «MultiDrive» en el
+escritorio y otro en el menú de inicio, y `multidrive` queda en el PATH para cualquier consola.
+
+Si no quieres el del escritorio, el MSI acepta que se lo digas:
+
+```
+msiexec /i multidrive-X.Y.Z-x64.msi ACCESO_ESCRITORIO=0
+```
 
 WinFsp es quien pone el controlador que hace aparecer la unidad. El instalador completo
 **encadena el instalador de WinFsp sin modificar, tal y como lo publica su proyecto**, y lo
