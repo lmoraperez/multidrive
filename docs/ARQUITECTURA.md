@@ -179,6 +179,24 @@ perfil de nadie. Esa es una decisión que hay que tomar a sabiendas y a mano; na
 MultiDrive escribe solo va allí.
 
 
+
+### El icono de la bandeja
+
+La unidad montada vive mientras viva **el proceso de la ventana**: `Montado` la suelta al
+destruirse —ese es su `Drop`— y con él se para el hilo que sube lo pendiente. Hasta que hubo
+bandeja, cerrar la ventana desmontaba la unidad delante del usuario.
+
+Ahora cerrar la ventana **con algo montado** la esconde en la bandeja; sin nada montado, cerrar
+cierra. Un programa que sigue vivo sin hacer nada y sin ventana es un programa que se ha
+perdido, y esa es la otra mitad de la regla.
+
+Si en ese instante el estado está ocupado y no se puede mirar, se esconde. Equivocarse hacia el
+lado de no desmontar cuesta un icono de más; hacia el otro, una unidad que desaparece mientras
+alguien está copiando ficheros.
+
+El rótulo del icono dice si hay algo montado y dónde, porque con la ventana cerrada es lo único
+que queda diciéndolo. El menú tiene dos entradas, y la segunda se llama **«Salir y desmontar»**
+en vez de «Salir» por lo mismo de siempre: eso es lo que hace.
 ### La maleta: llevarse la configuración a otro equipo
 
 Cambiar de equipo obligaba a volver a enlazar cada cuenta a mano. La maleta lo arregla **sin
