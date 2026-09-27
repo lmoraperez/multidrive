@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Result, anyhow, bail};
 use multidrive_backend::config::{self, Config};
 use multidrive_backend::{catalogo, conformance, live};
+use multidrive_core::maleta;
 
 /// Donde se busca la configuracion, y cual de esos ficheros existe.
 pub fn ruta() -> Result<()> {
@@ -310,4 +311,143 @@ pub async fn conectar(tipo: &str) -> Result<()> {
     println!("guardado        {nombre}");
     println!("en              {}", fichero.display());
     Ok(())
+}
+
+/// Guarda la configuracion, cifrada, en las nubes del propio usuario.
+pub async fn publicar() -> Result<()> {
+    let backends = crate::volumen::proveedores()?;
+    let claves = maleta::claves_de_este_equipo()?;
+    let frase = crate::volumen::frase()?;
+
+    let bulto = maleta::empaquetar(&claves, &frase)?;
+
+    println!(
+        "maleta      {} clave(s), {} bytes",
+        claves.len(),
+        bulto.len()
+    );
+    println!("            cifrada con tu frase de paso; sin ella no se abre");
+    println!();
+    println!("guardando en {} proveedor(es)...", backends.len());
+
+    let resultados = maleta::guardar(&backends, &bulto).await;
+    let mut logradas = 0;
+    for (nombre, fallo) in &resultados {
+        match fallo {
+            None => {
+                logradas += 1;
+                println!("  {nombre}: guardada");
+            }
+            Some(e) => println!("  {nombre}: NO se pudo: {e}"),
+        }
+    }
+
+    if logradas == 0 {
+        bail!("no quedo en ningun proveedor, asi que no hay maleta");
+    }
+
+    println!();
+    println!("En otro equipo: configura una sola de estas cuentas y ejecuta");
+    println!("  multidrive config recuperar");
+    println!();
+    println!("AVISO: esto acaba de subir tus llaves de acceso a tus propias cuentas. Van");
+    println!("cifradas, pero quien entre en una de esas cuentas se lleva el bulto, y lo unico");
+    println!("que lo protege es tu frase de paso. Una frase corta aqui es una frase corta");
+    println!("delante de alguien que tiene el fichero y todo el tiempo del mundo.");
+    Ok(())
+}
+
+/// Baja la maleta, la abre y escribe en la configuracion lo que falte.
+///
+/// Lo que ya esta y coincide no se toca. Lo que ya esta y **no** coincide tampoco: se dice y
+/// se deja como estaba, porque pisar una credencial que funciona con otra de una maleta vieja
+/// es la forma mas rapida de quedarse sin acceso a una cuenta. Para eso esta `--sobrescribir`.
+pub async fn recuperar(sobrescribir: bool) -> Result<()> {
+    let backends = crate::volumen::proveedores()?;
+    let frase = crate::volumen::frase()?;
+
+    println!("buscando la maleta en {} proveedor(es)...", backends.len());
+    let (donde, m) = maleta::recoger(&backends, &frase).await?.ok_or_else(|| {
+        anyhow!(
+            "no hay ninguna maleta en estos proveedores.\n\n\
+                 En el equipo que si tiene la configuracion:\n  multidrive config publicar"
+        )
+    })?;
+
+    println!("encontrada en '{donde}', {}", antiguedad(m.hecha_en));
+    println!();
+
+    let actuales = maleta::claves_de_este_equipo()?;
+    let mut nuevas = Vec::new();
+    let (mut iguales, mut choques) = (0, 0);
+
+    for (clave, valor) in &m.claves {
+        match actuales.get(clave) {
+            None => {
+                println!("  {clave}  nueva");
+                nuevas.push((clave.clone(), valor.clone()));
+            }
+            Some(v) if v == valor => iguales += 1,
+            Some(_) => {
+                choques += 1;
+                if sobrescribir {
+                    println!("  {clave}  DISTINTA, se pisa");
+                    nuevas.push((clave.clone(), valor.clone()));
+                } else {
+                    println!("  {clave}  DISTINTA, se deja la de aqui");
+                }
+            }
+        }
+    }
+
+    if iguales > 0 {
+        println!("  ({iguales} clave(s) ya estaban y coinciden)");
+    }
+
+    if nuevas.is_empty() {
+        println!();
+        println!("No hay nada que escribir: este equipo ya tiene lo que lleva la maleta.");
+        if choques > 0 && !sobrescribir {
+            println!("Hay {choques} clave(s) distintas. Para tomar las de la maleta:");
+            println!("  multidrive config recuperar --sobrescribir");
+        }
+        return Ok(());
+    }
+
+    let fichero = config::fichero_de_usuario()
+        .ok_or_else(|| anyhow!("no se sabe donde guardar la configuracion de este usuario"))?;
+    config::guardar(&fichero, &nuevas)?;
+
+    println!();
+    println!("escritas    {} clave(s)", nuevas.len());
+    println!("en          {}", fichero.display());
+    if choques > 0 && !sobrescribir {
+        println!();
+        println!("Quedan {choques} clave(s) distintas sin tocar. Si las de la maleta son las");
+        println!("buenas:  multidrive config recuperar --sobrescribir");
+    }
+    println!();
+    println!("Comprueba con:");
+    println!("  multidrive config ver");
+    println!("  multidrive volume status");
+    Ok(())
+}
+
+/// «hace 3 dias», que es lo que uno quiere saber de una maleta: si es la de antes o la de
+/// despues del ultimo cambio.
+fn antiguedad(hecha_en: u64) -> String {
+    let ahora = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if hecha_en == 0 || ahora <= hecha_en {
+        return "recien hecha".into();
+    }
+    let s = ahora - hecha_en;
+    match s {
+        0..=90 => "hecha hace un momento".into(),
+        91..=5400 => format!("hecha hace {} minuto(s)", s / 60),
+        5401..=172_800 => format!("hecha hace {} hora(s)", s / 3600),
+        _ => format!("hecha hace {} dia(s)", s / 86_400),
+    }
 }

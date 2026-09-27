@@ -33,6 +33,7 @@ use std::collections::HashMap;
 use multidrive_backend::{Backend, catalogo, config, live};
 use multidrive_core::ChunkHealth;
 use multidrive_core::header::{self, Header};
+use multidrive_core::maleta;
 use multidrive_core::pesos::{pesos_ampliados, pesos_para};
 use multidrive_core::rebalance::{self, Cambio};
 use multidrive_core::sincronizador::Sincronizador;
@@ -671,6 +672,120 @@ async fn pendiente(estado: tauri::State<'_, Estado>) -> Result<Pendiente, String
     })
 }
 
+// ---------------------------------------------------------------------------------------
+// La maleta: la configuracion, cifrada, en las nubes del propio usuario
+// ---------------------------------------------------------------------------------------
+
+/// Lo que se cuenta despues de guardar o traer la maleta.
+#[derive(Serialize, Default)]
+struct Maleta {
+    /// Proveedores donde quedo, o aquel del que salio.
+    donde: Vec<String>,
+    /// Los que no pudieron, con su motivo. Que uno falle no invalida al resto.
+    fallos: Vec<String>,
+    /// Cuantas claves lleva dentro.
+    claves: usize,
+    /// Cuantas se escribieron aqui al traerla.
+    nuevas: usize,
+    /// Cuantas estaban ya con **otro** valor y se dejaron como estaban.
+    distintas: usize,
+    /// Cuando se hizo, contado en palabras.
+    hecha: Option<String>,
+}
+
+/// Guarda la configuracion de este equipo, cifrada, en todas las nubes configuradas.
+///
+/// Pide la frase de paso aparte y no la guarda: es la misma del volumen, y de ella sale la
+/// clave que cierra el bulto.
+#[tauri::command]
+async fn publicar_maleta(frase: String) -> Result<Maleta, String> {
+    if frase.trim().is_empty() {
+        return Err("hace falta la frase de paso: es lo que cierra la maleta".into());
+    }
+    let backends = proveedores()?;
+    let claves = maleta::claves_de_este_equipo().map_err(|e| e.to_string())?;
+    let bulto = maleta::empaquetar(&claves, &frase).map_err(|e| e.to_string())?;
+
+    let mut out = Maleta {
+        claves: claves.len(),
+        ..Default::default()
+    };
+    for (nombre, fallo) in maleta::guardar(&backends, &bulto).await {
+        match fallo {
+            None => out.donde.push(nombre),
+            Some(e) => out.fallos.push(format!("{nombre}: {e}")),
+        }
+    }
+    if out.donde.is_empty() {
+        return Err(format!(
+            "no quedo en ningun proveedor, asi que no hay maleta: {}",
+            out.fallos.join("; ")
+        ));
+    }
+    Ok(out)
+}
+
+/// Trae la configuracion guardada en las nubes y escribe aqui lo que falte.
+///
+/// Lo que ya esta con otro valor **no se toca**: pisar una credencial que funciona con otra de
+/// una maleta vieja es la forma mas rapida de quedarse sin acceso a una cuenta.
+#[tauri::command]
+async fn recuperar_maleta(frase: String) -> Result<Maleta, String> {
+    if frase.trim().is_empty() {
+        return Err("hace falta la frase de paso con la que se guardo".into());
+    }
+    let backends = proveedores()?;
+    let (donde, m) = maleta::recoger(&backends, &frase)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("no hay ninguna maleta en estas cuentas. Guardala primero desde el equipo que si tiene la configuracion.")?;
+
+    let actuales = maleta::claves_de_este_equipo().map_err(|e| e.to_string())?;
+    let mut nuevas = Vec::new();
+    let mut distintas = 0;
+    for (clave, valor) in &m.claves {
+        match actuales.get(clave) {
+            None => nuevas.push((clave.clone(), valor.clone())),
+            Some(v) if v == valor => {}
+            Some(_) => distintas += 1,
+        }
+    }
+
+    let mut out = Maleta {
+        donde: vec![donde],
+        claves: m.claves.len(),
+        nuevas: nuevas.len(),
+        distintas,
+        hecha: Some(antiguedad(m.hecha_en)),
+        ..Default::default()
+    };
+
+    if !nuevas.is_empty() {
+        let fichero = config::fichero_de_usuario()
+            .ok_or("no se sabe donde guardar la configuracion de este usuario")?;
+        config::guardar(&fichero, &nuevas).map_err(|e| e.to_string())?;
+        out.fallos.clear();
+    }
+    Ok(out)
+}
+
+/// «hace 3 dias», que es lo que uno quiere saber de una maleta: si es de antes o de despues
+/// del ultimo cambio.
+fn antiguedad(hecha_en: u64) -> String {
+    let ahora = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if hecha_en == 0 || ahora <= hecha_en {
+        return "recien hecha".into();
+    }
+    match ahora - hecha_en {
+        0..=90 => "hecha hace un momento".into(),
+        s @ 91..=5400 => format!("hecha hace {} minuto(s)", s / 60),
+        s @ 5401..=172_800 => format!("hecha hace {} hora(s)", s / 3600),
+        s => format!("hecha hace {} dia(s)", s / 86_400),
+    }
+}
 // ---------------------------------------------------------------------------------------
 // Anadir proveedores al volumen
 // ---------------------------------------------------------------------------------------
@@ -1344,6 +1459,8 @@ fn main() {
             tipos_de_proveedor,
             conectar_nube,
             guardar_proveedor,
+            publicar_maleta,
+            recuperar_maleta,
             ampliacion,
             ampliar
         ])

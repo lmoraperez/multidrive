@@ -102,6 +102,8 @@ cargo run -- providers add --mas-espacio     # más capacidad (en lineal solo mu
 cargo run -- providers remove fs2 --menos-seguridad   # sacar uno, aunque ya no responda
 cargo run -- rebuild                      # regenerar lo que falte
 cargo run -- volume migrar                # volumen de antes del cambio de nombre: renombra su cabecera
+cargo run -- config publicar               # guarda la configuracion cifrada en tus propias nubes
+cargo run -- config recuperar             # la trae a este equipo: basta con tener una cuenta
 
 cargo run -- header export ./cabecera.json   # respaldo: sin la sal no hay clave
 cargo run -- rescue                          # si se pierde el puntero de raiz

@@ -179,6 +179,52 @@ perfil de nadie. Esa es una decisión que hay que tomar a sabiendas y a mano; na
 MultiDrive escribe solo va allí.
 
 
+### La maleta: llevarse la configuración a otro equipo
+
+Cambiar de equipo obligaba a volver a enlazar cada cuenta a mano. La maleta lo arregla **sin
+que aparezca ningún servidor nuestro**: la configuración se cifra con la frase de paso y se
+guarda en las cuentas del propio usuario, con la clave `multidrive-config.sellado`, al lado de
+la cabecera del volumen. En el equipo nuevo se enlaza una sola cuenta —por el navegador, como
+siempre—, se escribe la frase, y de ahí salen los demás proveedores. El volumen aparece solo:
+su cabecera ya estaba en ellos.
+
+```
+multidrive config publicar     # deja la maleta en cada proveedor configurado
+multidrive config recuperar    # la trae, y escribe aquí lo que falte
+```
+
+El envoltorio es `[versión][sal de 16 bytes][sellado]`. Dentro va un JSON con la fecha y las
+claves de configuración; fuera, en claro, solo la versión y la sal. Se sella con
+XChaCha20-Poly1305 y una clave derivada con Argon2id, y lleva `multidrive-maleta-v1` como dato
+asociado: un trozo del volumen no puede colarse como maleta ni al revés.
+
+**La sal es suya, no la de la cabecera.** Así el bulto se abre sin depender de que haya
+volumen —que es justo el caso de un equipo recién instalado— y la clave que lo cifra no es la
+misma que cifra los trozos aunque la frase sea la misma.
+
+**La frase de paso nunca entra dentro.** `MULTIDRIVE_PASSPHRASE` está en la lista de lo que no
+viaja, junto con `MULTIDRIVE_CONFIG`, que es una ruta de *este* equipo. Meter la frase sería
+cerrar la caja fuerte y pegar la llave a la tapa. Hay un test que lo comprueba de las dos
+formas: que no sale al abrir la maleta, y que sus bytes no están en el bulto.
+
+Lo que sí lleva son `REFRESH_TOKEN`, `CLIENT_SECRET` y las claves de S3, o sea **acceso
+permanente a las nubes de quien la abra**. De ahí dos decisiones:
+
+- **No se sube sola.** Publicarla es una orden explícita, y tanto la orden como la ventana
+  avisan de lo que acaba de salir del equipo. Subir las llaves de alguien a su nube, aunque sea
+  suya y vayan cifradas, es una decisión que toma él.
+- **Al traerla no se pisa nada.** Lo que ya está con otro valor se deja como estaba y se dice;
+  hace falta `--sobrescribir` para tomar la de la maleta. Pisar una credencial que funciona con
+  otra de una maleta vieja es la forma más rápida de quedarse sin acceso a una cuenta.
+
+Se replica en todos los proveedores, como la cabecera y por lo mismo: perder una cuenta no
+puede dejar sin configuración a las demás. Al recogerla se prueban todas y vale la primera que
+abra la frase, porque en una cuenta puede haber quedado una maleta vieja de antes de cambiarla.
+
+La protección real es la frase: quien entre en la cuenta de Drive se lleva el bulto, y lo único
+que hay entre él y los tokens es Argon2id. Una frase corta aquí es una frase corta delante de
+alguien que tiene el fichero y todo el tiempo del mundo.
+
 ### Cuánto espacio queda
 
 Son **tres cifras distintas** y el sistema no las mezcla, porque mezclarlas sería inventarse

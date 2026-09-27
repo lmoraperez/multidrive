@@ -271,6 +271,20 @@ enum ServicioCmd {
 enum ConfigCmd {
     /// Ficheros donde se busca la configuracion, y cual de ellos existe.
     Ruta,
+    /// Guarda la configuracion, cifrada con la frase de paso, en tus propias nubes.
+    ///
+    /// Deja un bulto sellado al lado de la cabecera del volumen, en cada proveedor. Lleva
+    /// dentro las llaves de acceso a tus cuentas, asi que **no se sube solo**: esto es la
+    /// orden que lo hace a proposito.
+    Publicar,
+    /// Trae la configuracion guardada en tus nubes a este equipo.
+    ///
+    /// Basta con tener configurado **un** proveedor: de su maleta salen los demas.
+    Recuperar {
+        /// Tomar las claves de la maleta tambien donde este equipo tenga otra distinta.
+        #[arg(long)]
+        sobrescribir: bool,
+    },
     /// Conecta una cuenta de nube por el navegador y la guarda.
     ///
     /// Lo mismo que el boton de la ventana, pero contando cada paso. Util cuando la ventana
@@ -363,6 +377,10 @@ async fn main() -> Result<()> {
         Command::Header(HeaderCmd::Export { fichero }) => volumen::header_export(&fichero).await,
         Command::Header(HeaderCmd::Import { fichero }) => volumen::header_import(&fichero).await,
         Command::Config(ConfigCmd::Ruta) => configuracion::ruta(),
+        Command::Config(ConfigCmd::Publicar) => configuracion::publicar().await,
+        Command::Config(ConfigCmd::Recuperar { sobrescribir }) => {
+            configuracion::recuperar(sobrescribir).await
+        }
         Command::Config(ConfigCmd::Ver) => configuracion::ver(),
         Command::Config(ConfigCmd::Add { tipo }) => configuracion::add(&tipo).await,
         Command::Config(ConfigCmd::Conectar { tipo }) => configuracion::conectar(&tipo).await,

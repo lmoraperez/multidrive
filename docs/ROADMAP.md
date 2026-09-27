@@ -669,6 +669,29 @@ Pasan sin NDK, así que cuesta segundos y evita que la portabilidad se pudra sin
 
 ## Llevarse la configuración a otro equipo
 
+Decidido y hecho el 27 de septiembre de 2026: **la maleta**, el bulto sellado en la nube del
+propio usuario. Sin servidor, sin cuentas y sin tocar la política de privacidad. Cómo funciona
+por dentro, en [ARQUITECTURA.md](ARQUITECTURA.md#la-maleta-llevarse-la-configuración-a-otro-equipo).
+
+- [x] `multidrive config publicar` y `multidrive config recuperar`, y los dos botones
+      equivalentes en la ventana
+- [x] La frase de paso **no viaja dentro**, con un test que lo comprueba de las dos formas:
+      que no sale al abrir la maleta y que sus bytes no están en el bulto
+- [x] Sal propia, distinta de la del volumen: el bulto se abre sin que haya volumen —el caso
+      de un equipo recién instalado— y no comparte clave con los trozos
+- [x] Al traerla, lo que ya está con otro valor no se pisa: se dice y hace falta
+      `--sobrescribir`. Pisar una credencial que funciona con otra de una maleta vieja es la
+      forma más rápida de quedarse sin acceso a una cuenta
+- [x] Se replica en todos los proveedores, como la cabecera, y al recogerla se prueban todas:
+      en una cuenta puede haber quedado una de antes de cambiar la frase
+- [ ] Probarla contra cuentas de nube reales. El camino es el mismo `Backend` para todos los
+      proveedores y está verificado de punta a punta sobre proveedores locales, pero eso no es
+      haberlo visto contra Drive
+
+Lo que sigue sin hacerse, y por qué se descartó, queda abajo: lo que aquí se guarda son las
+llaves, y un servidor con las de todo el mundo vale mucho más para un atacante que el portátil
+de cualquiera. Las cuentas en la web solo se ganan el coste el día que haya que **compartir**
+configuración entre personas, que es otro problema.
 Analizado el 25 de septiembre de 2026, sin decidir. Hoy, quien cambia de equipo vuelve a
 enlazar cada cuenta a mano: la pregunta era si la aplicación podría guardar volúmenes y
 proveedores tras un usuario y una contraseña creados en la web del proyecto.
