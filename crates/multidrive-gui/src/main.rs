@@ -41,6 +41,9 @@ use multidrive_core::tree::Volume;
 use multidrive_core::writeback::{self, WriteQueue};
 use multidrive_raid::Layout;
 use serde::Serialize;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{Manager, WindowEvent};
 use tokio::sync::Mutex;
 
 /// Cada cuantos segundos sube lo pendiente mientras esta montado en escritura.
@@ -294,6 +297,7 @@ async fn montaje(estado: tauri::State<'_, Estado>) -> Result<EstadoMontaje, Stri
 async fn montar(
     punto: String,
     escritura: bool,
+    app: tauri::AppHandle,
     estado: tauri::State<'_, Estado>,
 ) -> Result<EstadoMontaje, String> {
     if estado.montado.lock().await.is_some() {
@@ -352,6 +356,17 @@ async fn montar(
         _montaje: montaje,
         _sincronizador: sincronizador,
     });
+
+    // Con la ventana cerrada, el rotulo de la bandeja es lo unico que queda diciendo que hay
+    // una unidad montada y donde.
+    rotulo_de_bandeja(
+        &app,
+        &format!(
+            "MultiDrive — montado en {punto}{}",
+            if escritura { "" } else { " (solo lectura)" }
+        ),
+    );
+
     Ok(EstadoMontaje {
         montado: true,
         punto: Some(punto),
@@ -361,9 +376,13 @@ async fn montar(
 }
 
 #[tauri::command]
-async fn desmontar(estado: tauri::State<'_, Estado>) -> Result<EstadoMontaje, String> {
+async fn desmontar(
+    app: tauri::AppHandle,
+    estado: tauri::State<'_, Estado>,
+) -> Result<EstadoMontaje, String> {
     // Soltarlo es desmontar: el `Drop` de `Montaje` lo hace.
     *estado.montado.lock().await = None;
+    rotulo_de_bandeja(&app, "MultiDrive");
     Ok(EstadoMontaje {
         ejemplo: ejemplo_de_punto(),
         ..Default::default()
@@ -1438,9 +1457,108 @@ fn clasificar(health: &[ChunkHealth], minimo: usize) -> (usize, usize, usize) {
     (completos, degradados, perdidos)
 }
 
+// ---------------------------------------------------------------------------------------
+// El icono de la bandeja del sistema
+// ---------------------------------------------------------------------------------------
+
+/// Identificador del icono, para poder buscarlo y cambiarle el rotulo desde otro sitio.
+const BANDEJA: &str = "principal";
+
+/// Pone el icono en la bandeja, con su menu.
+///
+/// No es adorno. La unidad montada vive mientras viva **este proceso**: `Montado` la suelta al
+/// destruirse, y el hilo que sube lo pendiente se para con el. Sin bandeja, cerrar la ventana
+/// desmonta la unidad delante del usuario, que es lo que pasaba hasta ahora.
+fn bandeja(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let abrir = MenuItem::with_id(app, "abrir", "Abrir MultiDrive", true, None::<&str>)?;
+    let salir = MenuItem::with_id(app, "salir", "Salir y desmontar", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&abrir, &PredefinedMenuItem::separator(app)?, &salir])?;
+
+    let icono = app
+        .default_window_icon()
+        .cloned()
+        .ok_or_else(|| tauri::Error::AssetNotFound("el icono de la ventana".into()))?;
+
+    TrayIconBuilder::with_id(BANDEJA)
+        .icon(icono)
+        .tooltip("MultiDrive")
+        .menu(&menu)
+        // Con el menu en el boton izquierdo, el gesto de siempre --un click para abrir-- no
+        // funcionaria: abriria un menu de dos entradas para llegar a lo mismo.
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, ev| match ev.id.as_ref() {
+            "abrir" => mostrar(app),
+            // Sale de verdad: desmonta, porque `Montado` se suelta con el proceso. El rotulo
+            // lo dice para que nadie lo pulse creyendo que solo cierra la ventana.
+            "salir" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, ev| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = ev
+            {
+                mostrar(tray.app_handle());
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
+
+/// Trae la ventana al frente, este oculta o minimizada.
+fn mostrar(app: &tauri::AppHandle) {
+    if let Some(v) = app.get_webview_window("main") {
+        let _ = v.show();
+        let _ = v.unminimize();
+        let _ = v.set_focus();
+    }
+}
+
+/// Cambia lo que dice el icono al pasar el raton por encima.
+///
+/// Es el unico sitio donde se puede ver que hace el programa con la ventana cerrada, asi que
+/// dice lo que importa: si hay algo montado y donde.
+fn rotulo_de_bandeja(app: &tauri::AppHandle, texto: &str) {
+    if let Some(icono) = app.tray_by_id(BANDEJA) {
+        let _ = icono.set_tooltip(Some(texto));
+    }
+}
+
+/// Si cerrar la ventana dejaria algo a medias.
+///
+/// Con la unidad montada, cerrar la esconde en la bandeja; sin nada montado, cerrar cierra. Un
+/// programa que sigue vivo sin hacer nada y sin ventana es un programa que se ha perdido.
+///
+/// Si el estado esta ocupado en ese instante no se arriesga: esconde. Equivocarse hacia el
+/// lado de no desmontar cuesta un icono de mas; hacia el otro, una unidad que desaparece
+/// mientras alguien copia ficheros.
+fn sigue_trabajando(ventana: &tauri::Window) -> bool {
+    use tauri::Manager;
+    let estado = ventana.state::<Estado>();
+    match estado.montado.try_lock() {
+        Ok(g) => g.is_some(),
+        Err(_) => true,
+    }
+}
 fn main() {
     tauri::Builder::default()
         .manage(Estado::default())
+        .setup(|app| {
+            bandeja(app.handle())?;
+            Ok(())
+        })
+        // Cerrar la ventana con algo montado la esconde en la bandeja en vez de tirar la
+        // unidad abajo. Sin nada montado, cerrar cierra.
+        .on_window_event(|ventana, evento| {
+            if let WindowEvent::CloseRequested { api, .. } = evento
+                && sigue_trabajando(ventana)
+            {
+                api.prevent_close();
+                let _ = ventana.hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             arranque,
             abrir,

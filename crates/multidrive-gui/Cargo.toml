@@ -18,7 +18,7 @@ serde_json.workspace = true
 # Sin la funcionalidad de arrastrar y soltar del webview: la ventana no recibe ficheros, y
 # aceptarlos sin querer seria una via de entrada que nadie ha pensado.
 futures = "0.3.34"
-tauri = { version = "2.11", features = [] }
+tauri = { version = "2.11", features = ["tray-icon"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 [build-dependencies]
