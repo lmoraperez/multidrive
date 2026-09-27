@@ -2620,6 +2620,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tokio",
+ "windows-sys 0.61.2",
  "winfsp",
 ]
 

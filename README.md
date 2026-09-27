@@ -24,10 +24,17 @@ Hay dos descargas en la página de publicaciones, y la que quieres casi seguro e
 | `multidrive-X.Y.Z-x64-completo.exe` | Instala **WinFsp y MultiDrive**. Es lo normal. |
 | `multidrive-X.Y.Z-x64.msi` | Solo MultiDrive; se niega a instalarse si no hay WinFsp. Para quien ya administra WinFsp por su cuenta. |
 
+Los dos instalan **la ventana y la orden**: el acceso directo «MultiDrive» del menú de inicio
+abre la ventana, y `multidrive` queda en el PATH para cualquier consola.
+
 WinFsp es quien pone el controlador que hace aparecer la unidad. El instalador completo
 **encadena el instalador de WinFsp sin modificar, tal y como lo publica su proyecto**, y lo
 detecta si ya está: no lo toca, ni lo reinstala, ni lo quita al desinstalar MultiDrive. Puede
 haber otros programas usándolo.
+
+> **La ventana necesita WebView2**, que es lo que dibuja su interfaz. Windows 11 lo trae de
+> fábrica y los Windows 10 al día también; si falta, la ventana lo dice con un mensaje y el
+> enlace en vez de morirse sin más. La orden `multidrive` funciona igual sin él.
 
 > **Hace falta reiniciar una vez después de instalar WinFsp.** Su proveedor de red se registra
 > en el arranque, así que hasta el primer reinicio `net use` responde «error de sistema 67»

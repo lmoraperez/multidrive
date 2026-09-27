@@ -392,10 +392,12 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       Microsoft no exige evaluación de ámbitos ni pone tope de usuarios
 - [ ] Meter las credenciales en la construcción que se distribuya, para que el binario las
       lleve dentro en vez de leerlas de un fichero de pruebas
-- [ ] Publicar el proyecto en Google, que es lo que quita el tope de cuentas de prueba.
-      **No hace falta pasar verificación**: `drive.file` esta clasificado como ámbito no
-      sensible, y los no sensibles no la exigen. Es consecuencia directa de haber pedido el
-      permiso mínimo
+- [x] **Aplicación publicada en producción** en Google (27 de septiembre de 2026). No hizo
+      falta pasar verificación: `drive.file` está clasificado como ámbito no sensible, y los
+      no sensibles no la exigen. Es consecuencia directa de haber pedido el permiso mínimo.
+      Quita el tope de cuentas de prueba y, sobre todo, **la caducidad de siete días de los
+      tokens de refresco**, que es la que muerde sin avisar. Los emitidos durante las pruebas
+      no resucitan: esas cuentas hay que volver a enlazarlas una vez
 - [x] **Se pueden añadir proveedores desde la ventana.** Elegir tipo, rellenar los campos y
       «Probar y guardar»: escribe, lee, compara y borra contra el proveedor, y **solo si eso
       sale bien** escribe la configuración. Guardar primero y descubrir después que las

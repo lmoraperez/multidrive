@@ -99,6 +99,15 @@
             System="yes"
             Permanent="no" />
       </Component>
+      <!--
+        La ventana. Va en el mismo paquete que la orden y no aparte: son dos caras de lo
+        mismo, y quien instala «MultiDrive» espera que haya algo que abrir. Hasta ahora el MSI
+        solo traia `multidrive.exe`, asi que quien instalaba desde el instalador se quedaba
+        sin interfaz sin que nadie se lo dijera.
+      -->
+      <Component Id="Ventana" Guid="*">
+        <File Id="multidrive_gui.exe" Source="$(var.BinDir)\multidrive-gui.exe" KeyPath="yes" />
+      </Component>
       <Component Id="Licencia" Guid="*">
         <File Id="LICENSE.txt" Source="$(var.RepoDir)\LICENSE" Name="LICENSE.txt" KeyPath="yes" />
       </Component>
@@ -112,8 +121,37 @@
       </Component>
     </ComponentGroup>
 
+    <!--
+      El acceso directo del menu de inicio, que es por donde se abre la ventana. Suelto, sin
+      carpeta propia: una carpeta con un solo elemento dentro es un click de mas para llegar
+      a lo mismo.
+
+      La clave de registro es el `KeyPath` del componente porque un acceso directo no puede
+      serlo: Windows necesita algo cuya existencia pueda comprobar para saber si esto esta
+      instalado, y un `.lnk` que el usuario puede borrar no sirve.
+    -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="AccesoDirecto" Guid="*">
+        <Shortcut
+            Id="AccesoMenuInicio"
+            Name="MultiDrive"
+            Description="Un volumen sobre varias nubes, cifrado en el cliente"
+            Target="[INSTALLFOLDER]multidrive-gui.exe"
+            WorkingDirectory="INSTALLFOLDER"
+            Icon="MultiDrive.ico" />
+        <RegistryValue
+            Root="HKMU"
+            Key="Software\MultiDrive"
+            Name="AccesoDirecto"
+            Type="integer"
+            Value="1"
+            KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
     <Feature Id="Principal" Title="MultiDrive" Level="1" AllowAbsent="no">
       <ComponentGroupRef Id="Programa" />
+      <ComponentRef Id="AccesoDirecto" />
     </Feature>
 
   </Package>

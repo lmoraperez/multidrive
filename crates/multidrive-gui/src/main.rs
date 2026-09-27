@@ -1542,6 +1542,55 @@ fn sigue_trabajando(ventana: &tauri::Window) -> bool {
         Err(_) => true,
     }
 }
+
+/// Muere diciendo por que, cuando no hay ventana donde decirlo.
+///
+/// `windows_subsystem = "windows"` quita la consola: un panico aqui no lo ve nadie. El proceso
+/// desaparece y quien pulso el acceso directo se queda mirando un icono que no hace nada, que
+/// es el peor fallo posible de los que se pueden tener.
+///
+/// El caso que mas se va a dar es que falte el runtime de WebView2, que es lo que dibuja esta
+/// interfaz: Windows 11 lo trae de fabrica y algunos Windows 10 no. Desde que el instalador
+/// trae la ventana, eso le puede pasar a alguien que no somos nosotros.
+#[cfg(windows)]
+fn morir_diciendolo(motivo: &str) -> ! {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
+
+    let ancho = |s: &str| -> Vec<u16> {
+        std::ffi::OsStr::new(s)
+            .encode_wide()
+            .chain(Some(0))
+            .collect()
+    };
+    let texto = ancho(&format!(
+        "MultiDrive no pudo abrir su ventana.\n\n{motivo}\n\n\
+         Lo mas probable es que falte el runtime de WebView2, que es lo que dibuja esta \
+         interfaz. Es gratuito y lo publica Microsoft:\n\n\
+         https://developer.microsoft.com/microsoft-edge/webview2/\n\n\
+         La orden `multidrive` funciona igual sin el."
+    ));
+    let titulo = ancho("MultiDrive");
+
+    // SEGURIDAD: los dos vectores acaban en cero y viven durante toda la llamada. La ventana
+    // padre va nula porque no hay ninguna: de eso se trata.
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            texto.as_ptr(),
+            titulo.as_ptr(),
+            MB_OK | MB_ICONERROR,
+        );
+    }
+    std::process::exit(1)
+}
+
+/// Lo mismo donde si hay consola detras.
+#[cfg(not(windows))]
+fn morir_diciendolo(motivo: &str) -> ! {
+    eprintln!("MultiDrive no pudo abrir su ventana: {motivo}");
+    std::process::exit(1)
+}
 fn main() {
     tauri::Builder::default()
         .manage(Estado::default())
@@ -1583,7 +1632,7 @@ fn main() {
             ampliar
         ])
         .run(tauri::generate_context!())
-        .expect("no se pudo arrancar la ventana");
+        .unwrap_or_else(|e| morir_diciendolo(&e.to_string()));
 }
 
 #[cfg(test)]
