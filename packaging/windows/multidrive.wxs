@@ -130,6 +130,39 @@
       serlo: Windows necesita algo cuya existencia pueda comprobar para saber si esto esta
       instalado, y un `.lnk` que el usuario puede borrar no sirve.
     -->
+    <!--
+      El acceso directo del escritorio se crea, salvo que se diga lo contrario:
+
+          msiexec /i multidrive-X.Y.Z-x64.msi ACCESO_ESCRITORIO=0
+
+      Publica (en mayusculas) y `Secure` para que sobreviva a la elevacion: una propiedad
+      que no lo sea se pierde justo al cruzar esa frontera, que es cuando hace falta.
+
+      Preguntarlo seria mejor que suponerlo, pero el instalador completo ejecuta este MSI en
+      silencio: un dialogo aqui solo lo veria quien abra el `.msi` suelto. La pregunta, para
+      que la vea todo el mundo, va en la ventana del instalador completo y pide un tema propio.
+    -->
+    <Property Id="ACCESO_ESCRITORIO" Value="1" Secure="yes" />
+
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="AccesoEscritorio" Guid="*" Condition="ACCESO_ESCRITORIO = 1">
+        <Shortcut
+            Id="AccesoEnElEscritorio"
+            Name="MultiDrive"
+            Description="Un volumen sobre varias nubes, cifrado en el cliente"
+            Target="[INSTALLFOLDER]multidrive-gui.exe"
+            WorkingDirectory="INSTALLFOLDER"
+            Icon="MultiDrive.ico" />
+        <RegistryValue
+            Root="HKMU"
+            Key="Software\MultiDrive"
+            Name="AccesoEscritorio"
+            Type="integer"
+            Value="1"
+            KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
     <StandardDirectory Id="ProgramMenuFolder">
       <Component Id="AccesoDirecto" Guid="*">
         <Shortcut
@@ -152,6 +185,7 @@
     <Feature Id="Principal" Title="MultiDrive" Level="1" AllowAbsent="no">
       <ComponentGroupRef Id="Programa" />
       <ComponentRef Id="AccesoDirecto" />
+      <ComponentRef Id="AccesoEscritorio" />
     </Feature>
 
   </Package>
