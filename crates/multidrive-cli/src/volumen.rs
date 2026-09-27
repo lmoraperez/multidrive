@@ -36,7 +36,7 @@ pub fn fijar_frase(f: String) {
     let _ = FRASE_DEL_LANZADOR.set(f);
 }
 
-fn frase() -> Result<String> {
+pub(crate) fn frase() -> Result<String> {
     if let Some(f) = FRASE_DEL_LANZADOR.get() {
         return Ok(f.clone());
     }
@@ -49,7 +49,7 @@ fn frase() -> Result<String> {
     }
 }
 
-fn proveedores() -> Result<Vec<Arc<dyn Backend>>> {
+pub(crate) fn proveedores() -> Result<Vec<Arc<dyn Backend>>> {
     let configurados = live::configurados()
         .with_context(|| format!("configuracion de proveedores invalida\n\n{}", live::ayuda()))?;
     if configurados.is_empty() {

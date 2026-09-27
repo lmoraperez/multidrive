@@ -50,6 +50,8 @@ async function arrancar() {
   // cerrado, y es justo lo que hace falta para decidir si merece la pena crear uno.
   if (a.proveedores.length) refrescarEspacio($("espacio"));
   else $("espacio").replaceChildren(nota("No hay ningún proveedor configurado."));
+  // La maleta solo tiene sentido con algo que guardar, o con una cuenta de donde traerla.
+  $("equipaje").hidden = a.proveedores.length === 0;
 
   // La visibilidad se decide **siempre**, no solo cuando hay un problema. Antes se fijaba
   // dentro de esa rama, asi que quien creaba un volumen y volvia a esta pantalla se
@@ -1029,3 +1031,93 @@ async function ampliarAhora(a) {
     caja.replaceChildren(mal, otra);
   }
 }
+
+// ---------------------------------------------------------------------------------------
+// La maleta: la configuración, cifrada, en las nubes del propio usuario
+// ---------------------------------------------------------------------------------------
+
+$("abrir-equipaje").addEventListener("click", () => {
+  $("abrir-equipaje").hidden = true;
+  $("equipaje-cuerpo").hidden = false;
+  $("frase-maleta").focus();
+});
+
+$("cerrar-equipaje").addEventListener("click", () => {
+  $("equipaje-cuerpo").hidden = true;
+  $("abrir-equipaje").hidden = false;
+  // La frase no se queda escrita en un campo de una ventana que sigue abierta.
+  $("frase-maleta").value = "";
+  $("resultado-maleta").hidden = true;
+});
+
+function resultadoMaleta(texto, mal = false) {
+  const caja = $("resultado-maleta");
+  caja.className = mal ? "aviso mal" : "nota";
+  caja.textContent = texto;
+  caja.hidden = false;
+}
+
+/**
+ * Corre una de las dos operaciones con los botones bloqueados.
+ *
+ * Las dos tardan: derivar la clave con Argon2id es lento **a propósito**, y además hay que
+ * hablar con cada nube. Sin bloquear, dos clicks seguidos lanzan dos veces lo mismo.
+ */
+async function conLaMaleta(texto, trabajo) {
+  const botones = [$("guardar-maleta"), $("traer-maleta")];
+  botones.forEach((b) => (b.disabled = true));
+  const linea = $("resultado-maleta");
+  linea.className = "nota";
+  linea.hidden = false;
+  const parar = contando(linea, texto);
+  try {
+    await trabajo();
+  } catch (err) {
+    parar();
+    resultadoMaleta(String(err), true);
+  } finally {
+    parar();
+    botones.forEach((b) => (b.disabled = false));
+  }
+}
+
+$("guardar-maleta").addEventListener("click", () =>
+  conLaMaleta("Cifrando y subiendo a tus nubes…", async () => {
+    const m = await invoke("publicar_maleta", { frase: $("frase-maleta").value });
+    let texto =
+      `Guardada en ${m.donde.join(", ")}: ${m.claves} clave(s), cifradas con tu frase.\n\n` +
+      "En el otro equipo: enlaza una de estas cuentas, abre esta misma pantalla y pulsa " +
+      "«Traer a este equipo».";
+    if (m.fallos.length) {
+      texto += `\n\nNo se pudo en: ${m.fallos.join("; ")}`;
+    }
+    texto +=
+      "\n\nOJO: esto sube tus llaves de acceso a tus propias cuentas. Van cifradas, pero " +
+      "quien entre en una de esas cuentas se lleva el bulto, y lo único que lo protege es tu " +
+      "frase de paso.";
+    resultadoMaleta(texto);
+    $("frase-maleta").value = "";
+  }),
+);
+
+$("traer-maleta").addEventListener("click", () =>
+  conLaMaleta("Buscando la maleta y abriéndola…", async () => {
+    const m = await invoke("recuperar_maleta", { frase: $("frase-maleta").value });
+    let texto = `Encontrada en ${m.donde[0]}, ${m.hecha}. Lleva ${m.claves} clave(s).`;
+    texto += m.nuevas
+      ? `\n\nSe han añadido ${m.nuevas} a este equipo.`
+      : "\n\nNo había nada que añadir: este equipo ya tenía lo que lleva.";
+    if (m.distintas) {
+      // Pisar una credencial que funciona con otra de una maleta vieja es la forma más
+      // rápida de quedarse sin acceso a una cuenta, así que no se toca y se dice.
+      texto +=
+        `\n\nHay ${m.distintas} clave(s) que aquí valen otra cosa y NO se han tocado. ` +
+        "Si las de la maleta son las buenas, desde el terminal:\n" +
+        "  multidrive config recuperar --sobrescribir";
+    }
+    resultadoMaleta(texto);
+    $("frase-maleta").value = "";
+    await arrancar();
+    await prepararAlta();
+  }),
+);

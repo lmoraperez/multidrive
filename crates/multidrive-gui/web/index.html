@@ -80,6 +80,32 @@
   </div>
 </section>
 
+<!-- La maleta: llevarse esta configuración a otro equipo sin volver a enlazar cuenta por
+     cuenta, y sin que aparezca ningún servidor nuestro por medio. -->
+<section id="equipaje" hidden>
+  <button id="abrir-equipaje" class="secundario">Llevarme esta configuración a otro equipo…</button>
+
+  <div id="equipaje-cuerpo" hidden>
+    <div class="fila">
+      <h2>Tu configuración, en tus nubes</h2>
+      <button id="cerrar-equipaje" class="secundario">Cancelar</button>
+    </div>
+
+    <p class="nota">Guarda tus proveedores <b>cifrados con tu frase de paso</b> en tus propias
+    cuentas, al lado del volumen. En otro equipo basta con enlazar <b>una</b> de ellas y traerla:
+    los demás salen de ahí. No hay servidor nuestro por medio y no se sube nada solo.</p>
+
+    <label for="frase-maleta">Frase de paso</label>
+    <input type="password" id="frase-maleta" autocomplete="off" spellcheck="false">
+
+    <div class="enlinea">
+      <button id="guardar-maleta">Guardar en mis nubes</button>
+      <button id="traer-maleta" class="secundario">Traer a este equipo</button>
+    </div>
+    <p id="resultado-maleta" class="nota" hidden></p>
+  </div>
+</section>
+
 <!-- Sin volumen: crearlo sobre los proveedores que ya estén configurados. -->
 <section id="creacion" hidden>
   <h2>Crear un volumen</h2>

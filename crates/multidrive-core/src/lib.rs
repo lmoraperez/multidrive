@@ -27,6 +27,7 @@ pub mod diskcache;
 pub mod espacio;
 pub mod file;
 pub mod header;
+pub mod maleta;
 pub mod pesos;
 pub mod rebalance;
 pub mod rescue;
@@ -50,6 +51,8 @@ pub enum CoreError {
     SinSitio,
     #[error("ya hay un volumen en estos proveedores")]
     YaHayVolumen,
+    #[error("{0}")]
+    Maleta(String),
     #[error("el proveedor '{proveedor}' no se dejo enumerar: {motivo}")]
     NoSeDejaEnumerar { proveedor: String, motivo: String },
     #[error("no se puede cambiar la topologia: {0}")]
