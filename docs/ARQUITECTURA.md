@@ -228,12 +228,15 @@ formas: que no sale al abrir la maleta, y que sus bytes no están en el bulto.
 Lo que sí lleva son `REFRESH_TOKEN`, `CLIENT_SECRET` y las claves de S3, o sea **acceso
 permanente a las nubes de quien la abra**. De ahí estas decisiones:
 
-- **Se sube sola al crear el volumen, y solo entonces.** Crear es el único momento en que
-  coinciden las tres cosas: la frase de paso está en la mano, los proveedores son los que son,
-  y no hay ninguna maleta anterior que pisar. Quien cambia de equipo sin ella vuelve a enlazar
-  cuenta por cuenta, y para entonces ya no se acuerda de que había un botón para evitarlo. La
-  ventana lo dice al crear, no lo hace a escondidas. Después, publicarla es una orden
-  explícita: la configuración cambia y pisar la buena con una vieja no lo arregla nadie.
+- **Se guarda sola al crear el volumen y en cada apertura.** Son los dos momentos en que la
+  frase de paso está en la mano, y abrir tiene además una propiedad que lo hace seguro: para
+  abrir un volumen hay que tener configurados **todos** sus proveedores, así que lo que se
+  guarda es siempre, como mínimo, lo que el volumen necesita. Sin el refresco al abrir, la
+  maleta se quedaría con los proveedores del día que se creó, y quien añadiera una cuenta
+  después se encontraría en el otro equipo con una configuración que no abre nada.
+  Por eso en la ventana no hay ningún botón de «guardar»: no hace falta, y un botón que no
+  hace falta es uno que alguien pulsa sin saber para qué. La ventana dice, donde se ve, que
+  esto pasa. A mano sigue estando `multidrive config publicar`.
 - **Al enlazar una cuenta se mira si ya trae maleta.** Cuesta una consulta por proveedor y no
   hace falta la frase para saberlo: `maleta::hay` solo pregunta si el bulto está. Si lo está,
   la ventana pide la frase ahí mismo y, con ella, recupera el resto de proveedores **y abre el

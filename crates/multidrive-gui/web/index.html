@@ -39,8 +39,17 @@
       No sale de este programa, no se guarda y no se escribe en ningún registro.
       Si la pierdes, se pierde el volumen: no hay recuperación.
     </p>
-    <button type="submit" id="abrir">Abrir volumen</button>
+    <!-- Abrir y eliminar, juntos: son las dos cosas que se pueden hacer con un volumen que
+         existe y no está abierto. `type="button"` en el segundo no es un detalle: dentro de
+         un formulario, un botón sin tipo lo envía. -->
+    <div class="enlinea">
+      <button type="submit" id="abrir">Abrir volumen</button>
+      <button type="button" class="pedir-borrar secundario" data-destino="confirmar-borrado">
+        Eliminar el volumen…
+      </button>
+    </div>
   </form>
+  <div id="confirmar-borrado" hidden></div>
 
 </section>
 
@@ -76,29 +85,27 @@
 
 <!-- La maleta: llevarse esta configuración a otro equipo sin volver a enlazar cuenta por
      cuenta, y sin que aparezca ningún servidor nuestro por medio. -->
+<!-- Solo aparece cuando la cuenta que se acaba de enlazar ya trae configuración guardada. No
+     hay ningún botón para llegar aquí a propósito, y es deliberado: la maleta se guarda sola
+     al crear el volumen y cada vez que se abre, así que lo único que queda por hacer a mano
+     es traerla, y eso solo tiene sentido justo después de enlazar la cuenta que la trae. -->
 <section id="equipaje" hidden>
-  <button id="abrir-equipaje" class="secundario">Llevarme esta configuración a otro equipo…</button>
-
-  <div id="equipaje-cuerpo" hidden>
-    <div class="fila">
-      <h2>Tu configuración, en tus nubes</h2>
-      <button id="cerrar-equipaje" class="secundario">Cancelar</button>
-    </div>
-
-    <p class="nota">Guarda tus proveedores <b>cifrados con tu frase de paso</b> en tus propias
-    cuentas, al lado del volumen. En otro equipo basta con enlazar <b>una</b> de ellas y traerla:
-    los demás salen de ahí. No hay servidor nuestro por medio. <b>Al crear un volumen se guarda
-    sola</b>, con esa misma frase; después, solo cuando lo pidas aquí.</p>
-
-    <label for="frase-maleta">Frase de paso</label>
-    <input type="password" id="frase-maleta" autocomplete="off" spellcheck="false">
-
-    <div class="enlinea">
-      <button id="guardar-maleta">Guardar en mis nubes</button>
-      <button id="traer-maleta" class="secundario">Traer a este equipo</button>
-    </div>
-    <p id="resultado-maleta" class="nota" hidden></p>
+  <div class="fila">
+    <h2>Esta cuenta ya tiene tu configuración</h2>
+    <button id="cerrar-equipaje" class="secundario">Ahora no</button>
   </div>
+
+  <p class="nota">Está guardada <b>cifrada con tu frase de paso</b> en esa misma cuenta.
+  Escríbela y se traen los demás proveedores y se abre el volumen. No hay servidor nuestro por
+  medio: la configuración nunca salió de tus nubes.</p>
+
+  <label for="frase-maleta">Frase de paso</label>
+  <input type="password" id="frase-maleta" autocomplete="off" spellcheck="false">
+
+  <div class="enlinea">
+    <button id="traer-maleta">Traer y abrir</button>
+  </div>
+  <p id="resultado-maleta" class="nota" hidden></p>
 </section>
 
 <!-- Sin volumen: crearlo sobre los proveedores que ya estén configurados. -->
@@ -129,9 +136,16 @@
 <section id="panel" hidden>
   <div class="fila">
     <h2>Volumen</h2>
+    <button class="pedir-borrar secundario" data-destino="confirmar-borrado-panel">
+      Eliminar el volumen…
+    </button>
     <button id="cerrar" class="secundario">Cerrar</button>
   </div>
   <dl id="resumen"></dl>
+  <div id="confirmar-borrado-panel" hidden></div>
+  <p class="nota">Tu configuración de proveedores se guarda <b>cifrada con tu frase de paso en
+  tus propias nubes</b>, al crear el volumen y cada vez que lo abres. Sirve para recuperarla en
+  otro equipo enlazando una sola cuenta.</p>
 
   <div class="fila">
     <h2>Salud</h2>
@@ -150,14 +164,6 @@
 
   <h2>Pendiente de subir</h2>
   <div id="pendiente"><p class="nota">Consultando…</p></div>
-</section>
-
-<!-- Retirar el volumen. Fuera de las dos pantallas a proposito: se llega igual desde la de
-     abrir que con el volumen ya abierto, y antes solo salia en la primera. Va al final y en su
-     propia caja porque es lo unico de aqui que no tiene vuelta atras. -->
-<section id="retirar" hidden>
-  <button id="pedir-borrar" class="secundario">Eliminar el volumen…</button>
-  <div id="confirmar-borrado" hidden></div>
 </section>
 
 <script src="app.js"></script>

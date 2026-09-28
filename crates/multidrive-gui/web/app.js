@@ -50,17 +50,20 @@ async function arrancar() {
   // cerrado, y es justo lo que hace falta para decidir si merece la pena crear uno.
   if (a.proveedores.length) refrescarEspacio($("espacio"));
   else $("espacio").replaceChildren(nota("No hay ningún proveedor configurado."));
-  // La maleta solo tiene sentido con algo que guardar, o con una cuenta de donde traerla.
-  $("equipaje").hidden = a.proveedores.length === 0;
+  // La maleta solo se ofrece cuando se detecta una al enlazar una cuenta. Aqui se esconde
+  // siempre: si no, la de la vez anterior se queda abierta pidiendo una frase que ya no hace
+  // falta.
+  $("equipaje").hidden = true;
 
   // La visibilidad se decide **siempre**, no solo cuando hay un problema. Antes se fijaba
   // dentro de esa rama, asi que quien creaba un volumen y volvia a esta pantalla se
   // encontraba con que decia «hace falta la frase de paso» y no habia donde escribirla: el
   // formulario seguia oculto de cuando no habia volumen que abrir.
   $("formulario").hidden = !a.hay_volumen;
-  $("retirar").hidden = !a.hay_volumen;
-  $("confirmar-borrado").hidden = true;
-  $("confirmar-borrado").replaceChildren();
+  for (const id of ["confirmar-borrado", "confirmar-borrado-panel"]) {
+    $(id).hidden = true;
+    $(id).replaceChildren();
+  }
   // Y la de crear, por lo mismo: se enseña unas líneas más abajo cuando procede, pero si no
   // se esconde aquí se queda de la vez anterior. Pasó al quitar el último proveedor: seguía
   // ofreciendo «crear sobre los 1 proveedores configurados: gdrive» sin ningún gdrive.
@@ -138,12 +141,10 @@ async function mostrarPanel(ya) {
   $("entrada").hidden = true;
   $("panel").hidden = false;
   $("cabecera").textContent = "Volumen abierto.";
-  // Con el panel delante hay volumen por definición, así que se puede retirar desde aquí.
-  // Antes el botón vivía dentro de la pantalla de abrir, y quien acababa de crear un volumen
-  // no tenía por dónde deshacerlo.
-  $("retirar").hidden = false;
-  $("confirmar-borrado").hidden = true;
-  $("confirmar-borrado").replaceChildren();
+  // El panel tiene su propio boton de eliminar, junto a «Cerrar»: quien acaba de crear un
+  // volumen tiene que poder deshacerlo sin cerrarlo antes.
+  $("confirmar-borrado-panel").hidden = true;
+  $("confirmar-borrado-panel").replaceChildren();
 
   // Al arrancar con el volumen ya abierto no hay resumen a mano: se pide.
   const r = ya ?? (await invoke("resumen"));
@@ -913,8 +914,6 @@ async function ofrecerMaleta() {
   if (!hay) return;
 
   $("equipaje").hidden = false;
-  $("abrir-equipaje").hidden = true;
-  $("equipaje-cuerpo").hidden = false;
   resultadoMaleta(
     "Esta cuenta ya guarda una configuración de MultiDrive. Escribe tu frase de paso y pulsa " +
       "«Traer a este equipo» para recuperar los demás proveedores y abrir el volumen.",
@@ -926,29 +925,34 @@ async function ofrecerMaleta() {
 // Retirar el volumen
 // ---------------------------------------------------------------------------------------
 
-$("pedir-borrar").addEventListener("click", async () => {
-  const caja = $("confirmar-borrado");
-  const boton = $("pedir-borrar");
-  boton.disabled = true;
-  caja.hidden = false;
-  const parar = contando(
-    caja.appendChild(nota("")),
-    "Mirando qué hay que borrar; enumera cada proveedor y puede tardar…",
-  );
-  try {
-    const v = await invoke("volumen_a_borrar");
-    parar();
-    pedirConfirmacion(v);
-  } catch (err) {
-    parar();
-    caja.replaceChildren();
-    const mal = nota(String(err));
-    mal.className = "aviso mal";
-    caja.append(mal);
-  } finally {
-    boton.disabled = false;
-  }
-});
+// Hay dos botones de eliminar --uno junto a «Abrir volumen» y otro en el panel-- porque se
+// puede llegar con el volumen cerrado o abierto. Cada uno pinta la confirmacion en su propia
+// caja, que es la que tiene al lado: una confirmacion que aparece en otra parte de la pagina
+// es una confirmacion que nadie lee.
+for (const boton of document.querySelectorAll(".pedir-borrar")) {
+  boton.addEventListener("click", async () => {
+    const caja = $(boton.dataset.destino);
+    boton.disabled = true;
+    caja.hidden = false;
+    const parar = contando(
+      caja.appendChild(nota("")),
+      "Mirando qué hay que borrar; enumera cada proveedor y puede tardar…",
+    );
+    try {
+      const v = await invoke("volumen_a_borrar");
+      parar();
+      pedirConfirmacion(v, caja);
+    } catch (err) {
+      parar();
+      caja.replaceChildren();
+      const mal = nota(String(err));
+      mal.className = "aviso mal";
+      caja.append(mal);
+    } finally {
+      boton.disabled = false;
+    }
+  });
+}
 
 /**
  * Enseña qué se va a borrar y pide escribirlo para confirmar.
@@ -956,8 +960,7 @@ $("pedir-borrar").addEventListener("click", async () => {
  * Se pide **escribir los nombres de los proveedores** y no pulsar «sí»: obliga a mirar la
  * lista. Un botón que solo hay que pulsar se pulsa sin leer, y esto no tiene vuelta atrás.
  */
-function pedirConfirmacion(v) {
-  const caja = $("confirmar-borrado");
+function pedirConfirmacion(v, caja) {
   const partes = [];
 
   const resumen = document.createElement("dl");
@@ -1157,15 +1160,8 @@ async function ampliarAhora(a) {
 // La maleta: la configuración, cifrada, en las nubes del propio usuario
 // ---------------------------------------------------------------------------------------
 
-$("abrir-equipaje").addEventListener("click", () => {
-  $("abrir-equipaje").hidden = true;
-  $("equipaje-cuerpo").hidden = false;
-  $("frase-maleta").focus();
-});
-
 $("cerrar-equipaje").addEventListener("click", () => {
-  $("equipaje-cuerpo").hidden = true;
-  $("abrir-equipaje").hidden = false;
+  $("equipaje").hidden = true;
   // La frase no se queda escrita en un campo de una ventana que sigue abierta.
   $("frase-maleta").value = "";
   $("resultado-maleta").hidden = true;
@@ -1179,14 +1175,14 @@ function resultadoMaleta(texto, mal = false) {
 }
 
 /**
- * Corre una de las dos operaciones con los botones bloqueados.
+ * Trae la maleta con el boton bloqueado mientras tanto.
  *
- * Las dos tardan: derivar la clave con Argon2id es lento **a propósito**, y además hay que
- * hablar con cada nube. Sin bloquear, dos clicks seguidos lanzan dos veces lo mismo.
+ * Tarda: derivar la clave con Argon2id es lento **a propósito**, y además hay que hablar con
+ * cada nube. Sin bloquear, dos clics seguidos lanzan dos veces lo mismo.
  */
 async function conLaMaleta(texto, trabajo) {
-  const botones = [$("guardar-maleta"), $("traer-maleta")];
-  botones.forEach((b) => (b.disabled = true));
+  const boton = $("traer-maleta");
+  boton.disabled = true;
   const linea = $("resultado-maleta");
   linea.className = "nota";
   linea.hidden = false;
@@ -1198,28 +1194,9 @@ async function conLaMaleta(texto, trabajo) {
     resultadoMaleta(String(err), true);
   } finally {
     parar();
-    botones.forEach((b) => (b.disabled = false));
+    boton.disabled = false;
   }
 }
-
-$("guardar-maleta").addEventListener("click", () =>
-  conLaMaleta("Cifrando y subiendo a tus nubes…", async () => {
-    const m = await invoke("publicar_maleta", { frase: $("frase-maleta").value });
-    let texto =
-      `Guardada en ${m.donde.join(", ")}: ${m.claves} clave(s), cifradas con tu frase.\n\n` +
-      "En el otro equipo: enlaza una de estas cuentas, abre esta misma pantalla y pulsa " +
-      "«Traer a este equipo».";
-    if (m.fallos.length) {
-      texto += `\n\nNo se pudo en: ${m.fallos.join("; ")}`;
-    }
-    texto +=
-      "\n\nOJO: esto sube tus llaves de acceso a tus propias cuentas. Van cifradas, pero " +
-      "quien entre en una de esas cuentas se lleva el bulto, y lo único que lo protege es tu " +
-      "frase de paso.";
-    resultadoMaleta(texto);
-    $("frase-maleta").value = "";
-  }),
-);
 
 $("traer-maleta").addEventListener("click", () =>
   conLaMaleta("Buscando la maleta y abriéndola…", async () => {
