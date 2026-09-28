@@ -36,6 +36,18 @@ pub fn fijar_frase(f: String) {
     let _ = FRASE_DEL_LANZADOR.set(f);
 }
 
+/// Como se pone una variable de entorno **en el interprete que el usuario esta usando**.
+///
+/// Decirle `export` a quien esta en PowerShell es mandarle a escribir algo que no funciona, y
+/// el mensaje sale justo cuando esa persona no sabe todavia como se hace.
+fn asi_se_pone() -> String {
+    if cfg!(windows) {
+        format!("  $env:{FRASE} = '...'          # PowerShell\n  set {FRASE}=...              # cmd")
+    } else {
+        format!("  export {FRASE}='...'")
+    }
+}
+
 pub(crate) fn frase() -> Result<String> {
     if let Some(f) = FRASE_DEL_LANZADOR.get() {
         return Ok(f.clone());
@@ -43,8 +55,9 @@ pub(crate) fn frase() -> Result<String> {
     match std::env::var(FRASE) {
         Ok(f) if !f.trim().is_empty() => Ok(f),
         _ => bail!(
-            "falta la frase de paso.\n\n  export {FRASE}='...'\n\n\
-             No hay recuperacion: si la pierdes, pierdes el volumen."
+            "falta la frase de paso.\n\n{}\n\n\
+             No hay recuperacion: si la pierdes, pierdes el volumen.",
+            asi_se_pone()
         ),
     }
 }

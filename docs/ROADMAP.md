@@ -715,9 +715,16 @@ por dentro, en [ARQUITECTURA.md](ARQUITECTURA.md#la-maleta-llevarse-la-configura
 - [x] Eliminar el volumen está junto a «Abrir volumen» con el volumen cerrado, y junto a
       «Cerrar» con el volumen abierto. Cada botón pinta su confirmación al lado: una
       confirmación que aparece en otra parte de la página es una que nadie lee
-- [ ] Probarla contra cuentas de nube reales. El camino es el mismo `Backend` para todos los
-      proveedores y está verificado de punta a punta sobre proveedores locales, pero eso no es
-      haberlo visto contra Drive
+- [x] **Probada contra cuentas de nube reales** (28 de septiembre de 2026), sobre un
+      `espejo:3` de tres cuentas de Drive. La prueba se hizo con un `%APPDATA%` aparte que
+      solo tenía enlazada **una** de las tres, que es lo que de verdad se quería comprobar:
+      no vale ver que el fichero sube y baja, hay que ver que con una sola cuenta se recupera
+      el resto. Salió: encontró la maleta en `gdrive1`, trajo las otras dos claves, dejó la
+      que ya estaba —diciendo que coincidía, en vez de pisarla en silencio— y `volume status`
+      abrió el volumen desde ese equipo
+- [x] Y antes, con una frase de paso equivocada a propósito: **«hay maleta pero no se pudo
+      abrir»**. Distinguir «no hay» de «no es tu frase» importa, porque son dos cosas
+      distintas que hacer, y el mensaje lo dice
 
 Lo que sigue sin hacerse, y por qué se descartó, queda abajo: lo que aquí se guarda son las
 llaves, y un servidor con las de todo el mundo vale mucho más para un atacante que el portátil
