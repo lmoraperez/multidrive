@@ -390,8 +390,12 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [ ] Registrar la aplicación en **Azure** para OneDrive. Los pasos están en
       [APLICACION-OAUTH.md](APLICACION-OAUTH.md); es bastante menos trámite que Google, porque
       Microsoft no exige evaluación de ámbitos ni pone tope de usuarios
-- [ ] Meter las credenciales en la construcción que se distribuya, para que el binario las
-      lleve dentro en vez de leerlas de un fichero de pruebas
+- [x] **Las credenciales van dentro de la copia que se distribuye.** El guion de empaquetado
+      las lee de un fichero que no está en el repositorio y las pone en el entorno de la
+      compilación, donde `option_env!` las recoge. Sin ellas el instalador sale igual, pero al
+      añadir un proveedor pide un «ID de aplicación», que es lo que nadie que instala un
+      programa sabe de qué le hablan. Comprobado de dos formas: buscando los bytes dentro del
+      `.exe` construido y con `multidrive config ver`
 - [x] **Aplicación publicada en producción** en Google (27 de septiembre de 2026). No hizo
       falta pasar verificación: `drive.file` está clasificado como ámbito no sensible, y los
       no sensibles no la exigen. Es consecuencia directa de haber pedido el permiso mínimo.

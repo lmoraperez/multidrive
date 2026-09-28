@@ -37,7 +37,10 @@ param(
     [string]$Salida = "$PSScriptRoot\..\..\target\msi",
     # Construye solo el MSI, sin el instalador completo. Util sin red, y para quien
     # administra WinFsp por su cuenta.
-    [switch]$SoloMsi
+    [switch]$SoloMsi,
+    # Fichero CLAVE=VALOR con las credenciales de la aplicacion que se compilan dentro del
+    # binario. Fuera del repositorio a proposito; .gitignore lo mantiene asi.
+    [string]$Credenciales = (Join-Path $PSScriptRoot "credenciales.conf")
 )
 
 $ErrorActionPreference = 'Stop'
@@ -95,6 +98,56 @@ function Ejecutar {
       MULTIDRIVE_SIGN_SHA1  huella de un certificado ya instalado en el almacen de Windows,
                            que es lo que se usa con un token hardware o un HSM
 #>
+
+<#
+.SYNOPSIS
+    Mete las credenciales de la aplicacion en el entorno de la compilacion.
+.DESCRIPTION
+    `option_env!` se resuelve al compilar: lo que este en el entorno cuando corre cargo es lo
+    que acaba dentro del binario, y lo que permite que el boton «Conectar con Google Drive»
+    funcione sin que el usuario tenga que registrar su propia aplicacion.
+
+    Sin ellas la copia distribuida arranca igual, pero al añadir un proveedor pide un ID y un
+    secreto de aplicacion, que es justo lo que nadie que instala un programa sabe de que le
+    hablan.
+
+    Se leen de un fichero `CLAVE=VALOR` que **no esta en el repositorio** (y que .gitignore
+    mantiene fuera). Si no hay fichero, valen las variables que ya estuvieran en el entorno.
+#>
+function CargarCredenciales {
+    param([string]$Ruta)
+
+    $claves = @(
+        "MULTIDRIVE_APP_GDRIVE_CLIENT_ID",
+        "MULTIDRIVE_APP_GDRIVE_CLIENT_SECRET",
+        "MULTIDRIVE_APP_ONEDRIVE_CLIENT_ID",
+        "MULTIDRIVE_APP_ONEDRIVE_CLIENT_SECRET"
+    )
+
+    if ($Ruta -and (Test-Path $Ruta)) {
+        foreach ($linea in Get-Content $Ruta) {
+            $l = $linea.Trim()
+            if (-not $l -or $l.StartsWith("#")) { continue }
+            $i = $l.IndexOf("=")
+            if ($i -lt 1) { continue }
+            $clave = $l.Substring(0, $i).Trim() -replace '^export\s+', ''
+            $valor = $l.Substring($i + 1).Trim().Trim('"').Trim("'")
+            if ($claves -contains $clave -and $valor) {
+                Set-Item -Path "Env:$clave" -Value $valor
+            }
+        }
+    }
+
+    # Solo los nombres, nunca los valores: esta salida acaba pegada en informes.
+    $puestas = @($claves | Where-Object { (Get-Item "Env:$_" -ErrorAction SilentlyContinue).Value })
+    if ($puestas.Count -eq 0) {
+        Write-Warning "sin credenciales de aplicacion: el binario NO las llevara dentro, y al"
+        Write-Warning "anadir un proveedor pedira un ID y un secreto. Ver docs/APLICACION-OAUTH.md"
+        Write-Warning "Ponlas en $Ruta como CLAVE=VALOR, o en el entorno."
+        return
+    }
+    Write-Host "==> credenciales de aplicacion: $($puestas -join ', ')"
+}
 function Firmar {
     param([Parameter(Mandatory)][string]$Ruta)
 
@@ -238,6 +291,8 @@ $Version = ($Version -split '-')[0]
 if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
     throw "falta la herramienta wix. Instalala con: dotnet tool install --global wix"
 }
+
+CargarCredenciales -Ruta $Credenciales
 
 Write-Host "==> compilando multidrive.exe y multidrive-gui.exe (release)"
 Push-Location $repo

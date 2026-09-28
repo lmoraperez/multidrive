@@ -113,6 +113,7 @@ revisión que esperar ni tope de usuarios.
 Esto es consecuencia directa de haber elegido el permiso mínimo. Con el ámbito amplio `drive`
 —que es *restringido*— habría hecho falta además una evaluación de seguridad anual de
 terceros.
+
 ## OneDrive
 
 1. En [Azure Portal](https://portal.azure.com/) → Microsoft Entra ID → **Registros de
@@ -144,6 +145,13 @@ cargo build --release
 Un `build.rs` hace que cambiarlas obligue a recompilar. Sin eso, cambiar la variable y volver
 a construir dejaría el binario con las de antes y nadie se enteraría hasta que un usuario no
 pudiera conectar su cuenta.
+
+El guion de empaquetado lo hace por su cuenta: lee un fichero `CLAVE=VALOR` que **no está en
+el repositorio** —`packaging\windows\credenciales.conf`, que `.gitignore` deja fuera— y lo
+pone en el entorno antes de llamar a cargo. Se puede apuntar a otro con
+`-Credenciales <ruta>`, y si no hay fichero valen las variables que ya estén en el entorno.
+Si no hay ninguna de las dos cosas **avisa y sigue**, igual que hace cuando falta el
+certificado de firma: el instalador sale, pero pedirá esos datos al añadir un proveedor.
 
 Para comprobar que han entrado:
 
