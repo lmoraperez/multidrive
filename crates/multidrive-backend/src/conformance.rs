@@ -627,6 +627,27 @@ async fn paso<T>(
     }
 }
 
+/// El nombre del fichero que escribe [`prueba_rapida`], **sin carpeta**.
+///
+/// Sin barra a proposito. Antes era `multidrive-prueba/<algo>.tmp`, y ahi esta el detalle que
+/// no se ve hasta que se mira la nube: borrar el objeto **no borra la carpeta** que el
+/// proveedor creo para guardarlo. `Backend` sabe borrar claves, no directorios --en S3 ni
+/// siquiera existen-- asi que cada cuenta que alguien anadia se quedaba con una carpeta
+/// `multidrive-prueba` vacia dentro, para siempre, mientras la documentacion de aqui al lado
+/// prometia que esto limpia lo que escribe.
+///
+/// Sin carpeta no hay nada que limpiar despues del fichero: la cuenta queda exactamente como
+/// estaba.
+fn clave_de_prueba() -> String {
+    format!(
+        "multidrive-prueba-{}-{}.tmp",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default()
+    )
+}
 /// Comprobacion minima para decidir si un proveedor recien tecleado sirve.
 ///
 /// No es la suite: son cuatro operaciones y unos pocos segundos, porque esto se ejecuta con
@@ -646,14 +667,7 @@ async fn paso<T>(
 /// alguien sin avisar no esta bien, y ademas indica que el proveedor no sirve para un
 /// volumen, donde borrar es parte del funcionamiento normal.
 pub async fn prueba_rapida(b: &dyn Backend) -> Result<String, String> {
-    let clave = format!(
-        "multidrive-prueba/{}-{}.tmp",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or_default()
-    );
+    let clave = clave_de_prueba();
     let contenido = b"MultiDrive comprobando el proveedor".to_vec();
 
     paso("no se pudo escribir", b.put(&clave, contenido.clone())).await?;
@@ -692,6 +706,47 @@ pub async fn prueba_rapida(b: &dyn Backend) -> Result<String, String> {
 mod tests {
     use super::*;
     use crate::{Objeto, OpendalBackend};
+
+    /// **La clave de la prueba no lleva carpeta.**
+    ///
+    /// Es una barra, y cuesta una carpeta vacia en la cuenta de cada persona que anada un
+    /// proveedor: `Backend` borra claves, no directorios. Lo fija un test porque la barra es
+    /// justo lo que uno anade sin pensar al querer «tenerlo ordenado».
+    #[test]
+    fn la_clave_de_prueba_no_crea_carpetas() {
+        let clave = clave_de_prueba();
+        assert!(!clave.contains('/'), "{clave}");
+        assert!(clave.ends_with(".tmp"), "{clave}");
+        assert!(clave.starts_with("multidrive-"), "{clave}");
+    }
+
+    /// Dos pruebas a la vez no se pisan.
+    #[test]
+    fn dos_claves_de_prueba_no_coinciden() {
+        assert_ne!(clave_de_prueba(), clave_de_prueba());
+    }
+
+    /// Y despues de pasar la prueba, la cuenta queda **como estaba**.
+    #[tokio::test]
+    async fn la_prueba_rapida_no_deja_nada_detras() {
+        let b = OpendalBackend::memory("memoria").unwrap();
+        b.put("algo-que-ya-estaba", b"x".to_vec()).await.unwrap();
+
+        prueba_rapida(&b).await.unwrap();
+
+        let quedan: Vec<String> = b
+            .list("")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|o| o.clave)
+            .collect();
+        assert_eq!(
+            quedan,
+            ["algo-que-ya-estaba"],
+            "la prueba dejo restos en la cuenta"
+        );
+    }
 
     /// El proveedor en memoria cumple el contrato por construccion: si la suite falla aqui,
     /// el fallo esta en la suite, no en el proveedor.
