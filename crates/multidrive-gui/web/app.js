@@ -62,6 +62,12 @@ async function arrancar() {
   $("confirmar-borrado").hidden = true;
   $("confirmar-borrado").replaceChildren();
 
+  // El aviso se decide **siempre**, igual que la visibilidad de aquí arriba y por el mismo
+  // motivo que está escrito ahí: pintarlo solo cuando hay problema deja el de la vez anterior
+  // en pantalla diciendo algo que ya no es verdad. Pasó tal cual: se añadía un proveedor y
+  // seguía leyéndose «no hay ningún proveedor configurado» con el proveedor listado debajo.
+  aviso("");
+
   if (a.problema) {
     // Sin volumen no hay nada que abrir: pedir la frase seria pedir algo inutil. Pero si hay
     // proveedores configurados, si hay algo que hacer: crearlo.
@@ -70,6 +76,20 @@ async function arrancar() {
       await ofrecerCreacion(a.proveedores);
     } else {
       aviso(a.problema, !a.hay_volumen);
+    }
+  } else if (a.hay_volumen) {
+    // El volumen vive en unos proveedores concretos, y con uno solo de ellos no se abre. Hay
+    // que decirlo **antes** de que alguien escriba la frase de paso, no después de que el
+    // intento falle: el error de después no distingue «falta una cuenta» de «me equivoqué».
+    const faltan = a.del_volumen.filter((n) => !a.proveedores.includes(n));
+    if (faltan.length) {
+      aviso(
+        `Falta configurar ${faltan.join(", ")}: este volumen está repartido entre ` +
+          `${a.del_volumen.length} cuentas y aquí hay ${a.proveedores.length}. ` +
+          "Enlázalas, o tráelas con «Llevarme esta configuración a otro equipo» si las " +
+          "guardaste en tus nubes.",
+        true,
+      );
     }
   }
 }
