@@ -193,6 +193,25 @@ pub async fn guardar(backends: &[Arc<dyn Backend>], bulto: &[u8]) -> Vec<(String
     join_all(escrituras).await
 }
 
+/// Si alguno de estos proveedores guarda una maleta.
+///
+/// **No hace falta la frase**: solo se pregunta si el bulto esta ahi, no se abre. Sirve para
+/// el momento en que alguien acaba de enlazar una cuenta en un equipo nuevo: si esa cuenta ya
+/// trae maleta, lo que toca es pedirle la frase y traerse el resto, no dejarle buscando un
+/// boton que no sabe que existe.
+///
+/// Un proveedor que no contesta cuenta como que no la tiene. Aqui eso no hace daño: lo peor
+/// que pasa es no ofrecer algo que se puede pedir a mano.
+pub async fn hay(backends: &[Arc<dyn Backend>]) -> bool {
+    join_all(
+        backends
+            .iter()
+            .map(|b| async move { b.exists(CLAVE).await.unwrap_or(false) }),
+    )
+    .await
+    .into_iter()
+    .any(|x| x)
+}
 /// Busca la maleta en los proveedores y devuelve la primera que abra la frase.
 ///
 /// Prueba todas a proposito. Si en una cuenta quedo una maleta vieja —de antes de cambiar la
@@ -249,6 +268,7 @@ pub async fn recoger(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutil::backends;
 
     fn claves() -> BTreeMap<String, String> {
         [
@@ -361,6 +381,25 @@ mod tests {
         assert!(e.to_string().contains("version"), "{e}");
     }
 
+    /// Saber si hay maleta **no necesita la frase**, que es lo que permite ofrecerla nada mas
+    /// enlazar una cuenta, antes de pedirle nada a nadie.
+    #[tokio::test]
+    async fn se_ve_que_hay_maleta_sin_abrirla() {
+        let bs = backends(2);
+        assert!(
+            !hay(&bs).await,
+            "una cuenta recien enlazada no tiene maleta"
+        );
+
+        let bulto = empaquetar(&claves(), "la frase").unwrap();
+        guardar(&bs[..1], &bulto).await;
+
+        assert!(hay(&bs).await, "con una que la tenga basta");
+        assert!(
+            desempaquetar(&bulto, "otra frase").is_err(),
+            "y sigue cerrada"
+        );
+    }
     #[test]
     fn viaja_deja_fuera_lo_que_no_es_configuracion() {
         assert!(viaja("MULTIDRIVE_GDRIVE_REFRESH_TOKEN"));
