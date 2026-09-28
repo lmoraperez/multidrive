@@ -18,3 +18,7 @@
 
 # Lo genera tauri-build en cada compilacion.
 /crates/multidrive-gui/gen/
+
+# Credenciales de la aplicacion que se compilan dentro del binario distribuido. No son de
+# nadie en particular, pero un secreto en el historial no se borra: fuera del repositorio.
+/packaging/windows/credenciales.conf
