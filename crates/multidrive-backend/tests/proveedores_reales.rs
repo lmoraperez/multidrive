@@ -13,6 +13,19 @@ use multidrive_backend::{conformance, live};
 async fn los_proveedores_configurados_cumplen_el_contrato() {
     let proveedores = match live::configurados() {
         Ok(p) => p,
+        // Que este binario no lleve la aplicacion dentro no es una configuracion invalida:
+        // es una propiedad de **esta compilacion**. La copia que se distribuye si la lleva, y
+        // quien enlazo la cuenta con ella tiene una configuracion perfectamente buena. Aqui
+        // no hay nada que probar, asi que se dice y se sale, como cuando no hay proveedores.
+        Err(multidrive_backend::BackendError::SinAplicacion { proveedor, tipo }) => {
+            eprintln!(
+                "'{proveedor}' esta enlazado pero esta compilacion no trae aplicacion para \
+                 {tipo}; no se probo nada real.\n\n\
+                 Para probarlo:  MULTIDRIVE_APP_{tipo}_CLIENT_ID=... \
+                 MULTIDRIVE_APP_{tipo}_CLIENT_SECRET=... cargo test"
+            );
+            return;
+        }
         Err(e) => panic!(
             "configuracion de entorno invalida: {e}\n\n{}",
             live::ayuda()

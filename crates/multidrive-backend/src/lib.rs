@@ -153,6 +153,19 @@ pub enum BackendError {
         proveedor: &'static str,
         falta: String,
     },
+    /// La cuenta esta enlazada, pero no hay aplicacion con la que hablarle.
+    ///
+    /// Es distinto de [`BackendError::EntornoIncompleto`] y hay que decirlo distinto: al
+    /// usuario de una copia que trae la aplicacion dentro no se le puede pedir un
+    /// `CLIENT_ID`, porque no tiene ninguno ni tiene por que. Lo que le falta es la copia,
+    /// no la configuracion.
+    #[error(
+        "la cuenta '{proveedor}' esta enlazada, pero esta copia de MultiDrive no trae \n         aplicacion registrada para {tipo}. Usa una copia que la traiga, o declara la tuya \n         con MULTIDRIVE_APP_{tipo}_CLIENT_ID y MULTIDRIVE_APP_{tipo}_CLIENT_SECRET"
+    )]
+    SinAplicacion {
+        proveedor: &'static str,
+        tipo: String,
+    },
     #[error("no se pudo consultar el espacio de '{name}': {detalle}")]
     Cuota { name: String, detalle: String },
     #[error("no se pudo conectar la cuenta: {detalle}")]

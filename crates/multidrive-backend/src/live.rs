@@ -225,11 +225,23 @@ fn uno(
             OpendalBackend::fs(nombre, &dir)
         }
         "ONEDRIVE" => {
-            let creds = oauth(quien, tipo.clave, ranura, campo)?;
+            let creds = oauth(
+                quien,
+                tipo.clave,
+                ranura,
+                campo,
+                crate::aplicacion::configurada(tipo.clave),
+            )?;
             OpendalBackend::onedrive(nombre, &raiz(), &creds)
         }
         "GDRIVE" => {
-            let creds = oauth(quien, tipo.clave, ranura, campo)?;
+            let creds = oauth(
+                quien,
+                tipo.clave,
+                ranura,
+                campo,
+                crate::aplicacion::configurada(tipo.clave),
+            )?;
             OpendalBackend::gdrive(nombre, &raiz(), &creds)
         }
         "S3" => {
@@ -289,6 +301,7 @@ fn oauth(
     tipo: &str,
     ranura: &str,
     campo: &dyn Fn(&str, &str) -> Option<String>,
+    de_la_app: Option<crate::aplicacion::Credenciales>,
 ) -> Result<OauthCreds, BackendError> {
     if let Some(token) = campo(ranura, "ACCESS_TOKEN") {
         return Ok(OauthCreds::Acceso(token));
@@ -297,15 +310,28 @@ fn oauth(
     // Lo que identifica a la aplicacion puede venir de tres sitios, y lo de esta ranura gana:
     // quien escribe `GDRIVE2_CLIENT_ID` esta diciendo "para esta cuenta, mi aplicacion". Ver
     // [`crate::aplicacion`].
-    let de_la_app = crate::aplicacion::configurada(tipo);
     let client_id =
         campo(ranura, "CLIENT_ID").or_else(|| de_la_app.as_ref().map(|a| a.client_id.clone()));
     let client_secret = campo(ranura, "CLIENT_SECRET")
         .or_else(|| de_la_app.as_ref().map(|a| a.client_secret.clone()));
 
+    let refresco = campo(ranura, "REFRESH_TOKEN");
+    let cuenta_enlazada = refresco.is_some();
+
     let (Some(refresh_token), Some(client_id), Some(client_secret)) =
-        (campo(ranura, "REFRESH_TOKEN"), client_id, client_secret)
+        (refresco, client_id, client_secret)
     else {
+        // Con la cuenta ya enlazada, lo que falta no es la configuracion: es que este binario
+        // no lleva aplicacion dentro. Decir «falta CLIENT_ID» ahi manda al usuario a
+        // registrar una aplicacion en Google que no necesita, y es lo que veria cualquiera
+        // que guarde un proveedor con la copia distribuida y luego ejecute otra compilada
+        // sin credenciales.
+        if cuenta_enlazada && de_la_app.is_none() {
+            return Err(BackendError::SinAplicacion {
+                proveedor: quien,
+                tipo: tipo.to_string(),
+            });
+        }
         return Err(BackendError::EntornoIncompleto {
             proveedor: quien,
             falta: format!(
@@ -424,6 +450,65 @@ mod tests {
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
         move |clave: &str| mapa.get(clave).cloned()
+    }
+
+    /// La cuenta enlazada sin aplicacion no es una configuracion a medias, y no se dice igual.
+    ///
+    /// Quien guarda un proveedor con la copia distribuida --que trae la aplicacion dentro--
+    /// tiene en su fichero un token de refresco y nada mas. Si luego ejecuta un binario
+    /// compilado sin credenciales, el mensaje de antes le mandaba a poner un `CLIENT_ID` que
+    /// no tiene, no necesita y no deberia registrar. Lo que le falta es la copia.
+    #[test]
+    fn una_cuenta_enlazada_sin_aplicacion_lo_dice_asi() {
+        let campos = entorno(&[("GDRIVE_REFRESH_TOKEN", "1//un-token")]);
+        let campo = |ranura: &str, c: &str| campos(&format!("{PREFIJO}{ranura}_{c}"));
+
+        let e = oauth("gdrive", "GDRIVE", "GDRIVE", &campo, None).unwrap_err();
+        assert!(
+            matches!(&e, BackendError::SinAplicacion { tipo, .. } if tipo == "GDRIVE"),
+            "{e}"
+        );
+        let dicho = e.to_string();
+        assert!(dicho.contains("no trae"), "{dicho}");
+        assert!(
+            !dicho.contains("MULTIDRIVE_GDRIVE_CLIENT_ID"),
+            "no puede pedir la credencial de una ranura: {dicho}"
+        );
+    }
+
+    /// Con la aplicacion puesta, la misma configuracion vale.
+    #[test]
+    fn con_la_aplicacion_dentro_basta_el_token_de_refresco() {
+        let campos = entorno(&[("GDRIVE_REFRESH_TOKEN", "1//un-token")]);
+        let campo = |ranura: &str, c: &str| campos(&format!("{PREFIJO}{ranura}_{c}"));
+
+        let app = crate::aplicacion::Credenciales {
+            client_id: "de-la-aplicacion".into(),
+            client_secret: "su-secreto".into(),
+        };
+        match oauth("gdrive", "GDRIVE", "GDRIVE", &campo, Some(app)).unwrap() {
+            OauthCreds::Refresco {
+                refresh_token,
+                client_id,
+                ..
+            } => {
+                assert_eq!(refresh_token, "1//un-token");
+                assert_eq!(client_id, "de-la-aplicacion");
+            }
+            otro => panic!("se esperaba refresco: {otro:?}"),
+        }
+    }
+
+    /// Sin token de refresco si falta la configuracion, y ahi el mensaje de siempre es el
+    /// bueno: lo que hay que hacer es enlazar la cuenta.
+    #[test]
+    fn sin_cuenta_enlazada_sigue_siendo_configuracion_incompleta() {
+        let campos = entorno(&[("GDRIVE_ROOT", "/multidrive")]);
+        let campo = |ranura: &str, c: &str| campos(&format!("{PREFIJO}{ranura}_{c}"));
+
+        let e = oauth("gdrive", "GDRIVE", "GDRIVE", &campo, None).unwrap_err();
+        assert!(matches!(e, BackendError::EntornoIncompleto { .. }), "{e}");
+        assert!(e.to_string().contains("REFRESH_TOKEN"), "{e}");
     }
 
     /// El orden y los nombres exactos de las ranuras, que es lo que el usuario acaba viendo
