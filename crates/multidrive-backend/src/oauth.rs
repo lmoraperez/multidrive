@@ -11,7 +11,7 @@
 //! Es el flujo de codigo de autorizacion con redireccion a `localhost`, que es el que usan
 //! las aplicaciones de escritorio:
 //!
-//! 1. Se abre un servidor en `127.0.0.1` con un puerto que elige el sistema.
+//! 1. Se abre un servidor en el bucle local con un puerto que elige el sistema.
 //! 2. Se manda el navegador a la pagina del proveedor, diciendole que al terminar redirija a
 //!    ese puerto.
 //! 3. El usuario entra en su cuenta y da permiso. **Sus credenciales no pasan por aqui**: van
@@ -78,7 +78,20 @@ pub async fn conectar(
         .local_addr()
         .map_err(|e| fallo(e.to_string()))?
         .port();
-    let redirigir = format!("http://127.0.0.1:{puerto}");
+
+    // Con `localhost` delante hay que escuchar tambien en `::1`: en Windows ese nombre resuelve
+    // antes a IPv6, y el navegador se encontraria el puerto cerrado. Es el **mismo** puerto,
+    // atado aparte porque son dos familias distintas; si en IPv6 estuviera ocupado se sigue
+    // con IPv4 sola, que es exactamente lo que habia antes.
+    //
+    // Con `127.0.0.1` no se plantea, y por eso no se ata un socket de mas sin necesidad.
+    let servidor6 = if oauth.anfitrion == "localhost" {
+        TcpListener::bind(("::1", puerto)).await.ok()
+    } else {
+        None
+    };
+
+    let redirigir = format!("http://{}:{puerto}", oauth.anfitrion);
 
     let verificador = aleatorio();
     let reto = reto_de(&verificador);
@@ -103,9 +116,12 @@ pub async fn conectar(
         ))
     })?;
 
-    let (codigo, mut socket) = tokio::time::timeout(ESPERA, esperar_codigo(&servidor, &estado))
-        .await
-        .map_err(|_| fallo("se agoto la espera: nadie termino de dar permiso".into()))??;
+    let (codigo, mut socket) = tokio::time::timeout(
+        ESPERA,
+        esperar_codigo(&servidor, servidor6.as_ref(), &estado),
+    )
+    .await
+    .map_err(|_| fallo("se agoto la espera: nadie termino de dar permiso".into()))??;
 
     // El canje va **antes** de contestarle al navegador, y no es un detalle de orden.
     //
@@ -142,6 +158,20 @@ pub async fn conectar(
     }
 }
 
+/// Acepta por cualquiera de los dos escuchas, que son el mismo puerto en dos familias.
+async fn aceptar(
+    v4: &TcpListener,
+    v6: Option<&TcpListener>,
+) -> std::io::Result<(tokio::net::TcpStream, std::net::SocketAddr)> {
+    match v6 {
+        None => v4.accept().await,
+        Some(v6) => tokio::select! {
+            r = v4.accept() => r,
+            r = v6.accept() => r,
+        },
+    }
+}
+
 /// Atiende hasta que llegue la redireccion buena.
 ///
 /// Se sigue escuchando tras una peticion que no trae codigo porque el navegador pide cosas
@@ -149,12 +179,15 @@ pub async fn conectar(
 /// flujo colgado por una peticion que no es la del usuario.
 async fn esperar_codigo(
     servidor: &TcpListener,
+    servidor6: Option<&TcpListener>,
     estado: &str,
 ) -> Result<(String, tokio::net::TcpStream), BackendError> {
     loop {
-        let (mut socket, _) = servidor.accept().await.map_err(|e| BackendError::Oauth {
-            detalle: e.to_string(),
-        })?;
+        let (mut socket, _) = aceptar(servidor, servidor6)
+            .await
+            .map_err(|e| BackendError::Oauth {
+                detalle: e.to_string(),
+            })?;
 
         let mut buf = vec![0u8; 8192];
         let leidos = socket.read(&mut buf).await.unwrap_or(0);
@@ -622,10 +655,15 @@ mod tests {
     }
 
     fn oauth_falso(token: &str) -> Oauth {
+        con_anfitrion(token, "127.0.0.1")
+    }
+
+    fn con_anfitrion(token: &str, anfitrion: &'static str) -> Oauth {
         Oauth {
             autorizar: "http://127.0.0.1:1/autorizar",
             token: Box::leak(token.to_string().into_boxed_str()),
             ambito: "un.ambito",
+            anfitrion,
             cuota: "http://127.0.0.1:1/cuota",
             identidad: "http://127.0.0.1:1/identidad",
             campo_identidad: &["id"],
@@ -660,6 +698,36 @@ mod tests {
             assert!(
                 peticion.contains(exigido),
                 "falta {exigido} en:\n{peticion}"
+            );
+        }
+    }
+
+    /// Cada proveedor escribe la redireccion con el nombre que tiene registrado.
+    ///
+    /// No es cosmetico: la redireccion se compara **como texto** contra la registrada, y
+    /// mandar `127.0.0.1` donde hay puesto `localhost` se rechaza con un error de redireccion
+    /// que no dice que el problema sea el nombre.
+    #[tokio::test]
+    async fn la_redireccion_lleva_el_anfitrion_del_proveedor() {
+        for anfitrion in ["127.0.0.1", "localhost"] {
+            let (url, recibido) = proveedor_falso(
+                r#"{"access_token":"a","refresh_token":"el-bueno","expires_in":3599}"#,
+            )
+            .await;
+            let oauth = con_anfitrion(&url, anfitrion);
+
+            let c = conectar(&oauth, "id-de-la-app", "secreto", &navegador_que_acepta)
+                .await
+                .unwrap_or_else(|e| panic!("con {anfitrion}: {e}"));
+            assert_eq!(c.refresh_token, "el-bueno");
+
+            // Y va tal cual en el canje, que es donde el proveedor lo vuelve a comparar.
+            let peticion = recibido.await.unwrap();
+            let esperado = urlencode(&format!("http://{anfitrion}:"));
+            assert!(
+                peticion.contains(&format!("redirect_uri={esperado}")),
+                "con {anfitrion} el canje mando otra cosa:
+{peticion}"
             );
         }
     }

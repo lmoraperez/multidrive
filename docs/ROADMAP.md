@@ -387,9 +387,17 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [ ] Retirar un proveedor de un volumen lineal. No es la operación simétrica: al añadir, lo
       que se mueve lo decide el sorteo y siempre cabe; al retirar hay que colocar en los que
       quedan todo lo que tenía el que se va, y puede no caber. Hoy se rechaza diciendo eso
-- [ ] Registrar la aplicación en **Azure** para OneDrive. Los pasos están en
-      [APLICACION-OAUTH.md](APLICACION-OAUTH.md); es bastante menos trámite que Google, porque
-      Microsoft no exige evaluación de ámbitos ni pone tope de usuarios
+- [x] **Aplicación registrada en Azure** para OneDrive (28 de septiembre de 2026). Ni
+      evaluación de ámbitos ni tope de usuarios, al contrario que Google. Conectada una cuenta
+      real por el navegador y pasadas **las once comprobaciones** de `multidrive check` con
+      nuestras propias credenciales dentro del binario
+- [x] Y dos trampas que costaron la primera tarde, ya escritas en
+      [APLICACION-OAUTH.md](APLICACION-OAUTH.md) con el motivo: la plataforma tiene que ser
+      **Web** y no «móviles y de escritorio», porque mandamos `client_secret` y un cliente
+      público que presenta un secreto se rechaza con `AADSTS700025`; y la redirección tiene que
+      escribirse con **`localhost`** y no `127.0.0.1`, porque el portal no deja escribir la
+      segunda con `http` y la regla de que el puerto se ignora al comparar está documentada
+      para la primera. Cada proveedor lleva ahora el suyo en `Oauth::anfitrion`
 - [x] **Las credenciales van dentro de la copia que se distribuye.** El guion de empaquetado
       las lee de un fichero que no está en el repositorio y las pone en el entorno de la
       compilación, donde `option_env!` las recoge. Sin ellas el instalador sale igual, pero al

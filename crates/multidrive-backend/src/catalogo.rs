@@ -120,6 +120,15 @@ pub struct Oauth {
     pub token: &'static str,
     /// Que se pide poder hacer.
     pub ambito: &'static str,
+    /// Con que nombre se escribe la redireccion al bucle local: `127.0.0.1` o `localhost`.
+    ///
+    /// Los dos llegan al mismo sitio, pero **para el proveedor no son el mismo texto**, y la
+    /// redireccion se compara como texto contra la que hay registrada. Google prefiere
+    /// `127.0.0.1` y admite cualquier puerto. Microsoft ni siquiera deja escribir una
+    /// redireccion `http` con `127.0.0.1` en el portal, y la regla de que **el puerto se
+    /// ignora al comparar** --que es lo que nos permite abrir uno al azar-- la documenta para
+    /// `localhost`. Por eso cada proveedor lleva el suyo en vez de haber uno para todos.
+    pub anfitrion: &'static str,
     /// Donde preguntar cuanto espacio queda.
     pub cuota: &'static str,
     /// Donde preguntar **de quien es la cuenta**, y por que camino del JSON viene.
@@ -151,6 +160,7 @@ pub struct Oauth {
 const GDRIVE_OAUTH: Oauth = Oauth {
     autorizar: "https://accounts.google.com/o/oauth2/v2/auth",
     token: "https://oauth2.googleapis.com/token",
+    anfitrion: "127.0.0.1",
     // Solo los ficheros que crea MultiDrive, que es todo lo que necesita: crea su propia
     // carpeta y todo lo que hay dentro. Pedir el Drive entero seria pedir permiso sobre las
     // fotos del usuario para guardar en una carpeta, y ademas Google lo clasifica como
@@ -176,6 +186,7 @@ const GDRIVE_OAUTH: Oauth = Oauth {
 const ONEDRIVE_OAUTH: Oauth = Oauth {
     autorizar: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
     token: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+    anfitrion: "localhost",
     ambito: "offline_access Files.ReadWrite",
     cuota: "https://graph.microsoft.com/v1.0/me/drive?$select=quota",
     // El identificador de la unidad, que es distinto para cada cuenta y no dice nada de quien

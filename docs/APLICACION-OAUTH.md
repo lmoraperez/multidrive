@@ -120,15 +120,40 @@ terceros.
    aplicaciones** → Nuevo registro.
 2. Tipos de cuenta admitidos: **cuentas personales y de cualquier organización**, que es lo
    que corresponde al extremo `common` que usa la biblioteca.
-3. Plataforma: **Aplicaciones móviles y de escritorio**, con redirección `http://localhost`.
-4. Permisos de API: Microsoft Graph, delegados, **`Files.ReadWrite`** y **`offline_access`**.
+3. Plataforma: **Web** —no «Aplicaciones móviles y de escritorio»—, con redirección
+   `http://localhost`, sin puerto.
+4. Autenticación → **Flujos de cliente público: No**.
+5. Permisos de API: Microsoft Graph, delegados, **`Files.ReadWrite`** y **`offline_access`**.
    Ese par no se elige: es el que OpenDAL usa al renovar, y pedir otro daría un token que
    deja de valer en la primera renovación.
-5. Certificados y secretos: crea un **secreto de cliente**.
+6. Certificados y secretos: crea un **secreto de cliente**. El *Valor* solo se ve al crearlo.
 
-   > Hace falta aunque sea una aplicación de escritorio, porque la biblioteca que usamos
-   > manda siempre `client_secret` al renovar. Está comprobado en el código de
-   > `opendal-service-onedrive`.
+### Por qué Web y no escritorio
+
+Parece al revés de lo que es MultiDrive, pero lo decide una cosa concreta: **mandamos
+`client_secret`**, y no por gusto. OpenDAL mete `client_secret=` en el cuerpo de cada
+renovación, esté vacío o no —`opendal-service-onedrive`, `core.rs`, `refresh_tokens`—, así que
+el registro tiene que ser uno que lo acepte.
+
+Bajo «Aplicaciones móviles y de escritorio», Azure clasifica la aplicación como **cliente
+público**, y un cliente público que presenta un secreto se rechaza con
+`AADSTS700025: Client is public so neither 'client_assertion' nor 'client_secret' should be
+presented`. De ahí también el paso 4: ese interruptor es el que de verdad decide.
+
+### Por qué `localhost` y no `127.0.0.1`
+
+Los dos van al mismo sitio, pero la redirección se compara **como texto** contra la
+registrada, y aquí no se puede elegir:
+
+- El portal **no deja escribir** una redirección `http` con `127.0.0.1`; hay que editar el
+  manifiesto a mano.
+- La regla de que **el puerto se ignora al comparar** —lo que nos permite abrir uno al azar en
+  vez de reservar uno fijo— Microsoft la documenta para `localhost`.
+
+Por eso cada proveedor lleva escrito el suyo en el catálogo (`Oauth::anfitrion`): `127.0.0.1`
+en Google, que lo prefiere y admite cualquier puerto, y `localhost` en OneDrive. Con
+`localhost` por delante se escucha además en `::1`, porque en Windows ese nombre resuelve
+antes a IPv6 y el navegador se encontraría el puerto cerrado.
 
 ## Meterlas en el programa
 
