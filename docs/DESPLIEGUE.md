@@ -7,7 +7,9 @@
 - Servidor web: **Caddy**, con TLS automático de Let's Encrypt.
 - Raíz del sitio: `/var/www/multidrive` (propietario `www-data`).
 - Fuente en este repo: [`site/`](../site).
-- Acceso: `ssh soporte@chambaya.net`, con `sudo` sin contraseña.
+- Acceso: `ssh soporte@multidrive.net`, con `sudo` sin contraseña. Es la misma máquina que
+  `chambaya.net` --mismas claves de anfitrión-- pero se entra por el nombre del proyecto: el
+  otro es de otra cosa y puede dejar de apuntar aquí cualquier día.
 
 Bloques en `/etc/caddy/Caddyfile`:
 
@@ -39,8 +41,8 @@ que no responde. La copia vieja en `/var/www/libredisk` ya no la sirve nadie.
 ## Publicar un cambio
 
 ```sh
-scp site/index.html site/privacidad.html soporte@chambaya.net:/tmp/
-ssh soporte@chambaya.net '
+scp site/index.html site/privacidad.html soporte@multidrive.net:/tmp/
+ssh soporte@multidrive.net '
   sudo install -o www-data -g www-data -m 644 /tmp/index.html /var/www/multidrive/index.html
   sudo install -o www-data -g www-data -m 644 /tmp/privacidad.html /var/www/multidrive/privacidad.html'
 ```
