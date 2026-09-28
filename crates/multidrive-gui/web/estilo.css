@@ -181,3 +181,17 @@ select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 /* La cifra con la que se decide: grande y lo primero. El resto del precio es matiz. */
 .cuanto { margin: 0 0 8px; font-size: 19px; font-weight: 600; color: var(--accent); }
+
+/* La X de olvidar una cuenta. Discreta hasta que se pasa por encima: esta al lado de cada
+   proveedor y no es lo que se viene a hacer aqui. */
+.proveedor .cabeza { align-items: center; }
+.proveedor .cabeza .cifra { margin-left: auto; }
+.quitar {
+  margin: 0; padding: 0; width: 26px; height: 26px; flex-shrink: 0;
+  background: none; border: 1px solid transparent; border-radius: 7px;
+  color: var(--muted); font-size: 13px; line-height: 1; cursor: pointer;
+}
+.quitar:hover { background: var(--panel); border-color: var(--mal); color: var(--mal); }
+.olvido { margin-top: 10px; border-left: 2px solid var(--mal); padding-left: 14px; }
+button.peligro { background: var(--mal); color: #1a0f10; }
+button.peligro:hover { background: #ee8189; }
