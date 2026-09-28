@@ -90,11 +90,13 @@ async function arrancar() {
     // intento falle: el error de después no distingue «falta una cuenta» de «me equivoqué».
     const faltan = a.del_volumen.filter((n) => !a.proveedores.includes(n));
     if (faltan.length) {
+      // Antes de dar el aviso, mirar si la solucion ya esta guardada en una de las cuentas
+      // que si hay: si la maleta esta, lo que toca es pedir la frase, no dar un parte.
+      if (await ofrecerMaleta()) return;
       aviso(
         `Falta configurar ${faltan.join(", ")}: este volumen está repartido entre ` +
           `${a.del_volumen.length} cuentas y aquí hay ${a.proveedores.length}. ` +
-          "Enlázalas, o tráelas con «Llevarme esta configuración a otro equipo» si las " +
-          "guardaste en tus nubes.",
+          "Enlázalas para poder abrirlo.",
         true,
       );
     }
@@ -874,6 +876,12 @@ $("cerrar-alta").addEventListener("click", () => {
  * él, el proveedor está guardado pero la pantalla sigue diciendo «ninguno», y lo que el
  * usuario ve no es lo que hay.
  */
+/**
+ * Quien dice «ahora no» no quiere que se lo vuelvan a preguntar en cada repintado. Se olvida
+ * al enlazar otra cuenta, que es un motivo nuevo para ofrecerla.
+ */
+let maletaRechazada = false;
+
 async function guardado(g) {
   let texto = `Guardado como «${g.nombre}». Ya aparece en la lista de arriba.`;
   if (g.hay_volumen) {
@@ -890,6 +898,8 @@ async function guardado(g) {
   await prepararAlta();
   resultado(texto);
 
+  // Enlazar una cuenta es motivo nuevo para ofrecerla, aunque antes se dijera «ahora no».
+  maletaRechazada = false;
   // Si esa cuenta viene de otro equipo, ya trae dentro la configuración del resto. Se ofrece
   // aquí mismo: esperar a que alguien encuentre un botón que no sabe que existe es la forma
   // de que enlace las cuentas una a una habiéndolas guardado precisamente para no hacerlo.
@@ -900,25 +910,30 @@ async function guardado(g) {
  * Pregunta si las cuentas ya guardan una maleta y, si la hay, abre la sección pidiendo la
  * frase de paso.
  *
- * Cuesta una consulta por proveedor, así que se hace al enlazar una cuenta y no en cada
- * repintado.
+ * Cuesta una consulta por proveedor, asi que se pregunta solo en los dos momentos en que la
+ * respuesta importa: al enlazar una cuenta, y al arrancar con un volumen al que le faltan
+ * proveedores. Devuelve si se ofrecio.
  */
 async function ofrecerMaleta() {
+  if (maletaRechazada) return false;
   let hay = false;
   try {
     hay = await invoke("hay_maleta");
   } catch {
-    // No poder mirar no es motivo para molestar: el botón sigue ahí para quien lo busque.
-    return;
+    // No poder mirar no es motivo para molestar: la pantalla normal sigue funcionando.
+    return false;
   }
-  if (!hay) return;
+  if (!hay) return false;
 
   $("equipaje").hidden = false;
-  resultadoMaleta(
-    "Esta cuenta ya guarda una configuración de MultiDrive. Escribe tu frase de paso y pulsa " +
-      "«Traer a este equipo» para recuperar los demás proveedores y abrir el volumen.",
-  );
+  // Con la maleta delante, el formulario de abrir sobra: pide la misma frase para lo mismo,
+  // y además no serviría todavía, porque faltan proveedores que están dentro de la maleta.
+  // Dos campos de frase de paso en la misma pantalla es una pantalla que no se entiende.
+  $("formulario").hidden = true;
+  aviso("");
+  $("resultado-maleta").hidden = true;
   $("frase-maleta").focus();
+  return true;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1160,11 +1175,15 @@ async function ampliarAhora(a) {
 // La maleta: la configuración, cifrada, en las nubes del propio usuario
 // ---------------------------------------------------------------------------------------
 
-$("cerrar-equipaje").addEventListener("click", () => {
+$("cerrar-equipaje").addEventListener("click", async () => {
+  maletaRechazada = true;
   $("equipaje").hidden = true;
   // La frase no se queda escrita en un campo de una ventana que sigue abierta.
   $("frase-maleta").value = "";
   $("resultado-maleta").hidden = true;
+  // Se repinta: la oferta escondio el formulario de abrir, y quien dice «ahora no» tiene que
+  // recuperar la pantalla de siempre, con su aviso de lo que falta.
+  await arrancar();
 });
 
 function resultadoMaleta(texto, mal = false) {

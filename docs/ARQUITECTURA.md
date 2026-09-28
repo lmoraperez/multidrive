@@ -237,11 +237,15 @@ permanente a las nubes de quien la abra**. De ahí estas decisiones:
   Por eso en la ventana no hay ningún botón de «guardar»: no hace falta, y un botón que no
   hace falta es uno que alguien pulsa sin saber para qué. La ventana dice, donde se ve, que
   esto pasa. A mano sigue estando `multidrive config publicar`.
-- **Al enlazar una cuenta se mira si ya trae maleta.** Cuesta una consulta por proveedor y no
-  hace falta la frase para saberlo: `maleta::hay` solo pregunta si el bulto está. Si lo está,
-  la ventana pide la frase ahí mismo y, con ella, recupera el resto de proveedores **y abre el
-  volumen**. Esperar a que alguien encuentre un botón que no sabe que existe es la forma de que
-  enlace las cuentas una a una habiéndolas guardado precisamente para no hacerlo.
+- **Al enlazar una cuenta se mira si ya trae maleta**, y también al arrancar cuando el volumen
+  tiene proveedores sin configurar. No hace falta la frase para saberlo: `maleta::hay` solo
+  pregunta si el bulto está, así que cuesta una consulta por proveedor y se hace solo en esos
+  dos momentos, que son en los que la respuesta cambia algo.
+  Si la hay, la petición de frase sale **arriba del todo** y el formulario de abrir se
+  esconde: pide la misma frase para lo mismo, y encima no serviría todavía porque los
+  proveedores que faltan están dentro de la maleta. Dos campos de frase en la misma pantalla
+  es una pantalla que no se entiende. Quien dice «ahora no» recupera la de siempre, y no se le
+  vuelve a preguntar hasta que enlace otra cuenta.
 - **Al traerla no se pisa nada.** Lo que ya está con otro valor se deja como estaba y se dice;
   hace falta `--sobrescribir` para tomar la de la maleta. Pisar una credencial que funciona con
   otra de una maleta vieja es la forma más rápida de quedarse sin acceso a una cuenta.
