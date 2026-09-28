@@ -20,6 +20,29 @@
   <p id="cabecera">Comprobando…</p>
 </header>
 
+<!-- Solo aparece cuando la cuenta que se acaba de enlazar ya trae configuración guardada. No
+     hay ningún botón para llegar aquí a propósito, y es deliberado: la maleta se guarda sola
+     al crear el volumen y cada vez que se abre, así que lo único que queda por hacer a mano
+     es traerla, y eso solo tiene sentido justo después de enlazar la cuenta que la trae. -->
+<section id="equipaje" hidden>
+  <div class="fila">
+    <h2>Esta cuenta ya tiene tu configuración</h2>
+    <button id="cerrar-equipaje" class="secundario">Ahora no</button>
+  </div>
+
+  <p class="nota">Está guardada <b>cifrada con tu frase de paso</b> en esa misma cuenta.
+  Escríbela y se traen los demás proveedores y se abre el volumen. No hay servidor nuestro por
+  medio: la configuración nunca salió de tus nubes.</p>
+
+  <label for="frase-maleta">Frase de paso</label>
+  <input type="password" id="frase-maleta" autocomplete="off" spellcheck="false">
+
+  <div class="enlinea">
+    <button id="traer-maleta">Traer y abrir</button>
+  </div>
+  <p id="resultado-maleta" class="nota" hidden></p>
+</section>
+
 <!-- Antes de abrir: que hay configurado y la frase de paso. -->
 <section id="entrada" hidden>
   <div id="aviso" class="aviso" hidden></div>
@@ -85,29 +108,6 @@
 
 <!-- La maleta: llevarse esta configuración a otro equipo sin volver a enlazar cuenta por
      cuenta, y sin que aparezca ningún servidor nuestro por medio. -->
-<!-- Solo aparece cuando la cuenta que se acaba de enlazar ya trae configuración guardada. No
-     hay ningún botón para llegar aquí a propósito, y es deliberado: la maleta se guarda sola
-     al crear el volumen y cada vez que se abre, así que lo único que queda por hacer a mano
-     es traerla, y eso solo tiene sentido justo después de enlazar la cuenta que la trae. -->
-<section id="equipaje" hidden>
-  <div class="fila">
-    <h2>Esta cuenta ya tiene tu configuración</h2>
-    <button id="cerrar-equipaje" class="secundario">Ahora no</button>
-  </div>
-
-  <p class="nota">Está guardada <b>cifrada con tu frase de paso</b> en esa misma cuenta.
-  Escríbela y se traen los demás proveedores y se abre el volumen. No hay servidor nuestro por
-  medio: la configuración nunca salió de tus nubes.</p>
-
-  <label for="frase-maleta">Frase de paso</label>
-  <input type="password" id="frase-maleta" autocomplete="off" spellcheck="false">
-
-  <div class="enlinea">
-    <button id="traer-maleta">Traer y abrir</button>
-  </div>
-  <p id="resultado-maleta" class="nota" hidden></p>
-</section>
-
 <!-- Sin volumen: crearlo sobre los proveedores que ya estén configurados. -->
 <section id="creacion" hidden>
   <h2>Crear un volumen</h2>
