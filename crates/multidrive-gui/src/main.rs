@@ -429,18 +429,22 @@ async fn topologias(cuantos: usize) -> Vec<Opcion> {
     out
 }
 
-/// Guarda la maleta en las nubes recien estrenadas, y dice donde quedo.
+/// Guarda la maleta en las nubes del volumen, y dice donde quedo.
 ///
-/// Se hace **al crear**, sin preguntar, y es la unica vez que pasa sola. El motivo es que
-/// crear es el unico momento en que coinciden las tres cosas: la frase de paso esta en la
-/// mano, los proveedores son los que son, y no hay ninguna maleta anterior que pisar. Quien
-/// cambia de equipo sin esto vuelve a enlazar cuenta por cuenta, y para entonces ya no se
-/// acuerda de que habia un boton para evitarlo.
+/// Se hace **al crear y en cada apertura**, sin preguntar. Son los dos momentos en que la
+/// frase de paso esta en la mano, y abrir tiene ademas una propiedad que lo hace seguro: para
+/// abrir un volumen hay que tener configurados **todos** sus proveedores, asi que lo que se
+/// guarda es siempre al menos lo que el volumen necesita. Sin esto, la maleta se quedaria con
+/// los proveedores que habia el dia que se creo, y quien anadiera una cuenta despues se
+/// encontraria en el otro equipo con una configuracion incompleta que no abre nada.
 ///
-/// Devuelve `Err` solo con el texto: **no puede tumbar la creacion del volumen**. El volumen
-/// ya existe cuando esto corre, y perderlo porque no se pudo subir un fichero de
-/// configuracion seria cambiar un incordio por un desastre.
-async fn maleta_al_crear(backends: &[Arc<dyn Backend>], frase: &str) -> Result<String, String> {
+/// Por eso no hay ningun boton de «guardar»: no hace falta, y un boton que no hace falta es
+/// un boton que alguien pulsa sin saber para que.
+///
+/// Devuelve `Err` solo con el texto: **no puede tumbar ni la creacion ni la apertura**. El
+/// volumen ya existe y ya esta abierto cuando esto corre; perderlo porque no se pudo subir un
+/// fichero de configuracion seria cambiar un incordio por un desastre.
+async fn guardar_maleta(backends: &[Arc<dyn Backend>], frase: &str) -> Result<String, String> {
     let claves = maleta::claves_de_este_equipo().map_err(|e| e.to_string())?;
     let bulto = maleta::empaquetar(&claves, frase).map_err(|e| e.to_string())?;
 
@@ -499,7 +503,7 @@ async fn crear(
         .ok_or("la cabecera no se pudo releer tras crearla")?;
     let mut resumen = resumir(&volumen, &header).map_err(|e| e.to_string())?;
 
-    resumen.maleta = Some(match maleta_al_crear(&backends, &frase).await {
+    resumen.maleta = Some(match guardar_maleta(&backends, &frase).await {
         Ok(donde) => format!(
             "Tu configuracion queda guardada, cifrada con tu frase de paso, en {donde}. \
              En otro equipo: enlaza una de estas cuentas y pulsa «Traer a este equipo»."
@@ -558,7 +562,7 @@ async fn abrir(frase: String, estado: tauri::State<'_, Estado>) -> Result<Resume
         .map_err(|e| e.to_string())?
         .ok_or("no hay ningun volumen en estos proveedores")?;
 
-    let store = abrir_almacen(&header, backends, &frase).await?;
+    let store = abrir_almacen(&header, backends.clone(), &frase).await?;
 
     // Una frase equivocada no da un error de descifrado: da una raiz que no se abre, y por
     // tanto "no hay raiz". Decirlo tal cual pareceria corrupcion.
@@ -570,6 +574,15 @@ async fn abrir(frase: String, estado: tauri::State<'_, Estado>) -> Result<Resume
         }
         otro => otro.to_string(),
     })?;
+
+    // La maleta se refresca en cada apertura, y por eso no hace falta ningun boton para
+    // guardarla: abrir un volumen exige tener configurados **todos** sus proveedores, asi que
+    // si se llego hasta aqui, lo que hay en este equipo es al menos lo que el volumen
+    // necesita. Guardarlo ahora es lo unico que evita que la maleta envejezca al anadir una
+    // cuenta mas tarde.
+    //
+    // Sin ruido y sin poder tumbar la apertura: el volumen ya esta abierto.
+    let _ = guardar_maleta(&backends, &frase).await;
 
     let resumen = resumir(&volumen, &header).map_err(|e| e.to_string())?;
     *estado.abierto.lock().await = Some(Abierto { volumen, header });
@@ -826,38 +839,6 @@ async fn hay_maleta() -> Result<bool, String> {
         Err(_) => return Ok(false),
     };
     Ok(maleta::hay(&backends).await)
-}
-
-/// Guarda la configuracion de este equipo, cifrada, en todas las nubes configuradas.
-///
-/// Pide la frase de paso aparte y no la guarda: es la misma del volumen, y de ella sale la
-/// clave que cierra el bulto.
-#[tauri::command]
-async fn publicar_maleta(frase: String) -> Result<Maleta, String> {
-    if frase.trim().is_empty() {
-        return Err("hace falta la frase de paso: es lo que cierra la maleta".into());
-    }
-    let backends = proveedores()?;
-    let claves = maleta::claves_de_este_equipo().map_err(|e| e.to_string())?;
-    let bulto = maleta::empaquetar(&claves, &frase).map_err(|e| e.to_string())?;
-
-    let mut out = Maleta {
-        claves: claves.len(),
-        ..Default::default()
-    };
-    for (nombre, fallo) in maleta::guardar(&backends, &bulto).await {
-        match fallo {
-            None => out.donde.push(nombre),
-            Some(e) => out.fallos.push(format!("{nombre}: {e}")),
-        }
-    }
-    if out.donde.is_empty() {
-        return Err(format!(
-            "no quedo en ningun proveedor, asi que no hay maleta: {}",
-            out.fallos.join("; ")
-        ));
-    }
-    Ok(out)
 }
 
 /// Trae la configuracion guardada en las nubes y escribe aqui lo que falte.
@@ -1743,7 +1724,6 @@ fn main() {
             conectar_nube,
             guardar_proveedor,
             olvidar_proveedor,
-            publicar_maleta,
             recuperar_maleta,
             hay_maleta,
             ampliacion,
