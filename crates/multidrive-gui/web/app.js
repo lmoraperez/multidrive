@@ -34,6 +34,12 @@ async function arrancar() {
 
   if (a.abierto) return mostrarPanel();
 
+  // Sin volumen abierto, el panel sobra --y esconderlo es cosa de aqui, no de quien llama.
+  // Al borrar el volumen desde el propio panel se volvia aqui, se ensenaba la entrada y el
+  // panel se quedaba debajo: media ventana hablando de la salud, el espacio, el montaje y lo
+  // pendiente de subir de un volumen que ya no existia.
+  ocultarPanel();
+
   $("entrada").hidden = false;
   $("cabecera").textContent = a.hay_volumen
     ? "Hay un volumen. Hace falta la frase de paso para abrirlo."
@@ -60,10 +66,9 @@ async function arrancar() {
   // encontraba con que decia «hace falta la frase de paso» y no habia donde escribirla: el
   // formulario seguia oculto de cuando no habia volumen que abrir.
   $("formulario").hidden = !a.hay_volumen;
-  for (const id of ["confirmar-borrado", "confirmar-borrado-panel"]) {
-    $(id).hidden = true;
-    $(id).replaceChildren();
-  }
+  // La de aqui; la del panel la limpia `ocultarPanel()`.
+  $("confirmar-borrado").hidden = true;
+  $("confirmar-borrado").replaceChildren();
   // Y la de crear, por lo mismo: se enseña unas líneas más abajo cuando procede, pero si no
   // se esconde aquí se queda de la vez anterior. Pasó al quitar el último proveedor: seguía
   // ofreciendo «crear sobre los 1 proveedores configurados: gdrive» sin ningún gdrive.
@@ -127,8 +132,6 @@ $("cerrar").addEventListener("click", async () => {
   // haber cerrado. Se desmonta primero.
   await invoke("desmontar");
   await invoke("cerrar");
-  $("panel").hidden = true;
-  $("salud").replaceChildren(nota("Sin revisar todavía."));
   await arrancar();
 });
 
@@ -137,6 +140,21 @@ function nota(texto) {
   p.className = "nota";
   p.textContent = texto;
   return p;
+}
+
+/**
+ * Deja el panel fuera de la vista y sin restos del volumen que ya no esta.
+ *
+ * Se borra lo que solo tenia sentido con ese volumen: el parte de salud, el aviso de donde
+ * quedo la configuracion y la confirmacion de borrado a medias. Lo demas se repinta entero
+ * al volver a abrir, asi que no hace falta tocarlo.
+ */
+function ocultarPanel() {
+  $("panel").hidden = true;
+  $("salud").replaceChildren(nota("Sin revisar todavía."));
+  $("maleta-dicha").hidden = true;
+  $("confirmar-borrado-panel").hidden = true;
+  $("confirmar-borrado-panel").replaceChildren();
 }
 
 async function mostrarPanel(ya) {
@@ -153,7 +171,10 @@ async function mostrarPanel(ya) {
   rellenarResumen(r);
   // Al crear, la configuración se guarda sola en las nubes. Se dice: es la diferencia entre
   // cambiar de equipo enlazando una cuenta o enlazándolas todas otra vez.
-  if (r.maleta) $("resumen").after(nota(r.maleta));
+  // Se reutiliza el mismo parrafo en vez de insertar otro: `after()` dejaba una copia mas
+  // debajo del resumen en cada apertura.
+  $("maleta-dicha").textContent = r.maleta ?? "";
+  $("maleta-dicha").hidden = !r.maleta;
   await refrescarMontaje();
   await refrescarPendiente();
   await refrescarEspacio($("espacio-panel"));
