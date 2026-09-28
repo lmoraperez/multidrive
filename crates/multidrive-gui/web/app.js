@@ -61,6 +61,10 @@ async function arrancar() {
   $("retirar").hidden = !a.hay_volumen;
   $("confirmar-borrado").hidden = true;
   $("confirmar-borrado").replaceChildren();
+  // Y la de crear, por lo mismo: se enseña unas líneas más abajo cuando procede, pero si no
+  // se esconde aquí se queda de la vez anterior. Pasó al quitar el último proveedor: seguía
+  // ofreciendo «crear sobre los 1 proveedores configurados: gdrive» sin ningún gdrive.
+  $("creacion").hidden = true;
 
   // El aviso se decide **siempre**, igual que la visibilidad de aquí arriba y por el mismo
   // motivo que está escrito ahí: pintarlo solo cuando hay problema deja el de la vez anterior
