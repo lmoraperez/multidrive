@@ -261,7 +261,7 @@ async function refrescarMontaje() {
     fila.className = "enlinea";
     fila.append(boton);
     caja.replaceChildren(
-      nota(`Montado en ${m.punto}, en ${m.escritura ? "lectura y escritura" : "solo lectura"}.`),
+      nota(`Montado en ${m.punto}.`),
       fila,
     );
     return;
@@ -280,14 +280,6 @@ async function refrescarMontaje() {
   fila.className = "enlinea";
   fila.append(campo, boton);
 
-  const marca = document.createElement("input");
-  marca.type = "checkbox";
-  marca.id = "con-escritura";
-  const etiqueta = document.createElement("label");
-  etiqueta.htmlFor = "con-escritura";
-  etiqueta.style.margin = "12px 0 0";
-  etiqueta.append(marca, document.createTextNode(" Permitir escribir"));
-
   const error = nota("");
   error.hidden = true;
 
@@ -295,7 +287,9 @@ async function refrescarMontaje() {
     boton.disabled = true;
     error.hidden = true;
     try {
-      await invoke("montar", { punto: campo.value, escritura: marca.checked });
+      // Siempre en lectura y escritura: una unidad que no deja escribir no es una unidad,
+      // y tenerlo como casilla obligaba a decidir algo que nadie quiere decidir.
+      await invoke("montar", { punto: campo.value, escritura: true });
       await refrescarMontaje();
       await refrescarPendiente();
     } catch (err) {
@@ -306,7 +300,7 @@ async function refrescarMontaje() {
     }
   });
 
-  caja.replaceChildren(fila, etiqueta, error);
+  caja.replaceChildren(fila, error);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -474,6 +468,59 @@ async function refrescarEspacio(caja) {
   caja.replaceChildren(...proveedores.map(pintarProveedor));
 }
 
+
+/**
+ * Pregunta antes de olvidar una cuenta, en el propio bloque del proveedor.
+ *
+ * Se dice lo que hace y lo que **no** hace: no borra nada de la nube. La gente que ve una X
+ * al lado de un proveedor con 13 GB dentro tiene todo el derecho a temerse lo peor.
+ */
+function confirmarOlvido(nombre, bloque) {
+  if (bloque.querySelector(".olvido")) return;
+
+  const caja = document.createElement("div");
+  caja.className = "olvido";
+
+  const texto = nota(
+    `¿Olvidar «${nombre}»? Se borra de esta configuración la forma de llegar a esa cuenta. ` +
+      "No se borra nada de la nube, y si el proveedor forma parte de un volumen, ese volumen " +
+      "dejará de poder abrirse hasta que lo vuelvas a enlazar.",
+  );
+
+  const si = document.createElement("button");
+  si.className = "peligro";
+  si.textContent = "Olvidar";
+
+  const no = document.createElement("button");
+  no.className = "secundario";
+  no.textContent = "Cancelar";
+  no.addEventListener("click", () => caja.remove());
+
+  si.addEventListener("click", async () => {
+    si.disabled = true;
+    no.disabled = true;
+    try {
+      const dicho = await invoke("olvidar_proveedor", { nombre });
+      // Se repinta todo: la lista de proveedores, las barras y lo que dependa de ellas.
+      await arrancar();
+      await prepararAlta();
+      const caja2 = $("espacio-panel").hidden === false ? $("espacio-panel") : $("espacio");
+      caja2.prepend(nota(dicho));
+    } catch (err) {
+      const mal = nota(String(err));
+      mal.className = "aviso mal";
+      caja.replaceChildren(mal, no);
+      no.disabled = false;
+      no.textContent = "Cerrar";
+    }
+  });
+
+  const fila = document.createElement("div");
+  fila.className = "enlinea";
+  fila.append(si, no);
+  caja.append(texto, fila);
+  bloque.append(caja);
+}
 function pintarProveedor(p) {
   const bloque = document.createElement("div");
   bloque.className = "proveedor";
@@ -483,7 +530,20 @@ function pintarProveedor(p) {
   const nombre = document.createElement("b");
   nombre.textContent = p.proveedor;
   const cifra = document.createElement("span");
-  cabeza.append(nombre, cifra);
+  cifra.className = "cifra";
+
+  // Olvidar la cuenta. No saca nada de la nube ni del volumen: borra de aquí la forma de
+  // llegar. Por eso pregunta antes, y por eso el mando del otro lado se niega si el
+  // proveedor es del volumen que está abierto.
+  const quitar = document.createElement("button");
+  quitar.className = "quitar";
+  quitar.type = "button";
+  quitar.textContent = "✕";
+  quitar.title = `Olvidar ${p.proveedor}`;
+  quitar.setAttribute("aria-label", `Olvidar ${p.proveedor}`);
+  quitar.addEventListener("click", () => confirmarOlvido(p.proveedor, bloque));
+
+  cabeza.append(nombre, cifra, quitar);
   bloque.append(cabeza);
 
   if (p.fallo) {
@@ -554,10 +614,6 @@ function pintarProveedor(p) {
     // Configurado, pero fuera del volumen. Mandarlo a «Revisar» seria mandarlo a enumerar
     // durante minutos para que no cambiara nada.
     bloque.append(nota("Este proveedor no forma parte del volumen: aquí no guarda nada."));
-  } else if (p.del_volumen === null) {
-    bloque.append(
-      nota("Cuánto de esto es del volumen no se sabe hasta enumerar: pulsa «Revisar»."),
-    );
   }
   return bloque;
 }

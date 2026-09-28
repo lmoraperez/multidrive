@@ -679,6 +679,59 @@ async fn espacio(estado: tauri::State<'_, Estado>) -> Result<Vec<Espacio>, Strin
         .collect())
 }
 
+/// Olvida un proveedor: le quita sus claves al fichero de configuracion del usuario.
+///
+/// **Olvidar no es sacar del volumen.** Si el proveedor forma parte de uno, sus fragmentos
+/// siguen donde estaban y la cabecera lo sigue nombrando; lo unico que se consigue quitandolo
+/// de aqui es que el volumen deje de poder abrirse. Por eso, con el volumen abierto y el
+/// proveedor dentro, esto se niega y manda a la orden que si sabe hacerlo.
+///
+/// Con el volumen cerrado no se puede saber sin preguntarle a las nubes, asi que ahi la
+/// pregunta la hace la ventana antes de llamar.
+#[tauri::command]
+async fn olvidar_proveedor(
+    nombre: String,
+    estado: tauri::State<'_, Estado>,
+) -> Result<String, String> {
+    if let Some(a) = estado.abierto.lock().await.as_ref()
+        && a.volumen.store().nombres().iter().any(|n| n == &nombre)
+    {
+        return Err(format!(
+            "«{nombre}» forma parte del volumen que tienes abierto. Quitarlo de la \
+             configuracion no lo saca del volumen: lo dejaria sin poder abrirse. Para sacarlo \
+             de verdad, moviendo sus trozos a los demas:\n\n  multidrive providers remove {nombre}"
+        ));
+    }
+
+    // Todo lo de una cuenta son claves `MULTIDRIVE_<RANURA>_...`. El guion bajo final importa:
+    // sin el, quitar `gdrive` se llevaria tambien a `gdrive1`.
+    let prefijo = format!("MULTIDRIVE_{}_", nombre.to_uppercase());
+    let fichero = config::fichero_de_usuario()
+        .ok_or("no se sabe donde vive la configuracion de este usuario")?;
+    let quitadas = config::quitar(&fichero, &prefijo).map_err(|e| e.to_string())?;
+
+    // Puede seguir configurado desde el entorno o desde el fichero de la maquina, que esto no
+    // toca ni debe tocar. Callarlo dejaria la ventana diciendo que se borro algo que sigue ahi.
+    let sigue = live::configurados()
+        .map(|v| v.iter().any(|b| b.name() == nombre))
+        .unwrap_or(false);
+    if sigue {
+        return Err(format!(
+            "Se quitaron {quitadas} clave(s) de tu configuracion, pero «{nombre}» sigue \
+             apareciendo: viene del entorno o del fichero de la maquina, y eso se edita a mano."
+        ));
+    }
+    if quitadas == 0 {
+        return Err(format!(
+            "«{nombre}» no estaba en tu configuracion ({}), asi que no habia nada que quitar.",
+            fichero.display()
+        ));
+    }
+    Ok(format!(
+        "«{nombre}» olvidado. Sus datos siguen en la nube; lo que se ha borrado es la forma de \
+         llegar a ellos desde aqui."
+    ))
+}
 #[tauri::command]
 async fn pendiente(estado: tauri::State<'_, Estado>) -> Result<Pendiente, String> {
     let guardia = estado.abierto.lock().await;
@@ -1626,6 +1679,7 @@ fn main() {
             tipos_de_proveedor,
             conectar_nube,
             guardar_proveedor,
+            olvidar_proveedor,
             publicar_maleta,
             recuperar_maleta,
             ampliacion,

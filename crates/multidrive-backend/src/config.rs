@@ -251,6 +251,54 @@ pub fn guardar(ruta: &Path, nuevas: &[(String, String)]) -> Result<(), BackendEr
     Ok(())
 }
 
+/// Quita del fichero las claves que empiecen por `prefijo`, y dice cuantas quito.
+///
+/// Sirve para olvidar un proveedor: todo lo suyo son claves `MULTIDRIVE_<RANURA>_...`, asi
+/// que el prefijo las nombra a todas sin tener que enumerar los campos del catalogo. **Quien
+/// llame tiene que incluir el guion bajo final**: sin el, `MULTIDRIVE_GDRIVE_` se llevaria por
+/// delante a `MULTIDRIVE_GDRIVE1_ROOT`, que es de otra cuenta.
+///
+/// Los comentarios se quedan. Uno puede estar hablando de la clave que se va, pero adivinar
+/// cual es cual seria borrar texto del usuario por una corazonada.
+///
+/// Se escribe a un temporal y se renombra, igual que [`guardar`] y por lo mismo: un corte a
+/// mitad no puede dejar la configuracion truncada.
+pub fn quitar(ruta: &Path, prefijo: &str) -> Result<usize, BackendError> {
+    let fallo = |detalle: String| BackendError::FicheroDeConfig {
+        fichero: ruta.display().to_string(),
+        detalle,
+    };
+
+    let anterior = match std::fs::read_to_string(ruta) {
+        Ok(s) => s,
+        // No hay fichero, luego no hay nada que quitar. No es un error.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(fallo(e.to_string())),
+    };
+
+    let antes = anterior.lines().count();
+    let quedan: Vec<&str> = anterior
+        .lines()
+        .filter(|l| !clave_de(l).is_some_and(|c| c.starts_with(prefijo)))
+        .collect();
+    let quitadas = antes - quedan.len();
+    if quitadas == 0 {
+        return Ok(0);
+    }
+
+    let mut texto = quedan.join("\n");
+    if !texto.is_empty() {
+        texto.push('\n');
+    }
+
+    let temporal = ruta.with_extension("parcial");
+    escribir_restringido(&temporal, &texto).map_err(|e| fallo(e.to_string()))?;
+    if let Err(e) = std::fs::rename(&temporal, ruta) {
+        std::fs::remove_file(&temporal).ok();
+        return Err(fallo(e.to_string()));
+    }
+    Ok(quitadas)
+}
 /// Si esta linea le asigna un valor a esa clave, sea como sea que este escrita.
 ///
 /// Tiene que reconocer las mismas formas que acepta el lector —con `export`, con espacios
@@ -258,15 +306,21 @@ pub fn guardar(ruta: &Path, nuevas: &[(String, String)]) -> Result<(), BackendEr
 /// ganando o perdiendo segun el orden. Dos lineas para la misma clave es justo el estado en
 /// el que nadie sabe cual manda.
 fn asigna_a(linea: &str, clave: &str) -> bool {
+    clave_de(linea) == Some(clave)
+}
+
+/// La clave que asigna esta linea, si asigna alguna.
+///
+/// Reconoce las mismas formas que acepta el lector --con `export`, con espacios alrededor del
+/// `=`-- porque las dos cosas que la usan, reescribir y quitar, fallan igual de mal si se les
+/// escapa una: reescribir deja dos lineas para la misma clave, y quitar deja la que borraba.
+fn clave_de(linea: &str) -> Option<&str> {
     let l = linea.trim_start();
     if l.starts_with('#') {
-        return false;
+        return None;
     }
     let l = l.strip_prefix("export ").unwrap_or(l);
-    match l.split_once('=') {
-        Some((izq, _)) => izq.trim() == clave,
-        None => false,
-    }
+    l.split_once('=').map(|(izq, _)| izq.trim())
 }
 
 #[cfg(unix)]
@@ -333,6 +387,66 @@ mod tests {
         ruta
     }
 
+    /// Olvidar un proveedor se lleva lo suyo y **solo** lo suyo.
+    ///
+    /// La trampa está en el número: `GDRIVE` y `GDRIVE1` son dos cuentas distintas, y sin el
+    /// guión bajo final del prefijo la primera se llevaría por delante a la segunda. Quien
+    /// quita una cuenta y se queda sin la otra no lo descubre hasta que el volumen no abre.
+    #[test]
+    fn quitar_se_lleva_una_ranura_sin_tocar_la_de_al_lado() {
+        let d = dir("quitar");
+        let ruta = escribir(
+            &d,
+            "multidrive.conf",
+            "# la del trabajo\n\
+             MULTIDRIVE_GDRIVE_REFRESH_TOKEN=uno\n\
+             MULTIDRIVE_GDRIVE_ROOT=/multidrive\n\
+             MULTIDRIVE_GDRIVE1_REFRESH_TOKEN=dos\n\
+             MULTIDRIVE_APP_GDRIVE_CLIENT_ID=de-la-aplicacion\n",
+        );
+
+        assert_eq!(quitar(&ruta, "MULTIDRIVE_GDRIVE_").unwrap(), 2);
+
+        let c = Config::desde(std::slice::from_ref(&ruta)).unwrap();
+        assert_eq!(c.get("MULTIDRIVE_GDRIVE_REFRESH_TOKEN"), None);
+        assert_eq!(c.get("MULTIDRIVE_GDRIVE_ROOT"), None);
+        assert_eq!(
+            c.get("MULTIDRIVE_GDRIVE1_REFRESH_TOKEN").as_deref(),
+            Some("dos"),
+            "la cuenta de al lado no se toca"
+        );
+        assert_eq!(
+            c.get("MULTIDRIVE_APP_GDRIVE_CLIENT_ID").as_deref(),
+            Some("de-la-aplicacion"),
+            "la aplicacion no es de la cuenta"
+        );
+        let texto = std::fs::read_to_string(&ruta).unwrap();
+        assert!(texto.contains("# la del trabajo"), "se llevo un comentario");
+    }
+
+    /// Las formas raras de escribir una asignación también cuentan.
+    #[test]
+    fn quitar_reconoce_export_y_espacios() {
+        let d = dir("quitar");
+        let ruta = escribir(
+            &d,
+            "multidrive.conf",
+            "export MULTIDRIVE_FS_ROOT=/uno\n  MULTIDRIVE_FS_OTRO = /dos\nMULTIDRIVE_FS2_ROOT=/tres\n",
+        );
+        assert_eq!(quitar(&ruta, "MULTIDRIVE_FS_").unwrap(), 2);
+        let texto = std::fs::read_to_string(&ruta).unwrap();
+        assert!(texto.contains("MULTIDRIVE_FS2_ROOT"), "{texto}");
+        assert!(!texto.contains("MULTIDRIVE_FS_"), "{texto}");
+    }
+
+    /// Sin fichero no hay nada que quitar, y eso no es un fallo.
+    #[test]
+    fn quitar_de_un_fichero_que_no_existe_no_es_un_error() {
+        assert_eq!(
+            quitar(&dir("quitar-vacio").join("no-existe.conf"), "MULTIDRIVE_").unwrap(),
+            0
+        );
+    }
     #[test]
     fn guardar_crea_el_fichero_y_lo_que_se_escribe_se_lee() {
         let d = dir("crear");

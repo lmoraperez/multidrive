@@ -499,11 +499,18 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] No toca credenciales de nube. Se crea sobre lo que ya esté configurado, y se dice. Un
       formulario que guarda mal un token de OAuth es peor que no tener formulario, y eso va
       aparte
-- [x] Montar y desmontar desde la ventana, en solo lectura o en lectura y escritura. Con
-      escritura arranca el sincronizador de fondo, cuyos avisos no van a ninguna consola
+- [x] Montar y desmontar desde la ventana. **Siempre en lectura y escritura**: una unidad que
+      no deja escribir no es una unidad, y tenerlo como casilla obligaba a decidir algo que
+      nadie quiere decidir al montar. La orden lo sigue admitiendo, que ahí sí tiene sentido.
+      Con escritura arranca el sincronizador de fondo, cuyos avisos no van a ninguna consola
       —una ventana no tiene— sino al panel. Cerrar el volumen desmonta primero: dejar una
       unidad sirviendo un volumen que la ventana dice haber cerrado sería mentir en la peor
       dirección
+- [x] **Una X al lado de cada proveedor para olvidarlo.** Pregunta antes, y dice lo que no
+      hace: no borra nada de la nube. Con el volumen abierto se niega si el proveedor es suyo
+      —quitarlo de la configuración no lo saca del volumen, solo lo deja sin poder abrirse— y
+      manda a `providers remove`, que sí mueve los trozos. Si la cuenta sigue apareciendo
+      porque viene del entorno o del fichero de la máquina, lo dice en vez de fingir
 - [x] El recorrido completo de la ventana —crear, montar, escribir por la unidad y desmontar—
       **está probado a mano** sobre un volumen de directorios locales
 - [ ] Automatizarlo. Ni `SendKeys` ni un `WM_CHAR` puesto a mano llegan a un WebView2, que
