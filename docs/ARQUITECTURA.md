@@ -226,11 +226,19 @@ cerrar la caja fuerte y pegar la llave a la tapa. Hay un test que lo comprueba d
 formas: que no sale al abrir la maleta, y que sus bytes no están en el bulto.
 
 Lo que sí lleva son `REFRESH_TOKEN`, `CLIENT_SECRET` y las claves de S3, o sea **acceso
-permanente a las nubes de quien la abra**. De ahí dos decisiones:
+permanente a las nubes de quien la abra**. De ahí estas decisiones:
 
-- **No se sube sola.** Publicarla es una orden explícita, y tanto la orden como la ventana
-  avisan de lo que acaba de salir del equipo. Subir las llaves de alguien a su nube, aunque sea
-  suya y vayan cifradas, es una decisión que toma él.
+- **Se sube sola al crear el volumen, y solo entonces.** Crear es el único momento en que
+  coinciden las tres cosas: la frase de paso está en la mano, los proveedores son los que son,
+  y no hay ninguna maleta anterior que pisar. Quien cambia de equipo sin ella vuelve a enlazar
+  cuenta por cuenta, y para entonces ya no se acuerda de que había un botón para evitarlo. La
+  ventana lo dice al crear, no lo hace a escondidas. Después, publicarla es una orden
+  explícita: la configuración cambia y pisar la buena con una vieja no lo arregla nadie.
+- **Al enlazar una cuenta se mira si ya trae maleta.** Cuesta una consulta por proveedor y no
+  hace falta la frase para saberlo: `maleta::hay` solo pregunta si el bulto está. Si lo está,
+  la ventana pide la frase ahí mismo y, con ella, recupera el resto de proveedores **y abre el
+  volumen**. Esperar a que alguien encuentre un botón que no sabe que existe es la forma de que
+  enlace las cuentas una a una habiéndolas guardado precisamente para no hacerlo.
 - **Al traerla no se pisa nada.** Lo que ya está con otro valor se deja como estaba y se dice;
   hace falta `--sobrescribir` para tomar la de la maleta. Pisar una credencial que funciona con
   otra de una maleta vieja es la forma más rápida de quedarse sin acceso a una cuenta.

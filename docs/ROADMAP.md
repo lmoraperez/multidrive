@@ -697,6 +697,14 @@ por dentro, en [ARQUITECTURA.md](ARQUITECTURA.md#la-maleta-llevarse-la-configura
       forma más rápida de quedarse sin acceso a una cuenta
 - [x] Se replica en todos los proveedores, como la cabecera, y al recogerla se prueban todas:
       en una cuenta puede haber quedado una de antes de cambiar la frase
+- [x] **Al crear un volumen, la maleta se guarda sola** con esa misma frase de paso. Es el
+      único momento en que la frase está en la mano, los proveedores son los que son y no hay
+      ninguna anterior que pisar. Si falla, el volumen queda creado igual y se dice: perderlo
+      por no poder subir un fichero de configuración sería cambiar un incordio por un desastre
+- [x] **Al enlazar una cuenta se mira si ya trae maleta**, sin necesidad de la frase, y si la
+      trae se pide ahí mismo para recuperar los demás proveedores **y abrir el volumen**
+- [x] El botón de eliminar el volumen sale también con el volumen abierto. Vivía dentro de la
+      pantalla de abrir, así que quien acababa de crear uno no tenía por dónde deshacerlo
 - [ ] Probarla contra cuentas de nube reales. El camino es el mismo `Backend` para todos los
       proveedores y está verificado de punta a punta sobre proveedores locales, pero eso no es
       haberlo visto contra Drive

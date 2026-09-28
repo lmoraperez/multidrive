@@ -138,10 +138,19 @@ async function mostrarPanel(ya) {
   $("entrada").hidden = true;
   $("panel").hidden = false;
   $("cabecera").textContent = "Volumen abierto.";
+  // Con el panel delante hay volumen por definición, así que se puede retirar desde aquí.
+  // Antes el botón vivía dentro de la pantalla de abrir, y quien acababa de crear un volumen
+  // no tenía por dónde deshacerlo.
+  $("retirar").hidden = false;
+  $("confirmar-borrado").hidden = true;
+  $("confirmar-borrado").replaceChildren();
 
   // Al arrancar con el volumen ya abierto no hay resumen a mano: se pide.
   const r = ya ?? (await invoke("resumen"));
   rellenarResumen(r);
+  // Al crear, la configuración se guarda sola en las nubes. Se dice: es la diferencia entre
+  // cambiar de equipo enlazando una cuenta o enlazándolas todas otra vez.
+  if (r.maleta) $("resumen").after(nota(r.maleta));
   await refrescarMontaje();
   await refrescarPendiente();
   await refrescarEspacio($("espacio-panel"));
@@ -879,6 +888,38 @@ async function guardado(g) {
   // Después de repintar, porque repintar borra el resultado anterior.
   await prepararAlta();
   resultado(texto);
+
+  // Si esa cuenta viene de otro equipo, ya trae dentro la configuración del resto. Se ofrece
+  // aquí mismo: esperar a que alguien encuentre un botón que no sabe que existe es la forma
+  // de que enlace las cuentas una a una habiéndolas guardado precisamente para no hacerlo.
+  await ofrecerMaleta();
+}
+
+/**
+ * Pregunta si las cuentas ya guardan una maleta y, si la hay, abre la sección pidiendo la
+ * frase de paso.
+ *
+ * Cuesta una consulta por proveedor, así que se hace al enlazar una cuenta y no en cada
+ * repintado.
+ */
+async function ofrecerMaleta() {
+  let hay = false;
+  try {
+    hay = await invoke("hay_maleta");
+  } catch {
+    // No poder mirar no es motivo para molestar: el botón sigue ahí para quien lo busque.
+    return;
+  }
+  if (!hay) return;
+
+  $("equipaje").hidden = false;
+  $("abrir-equipaje").hidden = true;
+  $("equipaje-cuerpo").hidden = false;
+  resultadoMaleta(
+    "Esta cuenta ya guarda una configuración de MultiDrive. Escribe tu frase de paso y pulsa " +
+      "«Traer a este equipo» para recuperar los demás proveedores y abrir el volumen.",
+  );
+  $("frase-maleta").focus();
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1195,9 +1236,21 @@ $("traer-maleta").addEventListener("click", () =>
         "Si las de la maleta son las buenas, desde el terminal:\n" +
         "  multidrive config recuperar --sobrescribir";
     }
-    resultadoMaleta(texto);
+    // La misma frase abre la maleta y el volumen: es la misma. Se intenta abrirlo sin
+    // preguntar otra vez, que es a lo que se venía; si no hay volumen todavía, o si no abre,
+    // se dice y se queda en esta pantalla.
+    const frase = $("frase-maleta").value;
     $("frase-maleta").value = "";
+    resultadoMaleta(texto);
     await arrancar();
     await prepararAlta();
+
+    if (!$("panel").hidden) return;
+    try {
+      const r = await invoke("abrir", { frase });
+      await mostrarPanel(r);
+    } catch (err) {
+      resultadoMaleta(`${texto}\n\nEl volumen no se pudo abrir todavía: ${err}`);
+    }
   }),
 );

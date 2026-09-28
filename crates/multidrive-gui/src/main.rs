@@ -109,6 +109,9 @@ struct Resumen {
     reparto: u32,
     /// Generacion de la raiz publicada. Sube con cada cambio del arbol.
     generacion: u64,
+    /// Que paso con la maleta al crear el volumen. Vacio en los demas casos, que no la tocan.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    maleta: Option<String>,
 }
 
 #[derive(Serialize, Default)]
@@ -426,6 +429,36 @@ async fn topologias(cuantos: usize) -> Vec<Opcion> {
     out
 }
 
+/// Guarda la maleta en las nubes recien estrenadas, y dice donde quedo.
+///
+/// Se hace **al crear**, sin preguntar, y es la unica vez que pasa sola. El motivo es que
+/// crear es el unico momento en que coinciden las tres cosas: la frase de paso esta en la
+/// mano, los proveedores son los que son, y no hay ninguna maleta anterior que pisar. Quien
+/// cambia de equipo sin esto vuelve a enlazar cuenta por cuenta, y para entonces ya no se
+/// acuerda de que habia un boton para evitarlo.
+///
+/// Devuelve `Err` solo con el texto: **no puede tumbar la creacion del volumen**. El volumen
+/// ya existe cuando esto corre, y perderlo porque no se pudo subir un fichero de
+/// configuracion seria cambiar un incordio por un desastre.
+async fn maleta_al_crear(backends: &[Arc<dyn Backend>], frase: &str) -> Result<String, String> {
+    let claves = maleta::claves_de_este_equipo().map_err(|e| e.to_string())?;
+    let bulto = maleta::empaquetar(&claves, frase).map_err(|e| e.to_string())?;
+
+    let resultados = maleta::guardar(backends, &bulto).await;
+    let (bien, mal): (Vec<_>, Vec<_>) = resultados.iter().partition(|(_, f)| f.is_none());
+    if bien.is_empty() {
+        return Err(mal
+            .iter()
+            .filter_map(|(n, f)| f.as_ref().map(|e| format!("{n}: {e}")))
+            .collect::<Vec<_>>()
+            .join("; "));
+    }
+    Ok(bien
+        .iter()
+        .map(|(n, _)| n.clone())
+        .collect::<Vec<_>>()
+        .join(", "))
+}
 #[tauri::command]
 async fn crear(
     spec: String,
@@ -464,7 +497,21 @@ async fn crear(
         .await
         .map_err(|e| e.to_string())?
         .ok_or("la cabecera no se pudo releer tras crearla")?;
-    let resumen = resumir(&volumen, &header).map_err(|e| e.to_string())?;
+    let mut resumen = resumir(&volumen, &header).map_err(|e| e.to_string())?;
+
+    resumen.maleta = Some(match maleta_al_crear(&backends, &frase).await {
+        Ok(donde) => format!(
+            "Tu configuracion queda guardada, cifrada con tu frase de paso, en {donde}. \
+             En otro equipo: enlaza una de estas cuentas y pulsa «Traer a este equipo»."
+        ),
+        // El volumen ya esta creado cuando esto corre. Es un aviso, no un fallo.
+        Err(e) => format!(
+            "El volumen esta creado, pero no se pudo guardar tu configuracion en las nubes: \
+             {e}. Puedes hacerlo cuando quieras desde «Llevarme esta configuracion a otro \
+             equipo»."
+        ),
+    });
+
     *estado.abierto.lock().await = Some(Abierto { volumen, header });
     Ok(resumen)
 }
@@ -538,6 +585,7 @@ fn resumir(volumen: &Volume, header: &Header) -> Result<Resumen, multidrive_core
         sobrecoste: layout.storage_overhead(),
         reparto: header.reparto,
         generacion: volumen.root().generation,
+        maleta: None,
     })
 }
 
@@ -763,6 +811,21 @@ struct Maleta {
     distintas: usize,
     /// Cuando se hizo, contado en palabras.
     hecha: Option<String>,
+}
+
+/// Si las cuentas configuradas ya guardan una maleta.
+///
+/// Se pregunta justo despues de enlazar una cuenta: si esa cuenta viene de otro equipo, lo que
+/// toca es pedir la frase y traerse el resto, no dejar a nadie buscando un boton que no sabe
+/// que existe.
+#[tauri::command]
+async fn hay_maleta() -> Result<bool, String> {
+    let backends = match proveedores() {
+        Ok(b) => b,
+        // Sin proveedores no hay donde mirar, y eso no es un error que ensenar aqui.
+        Err(_) => return Ok(false),
+    };
+    Ok(maleta::hay(&backends).await)
 }
 
 /// Guarda la configuracion de este equipo, cifrada, en todas las nubes configuradas.
@@ -1682,6 +1745,7 @@ fn main() {
             olvidar_proveedor,
             publicar_maleta,
             recuperar_maleta,
+            hay_maleta,
             ampliacion,
             ampliar
         ])

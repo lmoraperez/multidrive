@@ -42,12 +42,6 @@
     <button type="submit" id="abrir">Abrir volumen</button>
   </form>
 
-  <!-- Retirar el volumen. Va al final y en su propia caja: es lo único de esta pantalla
-       que no tiene vuelta atrás. -->
-  <div id="retirar" hidden>
-    <button id="pedir-borrar" class="secundario">Eliminar el volumen…</button>
-    <div id="confirmar-borrado" hidden></div>
-  </div>
 </section>
 
 
@@ -93,7 +87,8 @@
 
     <p class="nota">Guarda tus proveedores <b>cifrados con tu frase de paso</b> en tus propias
     cuentas, al lado del volumen. En otro equipo basta con enlazar <b>una</b> de ellas y traerla:
-    los demás salen de ahí. No hay servidor nuestro por medio y no se sube nada solo.</p>
+    los demás salen de ahí. No hay servidor nuestro por medio. <b>Al crear un volumen se guarda
+    sola</b>, con esa misma frase; después, solo cuando lo pidas aquí.</p>
 
     <label for="frase-maleta">Frase de paso</label>
     <input type="password" id="frase-maleta" autocomplete="off" spellcheck="false">
@@ -155,6 +150,14 @@
 
   <h2>Pendiente de subir</h2>
   <div id="pendiente"><p class="nota">Consultando…</p></div>
+</section>
+
+<!-- Retirar el volumen. Fuera de las dos pantallas a proposito: se llega igual desde la de
+     abrir que con el volumen ya abierto, y antes solo salia en la primera. Va al final y en su
+     propia caja porque es lo unico de aqui que no tiene vuelta atras. -->
+<section id="retirar" hidden>
+  <button id="pedir-borrar" class="secundario">Eliminar el volumen…</button>
+  <div id="confirmar-borrado" hidden></div>
 </section>
 
 <script src="app.js"></script>
