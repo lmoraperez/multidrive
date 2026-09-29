@@ -657,6 +657,12 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 > [ANDROID.md](ANDROID.md). Aquí queda el análisis de por qué Android no es un tercer objetivo
 > de montaje, y el registro de lo que se ha ido comprobando.
 
+> **Al día 29 de septiembre de 2026 ya existe**, en [`android/`](../android), y hace el
+> recorrido entero: conectar una cuenta por el navegador, traerse las demás con la maleta,
+> abrir el volumen, aparecer en la app de Archivos, navegar y leer ficheros por rangos. Es de
+> **solo lectura** y no está publicada en ningún sitio. Lo que sigue debajo es el análisis
+> previo, que se conserva porque explica por qué la forma es la que es.
+
 Analizado en septiembre de 2026 y verificado contra el código. **No es un tercer objetivo de
 montaje**, sino un modelo de integración distinto: por eso tiene sección propia en vez de una
 casilla en v0.2.
@@ -881,5 +887,7 @@ la propia de un equipo a otro.
 ## Fuera de alcance por ahora
 - Escritura concurrente desde varias máquinas (v1 es un solo escritor)
 - Uso como disco de sistema o volumen de base de datos
-- Móvil como volumen de escritura — ver [Móvil (Android)](#móvil-android): analizado, pospuesto, no descartado
+- Móvil como volumen **de escritura** — ver [Móvil (Android)](#móvil-android). Leer sí: la
+  aplicación existe y funciona. Escribir desde el móvil es el problema de un solo escritor, y
+  espera al *lease* renovable de v0.5
 - Guardar las llaves de los proveedores en un servidor nuestro sin cifrado de extremo a extremo

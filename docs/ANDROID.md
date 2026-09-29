@@ -51,6 +51,11 @@ Probado de punta a punta en un TECNO POVA 5 (Android 14) el 29 de septiembre de 
 - **Traerse las demás con la maleta**: una cuenta enlazada y la frase de paso bastan. En el
   escritorio eso ahorra minutos; en un móvil evita cuatro vueltas al navegador y cuatro
   pantallas de permisos con el teclado del teléfono.
+
+  Probado desde cero: teléfono sin ninguna cuenta, se enlazó **solo Google Drive**, y la maleta
+  trajo las otras tres. El bulto lo había escrito Windows y lo abrió Android —otra máquina,
+  otra arquitectura y otro sistema operativo— con el mismo formato y el mismo sellado. Eso no
+  estaba visto: lo de ayer solo demostraba que viajaba entre dos PC.
 - **Abrir el volumen** con la frase, que no se guarda en ninguna parte.
 - **Aparecer en la app de Archivos** y en el selector del sistema, y navegar por las carpetas.
 - **Leer ficheros por rangos**, bajando solo los trozos que el rango toca.
