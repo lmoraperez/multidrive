@@ -520,6 +520,53 @@ mod tests_con_almacen {
         d
     }
 
+    /// Se sabe **que ficheros** son los que no han salido de aqui, no solo cuantos trozos.
+    ///
+    /// Es la pregunta de quien va a apagar el equipo: no «cuantos trozos faltan» sino «que se
+    /// pierde si esto se apaga ahora». El total no vale ni de aproximacion, porque mezcla
+    /// datos y nodos del arbol.
+    #[tokio::test]
+    async fn se_sabe_que_ficheros_no_han_salido_de_aqui() {
+        let d = dir("rutas");
+        let store = ChunkStore::new(rs(), crate::testutil::backends(rs().shard_count()), clave())
+            .unwrap()
+            .with_writeback(Arc::new(WriteQueue::open(&d).await.unwrap()));
+        let (mut v, _) = Volume::create(store).await.unwrap();
+
+        v.write_file("/cartas/una.txt", &b"corto"[..]).await.unwrap();
+        v.write_file("/grande.bin", &vec![7u8; 5000][..])
+            .await
+            .unwrap();
+
+        let rutas = v.store().rutas_pendientes().await.unwrap();
+        let nombres: Vec<&str> = rutas.iter().map(|r| r.ruta.as_str()).collect();
+        assert_eq!(
+            nombres,
+            vec!["/grande.bin", "/cartas/una.txt"],
+            "las rutas enteras, y el que mas se pierde primero"
+        );
+        assert_eq!(rutas[0].bytes, 5000, "bytes en claro, los que ve el usuario");
+        assert_eq!(rutas[1].bytes, 5);
+
+        // Y tras subir no queda ninguno: la lista es de lo que falta, no de lo que hubo.
+        v.store().sync().await.unwrap();
+        assert!(v.store().rutas_pendientes().await.unwrap().is_empty());
+
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Sin cola no hay nada pendiente, y preguntarlo no puede fallar.
+    #[tokio::test]
+    async fn sin_cola_la_lista_esta_vacia() {
+        let store =
+            ChunkStore::new(rs(), crate::testutil::backends(rs().shard_count()), clave()).unwrap();
+        let (mut v, _) = Volume::create(store).await.unwrap();
+        v.write_file("/directo.txt", &b"esto sube en el acto"[..])
+            .await
+            .unwrap();
+        assert!(v.store().rutas_pendientes().await.unwrap().is_empty());
+    }
+
     /// Escribir con la cola puesta no puede tocar los proveedores, y lo escrito tiene que
     /// poder releerse igualmente.
     #[tokio::test]

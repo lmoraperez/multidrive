@@ -31,7 +31,7 @@ use std::sync::Arc;
 use std::collections::HashMap;
 
 use multidrive_backend::{Backend, catalogo, config, live};
-use multidrive_core::ChunkHealth;
+use multidrive_core::{ChunkHealth, RutaPendiente};
 use multidrive_core::header::{self, Header};
 use multidrive_core::maleta;
 use multidrive_core::pesos::{pesos_ampliados, pesos_para};
@@ -132,6 +132,19 @@ struct Pendiente {
     bytes: u64,
     /// `true` si todo lo escrito esta ya en los proveedores.
     a_salvo: bool,
+    /// Que ficheros concretos son los que no han salido de esta maquina.
+    ///
+    /// Un total de trozos no responde a lo que se pregunta quien va a apagar el equipo, y
+    /// encima mezcla datos con nodos del arbol: un fichero de un byte deja tres trozos.
+    rutas: Vec<RutaPendiente>,
+    /// `true` si la raiz esta sin publicar: desde otro equipo todavia no se ve nada.
+    raiz_sin_publicar: bool,
+    /// Lo ultimo que hizo el sincronizador de fondo, si dijo algo.
+    ///
+    /// Se guardaba y **no lo leia nadie**: el hilo que sube en segundo plano dejaba aqui lo
+    /// que iba haciendo y ese texto no llegaba a la pantalla. Un sincronizador que falla en
+    /// silencio es justo el que no hay que tener.
+    ultimo_sync: Option<String>,
 }
 
 /// Abre el almacen **con la cola de escritura diferida**.
@@ -383,9 +396,21 @@ async fn desmontar(
     app: tauri::AppHandle,
     estado: tauri::State<'_, Estado>,
 ) -> Result<EstadoMontaje, String> {
-    // Soltarlo es desmontar: el `Drop` de `Montaje` lo hace.
+    // Soltarlo es desmontar: el `Drop` de `Montaje` lo hace. Va **primero**, para que no
+    // entren escrituras nuevas mientras se sube lo que ya hay.
+    //
+    // Y con el se va el sincronizador de fondo, que vive dentro: a partir de aqui no sube
+    // nadie solo. Por eso la ultima subida se hace aqui y no se deja para luego.
     *estado.montado.lock().await = None;
     rotulo_de_bandeja(&app, "MultiDrive");
+
+    let guardia = estado.abierto.lock().await;
+    if let Some(abierto) = guardia.as_ref() {
+        // Si falla no se dice aqui: lo que quede sin subir lo cuenta `pendiente`, con los
+        // nombres de los ficheros, que es mas util que el motivo tecnico de una subida.
+        let _ = abierto.volumen.store().sync().await;
+    }
+
     Ok(EstadoMontaje {
         ejemplo: ejemplo_de_punto(),
         ..Default::default()
@@ -610,10 +635,78 @@ async fn resumen(estado: tauri::State<'_, Estado>) -> Result<Resumen, String> {
 }
 
 #[tauri::command]
-async fn cerrar(estado: tauri::State<'_, Estado>) -> Result<(), String> {
+async fn cerrar(forzar: bool, estado: tauri::State<'_, Estado>) -> Result<(), String> {
+    // Cerrar con algo sin subir se niega, y no por gusto: quien cierra da por terminado. Lo
+    // pendiente no se pierde --el diario vive en el disco y se retoma al volver a abrir-- pero
+    // hasta entonces solo esta aqui, y nadie lo va a subir mientras el volumen este cerrado.
+    //
+    // Se intenta subirlo antes de negarse: negarse sin haberlo intentado seria pedirle al
+    // usuario que resuelva algo que podiamos resolver nosotros.
+    if !forzar {
+        let guardia = estado.abierto.lock().await;
+        if let Some(abierto) = guardia.as_ref() {
+            let _ = abierto.volumen.store().sync().await;
+            let p = abierto.volumen.store().pendiente();
+            if !p.a_salvo() {
+                let rutas = abierto
+                    .volumen
+                    .store()
+                    .rutas_pendientes()
+                    .await
+                    .unwrap_or_default();
+                return Err(sin_subir(&rutas, p.trozos));
+            }
+        }
+    }
     // Soltar el volumen suelta tambien la clave derivada, que es lo que importa.
     *estado.abierto.lock().await = None;
     Ok(())
+}
+
+/// Bytes en algo que se pueda leer de un vistazo. La ventana lo hace en JavaScript; esto es
+/// para los mensajes que se arman aqui.
+fn tamano(bytes: u64) -> String {
+    const U: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut n = bytes as f64;
+    let mut i = 0;
+    while n >= 1024.0 && i < U.len() - 1 {
+        n /= 1024.0;
+        i += 1;
+    }
+    if i == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{n:.1} {}", U[i])
+    }
+}
+
+/// El aviso de cerrar con cosas sin subir. Nombra ficheros, no cifras.
+fn sin_subir(rutas: &[RutaPendiente], trozos: usize) -> String {
+    if rutas.is_empty() {
+        // Puede pasar: lo unico pendiente es la raiz o algun nodo del arbol, sin datos de
+        // ningun fichero detras. Se dice lo que es en vez de inventar una lista vacia.
+        return format!(
+            "Queda {trozos} trozo(s) sin subir, del indice del volumen. Desde otro equipo \
+             todavia no se veria lo ultimo escrito."
+        );
+    }
+    let cuantos = rutas.len();
+    let lista: Vec<String> = rutas
+        .iter()
+        .take(5)
+        .map(|r| format!("  {} ({})", r.ruta, tamano(r.bytes)))
+        .collect();
+    let mas = if cuantos > 5 {
+        format!("\n  ...y {} mas", cuantos - 5)
+    } else {
+        String::new()
+    };
+    format!(
+        "Hay {cuantos} fichero(s) que solo estan en esta maquina:\n{}{mas}\n\n\
+         No se han podido subir ahora. Si cierras, siguen aqui y no los sube nadie hasta que \
+         vuelvas a abrir el volumen.",
+        lista.join("\n")
+    )
 }
 
 #[tauri::command]
@@ -798,10 +891,26 @@ async fn pendiente(estado: tauri::State<'_, Estado>) -> Result<Pendiente, String
     let guardia = estado.abierto.lock().await;
     let abierto = guardia.as_ref().ok_or("el volumen no esta abierto")?;
     let p = abierto.volumen.store().pendiente();
+    // Las rutas cuestan un paseo por el arbol pendiente, que esta en disco local: no se va a
+    // la red. Si no se pudieran derivar se sigue dando el total, que es peor pero no es
+    // mentira; quedarse sin decir nada porque falle el detalle si lo seria.
+    let rutas = abierto
+        .volumen
+        .store()
+        .rutas_pendientes()
+        .await
+        .unwrap_or_default();
     Ok(Pendiente {
         trozos: p.trozos,
         bytes: p.bytes,
         a_salvo: p.a_salvo(),
+        rutas,
+        raiz_sin_publicar: p.raiz,
+        ultimo_sync: estado
+            .ultimo_sync
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone(),
     })
 }
 

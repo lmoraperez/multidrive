@@ -193,6 +193,19 @@ pub struct ChunkRef {
     pub sealed_len: usize,
 }
 
+/// Un fichero con contenido que todavia no ha salido de esta maquina.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct RutaPendiente {
+    /// Ruta dentro del volumen, con la barra inicial.
+    pub ruta: String,
+    pub trozos: usize,
+    /// Bytes **en claro** que faltan por subir de este fichero.
+    ///
+    /// En claro y no sellados porque es la cifra que el usuario reconoce: la que ve en el
+    /// Explorador. Los sellados son algo mayores y no significan nada para quien mira.
+    pub bytes: u64,
+}
+
 /// Resultado de escribir un trozo.
 #[derive(Debug, Clone)]
 pub struct PutReport {
@@ -480,6 +493,69 @@ impl ChunkStore {
             .as_ref()
             .map(|c| c.pendiente())
             .unwrap_or_default()
+    }
+
+    /// Que ficheros tienen datos que **todavia no estan en la nube**, y cuantos bytes de cada
+    /// uno.
+    ///
+    /// Un total de trozos no responde a la pregunta que se hace quien va a apagar el equipo,
+    /// que no es «cuantos trozos faltan» sino «que se pierde si esto se apaga ahora». Ademas el
+    /// total mezcla datos y nodos del arbol, asi que ni siquiera es interpretable: un fichero
+    /// de un byte puede dejar tres trozos pendientes.
+    ///
+    /// Las rutas no se guardan en el diario: se **derivan** recorriendo el arbol pendiente,
+    /// que es legible porque `get_shared` busca en la cola los nodos que aun no subieron. Se
+    /// deriva en vez de anotarse para no meter nombres de fichero en un fichero que vive en
+    /// claro en el disco local: el diario solo tiene identificadores, que son hashes.
+    ///
+    /// Solo cuenta lo que le falta al **contenido**. Un fichero cuyos trozos ya subieron pero
+    /// cuyo nodo del arbol no, no sale aqui; lo cubre `Pendiente::raiz`, que es lo que dice
+    /// que desde otro equipo todavia no se ve nada.
+    ///
+    /// Devuelve la lista vacia si no hay cola o no hay raiz pendiente.
+    pub async fn rutas_pendientes(&self) -> Result<Vec<RutaPendiente>, CoreError> {
+        let Some(cola) = self.pending.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let (trozos, raiz) = cola.instantanea();
+        let Some(raiz) = raiz else {
+            return Ok(Vec::new());
+        };
+        let sin_subir: BTreeSet<ChunkId> = trozos.into_iter().collect();
+
+        let mut fuera = Vec::new();
+        let mut visitados = BTreeSet::new();
+        // La ruta se lleva a cuestas en la pila: es lo unico que `alcanzables` tira y lo unico
+        // que aqui hace falta.
+        let mut porver = vec![(String::new(), raiz.node)];
+
+        while let Some((ruta, nodo)) = porver.pop() {
+            if !visitados.insert(nodo.id.clone()) {
+                continue;
+            }
+            let bytes = self.get_shared(&nodo).await?;
+            match serde_json::from_slice::<tree::Node>(&bytes)? {
+                tree::Node::Dir(entradas) => {
+                    for (nombre, e) in entradas {
+                        porver.push((format!("{ruta}/{nombre}"), e.node));
+                    }
+                }
+                tree::Node::File(manifest) => {
+                    let (trozos, bytes) = manifest
+                        .chunks
+                        .iter()
+                        .filter(|c| sin_subir.contains(&c.id))
+                        .fold((0usize, 0u64), |(n, b), c| (n + 1, b + c.plain_len as u64));
+                    if trozos > 0 {
+                        fuera.push(RutaPendiente { ruta, trozos, bytes });
+                    }
+                }
+            }
+        }
+
+        // De mayor a menor: lo que mas se pierde, primero.
+        fuera.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.ruta.cmp(&b.ruta)));
+        Ok(fuera)
     }
 
     /// Identificadores alcanzables desde una raiz, mirando primero en la cola.

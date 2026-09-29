@@ -536,7 +536,28 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       lleva su propia cadena de entrada, así que el cableado de JavaScript se comprueba a mano
       o no se comprueba. La lógica que no es cableado sí vive en funciones con tests
 - [ ] **Estimador de coste mensual** por topología y proveedor
-- [ ] Indicador honesto de "guardado localmente" vs "a salvo en la nube"
+- [x] **Indicador honesto de «guardado localmente» vs «a salvo en la nube»**, en la ventana y
+      por fichero. Antes decía «5 trozo(s), 12 MiB SOLO EN ESTA MÁQUINA», que no responde a lo
+      que se pregunta quien va a apagar el equipo —no es «cuántos trozos faltan», es «qué
+      pierdo si lo apago ahora»— y encima mezcla datos con nodos del árbol: un fichero de un
+      byte deja tres trozos. Ahora salen las rutas, de mayor a menor
+- [x] Las rutas se **derivan** recorriendo el árbol pendiente, no se anotan: el diario vive en
+      claro en el disco local y solo lleva identificadores, que son hashes. Anotar la ruta
+      habría metido ahí los nombres de los ficheros de alguien
+- [x] Se distingue de que falte **el índice**: los datos pueden estar arriba y la raíz sin
+      publicar, y entonces desde otro equipo no se ve nada aunque no falte ningún byte. Son
+      dos frases distintas porque son dos cosas distintas
+- [x] **Cerrar se niega si queda algo sin subir**, después de intentar subirlo: negarse sin
+      haberlo intentado sería pedirle al usuario que resuelva lo que podíamos resolver
+      nosotros. Enseña los ficheros y deja elegir, porque a veces no hay más remedio —sin red y
+      hay que irse— y a veces es el descuido que cuesta los datos. El foco lo tiene
+      «Dejarlo abierto»: un Enter de más no puede ser lo que deje los ficheros aquí
+- [x] Y **desmontar hace la última subida**, porque el sincronizador de fondo vive dentro del
+      montaje: al desmontar deja de subir nadie, así que dejarlo para después era dejarlo para
+      nunca
+- [x] El sincronizador de fondo **ya llega a la pantalla**. Guardaba lo que iba haciendo en un
+      campo que no leía nadie: un sincronizador que falla en silencio es justo el que no hay
+      que tener
 
 ## v0.4 — Nubes de consumo
 - [ ] OAuth para Dropbox y pCloud (Google Drive y OneDrive ya tienen backend en v0.1)

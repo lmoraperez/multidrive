@@ -128,12 +128,68 @@ $("formulario").addEventListener("submit", async (e) => {
 });
 
 $("cerrar").addEventListener("click", async () => {
-  // Cerrar con algo montado dejaria una unidad sirviendo un volumen que la ventana dice
-  // haber cerrado. Se desmonta primero.
-  await invoke("desmontar");
-  await invoke("cerrar");
-  await arrancar();
+  const boton = $("cerrar");
+  boton.disabled = true;
+  try {
+    // Cerrar con algo montado dejaria una unidad sirviendo un volumen que la ventana dice
+    // haber cerrado. Se desmonta primero, y desmontar hace la última subida.
+    await invoke("desmontar");
+    try {
+      await invoke("cerrar", { forzar: false });
+    } catch (err) {
+      // Cerrar se niega si queda algo sin subir. No se cierra a la fuerza por nuestra cuenta:
+      // se enseña qué ficheros son y se deja decidir, porque a veces no hay más remedio
+      // —estás sin red y tienes que irte— y a veces es un descuido que cuesta los datos.
+      await refrescarPendiente();
+      if (!(await ofrecerCerrarIgualmente(String(err)))) return;
+      await invoke("cerrar", { forzar: true });
+    }
+    await arrancar();
+  } finally {
+    boton.disabled = false;
+  }
 });
+
+/**
+ * Enseña lo que se queda sin subir y espera una respuesta. Devuelve si hay que cerrar igual.
+ *
+ * Se pinta al lado del botón de cerrar y no en otra parte de la página, por lo mismo que las
+ * confirmaciones de borrado: una advertencia que aparece lejos de donde se pulsó es una
+ * advertencia que nadie lee.
+ */
+function ofrecerCerrarIgualmente(motivo) {
+  return new Promise((resolver) => {
+    const caja = $("confirmar-cerrar");
+    const aviso = document.createElement("div");
+    aviso.className = "aviso mal";
+    aviso.style.whiteSpace = "pre-wrap";
+    aviso.textContent = motivo;
+
+    const fila = document.createElement("div");
+    fila.className = "enlinea";
+
+    const quedarse = document.createElement("button");
+    quedarse.textContent = "Dejarlo abierto";
+    const igual = document.createElement("button");
+    igual.className = "secundario";
+    igual.textContent = "Cerrar igualmente";
+
+    const terminar = (respuesta) => {
+      caja.replaceChildren();
+      caja.hidden = true;
+      resolver(respuesta);
+    };
+    // Lo seguro es quedarse, así que es lo que tiene el foco: un Enter de más no puede ser lo
+    // que deje los ficheros sin subir.
+    quedarse.addEventListener("click", () => terminar(false));
+    igual.addEventListener("click", () => terminar(true));
+
+    fila.append(quedarse, igual);
+    caja.replaceChildren(aviso, fila);
+    caja.hidden = false;
+    quedarse.focus();
+  });
+}
 
 function nota(texto) {
   const p = document.createElement("p");
@@ -155,6 +211,8 @@ function ocultarPanel() {
   $("maleta-dicha").hidden = true;
   $("confirmar-borrado-panel").hidden = true;
   $("confirmar-borrado-panel").replaceChildren();
+  $("confirmar-cerrar").hidden = true;
+  $("confirmar-cerrar").replaceChildren();
 }
 
 async function mostrarPanel(ya) {
@@ -257,14 +315,54 @@ async function refrescarPendiente() {
   try {
     const p = await invoke("pendiente");
     const caja = $("pendiente");
+    const partes = [];
+
     if (p.a_salvo) {
-      caja.replaceChildren(nota("Nada pendiente: todo lo escrito está en los proveedores."));
+      partes.push(nota("Nada pendiente: todo lo escrito está en los proveedores."));
     } else {
-      caja.replaceChildren(
-        nota(`${p.trozos} trozo(s), ${tamano(p.bytes)} SOLO EN ESTA MÁQUINA.`),
-        nota("Hasta que suba, perder este equipo pierde eso. `multidrive sync` lo sube."),
-      );
+      // Los ficheros por su nombre y no un total de trozos: la pregunta de quien va a apagar
+      // el equipo no es «cuántos trozos faltan», es «qué pierdo si lo apago ahora». Y el total
+      // mezcla datos con nodos del árbol, así que ni siquiera sirve de aproximación.
+      if (p.rutas.length) {
+        const aviso = document.createElement("div");
+        aviso.className = "aviso mal";
+        aviso.textContent =
+          `${p.rutas.length} fichero(s) SOLO EN ESTA MÁQUINA. Si pierdes este equipo, ` +
+          "se pierden. Se suben solos mientras el volumen esté montado en escritura.";
+        partes.push(aviso);
+
+        const lista = document.createElement("ul");
+        lista.className = "lista";
+        for (const r of p.rutas) {
+          const li = document.createElement("li");
+          li.textContent = `${r.ruta} — ${tamano(r.bytes)}`;
+          lista.append(li);
+        }
+        partes.push(lista);
+      } else {
+        // Puede no haber ningún fichero detrás: lo que falta es el índice. Se dice lo que es.
+        partes.push(
+          nota(
+            `${p.trozos} trozo(s) del índice del volumen sin subir, ${tamano(p.bytes)}. ` +
+              "Ningún fichero se queda a medias por esto.",
+          ),
+        );
+      }
+      if (p.raiz_sin_publicar) {
+        partes.push(
+          nota(
+            "Y el índice está sin publicar: desde otro equipo todavía no se ve nada de lo " +
+              "último escrito, aunque los datos ya hayan subido.",
+          ),
+        );
+      }
     }
+
+    // Lo último que hizo el sincronizador de fondo. Se guardaba y no lo leía nadie: un
+    // sincronizador que falla en silencio es justo el que no hay que tener.
+    if (p.ultimo_sync) partes.push(nota(`Última pasada: ${p.ultimo_sync}.`));
+
+    caja.replaceChildren(...partes);
   } catch {
     // Sin volumen abierto no hay cola que consultar; no es un fallo que anunciar.
   }
