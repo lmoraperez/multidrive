@@ -739,9 +739,28 @@ solo escritor, y ese se resuelve empezando en solo lectura.
       primero, el fallo es del núcleo; si falla solo el segundo, es del entorno. Si el runner
       deja de traer NDK el paso falla en vez de saltarse solo, porque un paso que se salta y
       sigue en verde enseña a no mirarlo
-- [ ] El límite portable queda dibujado, y es exactamente el que hace falta: `crypto`, `raid`,
+- [x] El límite portable queda dibujado, y es exactamente el que hace falta: `crypto`, `raid`,
       `backend` y `core`. La línea de órdenes **no** cruza, porque arrastra `fuser`. No es un
       problema que resolver: FUSE no existe para Android, y aunque existiera no se podría usar
+- [x] Y **enlaza**, no solo compila: `cargo build --release --target aarch64-linux-android -p
+      multidrive-core --example android` produce un ELF de aarch64 de 17 MiB. Compilar y
+      enlazar no son lo mismo, y era lo segundo lo que faltaba por ver
+- [ ] **La aplicación de Android va a necesitar un componente Kotlin**, y esto no estaba
+      escrito. `reqwest` arrastra `rustls-platform-verifier`, que en Android busca el almacén
+      de certificados del sistema **a través de la JVM**: exige un puntero al `Context` de una
+      aplicación y una clase Kotlin en el APK. Un binario suelto lanzado con `adb shell` no
+      tiene ni JVM ni `Context`, así que **no puede hacer HTTPS**. No hay escapatoria por
+      features: `reqwest` 0.13.5 solo ofrece `rustls` y `rustls-no-provider`, y los dos traen
+      el verificador de plataforma; los certificados empaquetados (`webpki-roots`) no son una
+      opción desde ahí
+- [x] Por eso la prueba de concepto se parte en dos, y la primera mitad **no toca la red**:
+      `crypto/examples/android` mide Argon2id, que es el único coste de abrir un volumen que
+      no depende de internet, el único comparable de verdad contra el escritorio —mismo
+      trabajo, otra CPU— y el que decide si hace falta otra parametrización o solo otra
+      interfaz. En este equipo, en release, la mediana es **22 ms**; en `debug` son 424, que
+      es la clase de diferencia que invalidaría la comparación si no se mira
+- [ ] Correrla en un teléfono. Falta el teléfono: con `adb` ya instalado, `adb devices` no ve
+      ninguno
 
 ## Llevarse la configuración a otro equipo
 

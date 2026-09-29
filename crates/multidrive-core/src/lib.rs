@@ -547,7 +547,11 @@ impl ChunkStore {
                         .filter(|c| sin_subir.contains(&c.id))
                         .fold((0usize, 0u64), |(n, b), c| (n + 1, b + c.plain_len as u64));
                     if trozos > 0 {
-                        fuera.push(RutaPendiente { ruta, trozos, bytes });
+                        fuera.push(RutaPendiente {
+                            ruta,
+                            trozos,
+                            bytes,
+                        });
                     }
                 }
             }
