@@ -185,6 +185,18 @@ pub fn hueco_libre(tipo: &catalogo::Tipo, leer: &dyn Fn(&str) -> Option<String>)
     })
 }
 
+/// La primera ranura libre mirando **solo un fichero**, sin el entorno ni los sitios de siempre.
+///
+/// Igual que [`configurados_de`], y por lo mismo: en Android la aplicacion sabe donde guarda sus
+/// cosas y lo dice, porque alli no hay ni `%APPDATA%` ni variables que podamos poner.
+pub fn hueco_libre_de(
+    tipo: &catalogo::Tipo,
+    ruta: &std::path::Path,
+) -> Result<Option<String>, BackendError> {
+    let config = Config::desde(std::slice::from_ref(&ruta.to_path_buf()))?;
+    Ok(hueco_libre(tipo, &|clave| config.get(clave)))
+}
+
 /// Igual que [`hueco_libre`], mirando donde mira todo lo demas: entorno y fichero.
 pub fn hueco_libre_configurado(tipo: &catalogo::Tipo) -> Result<Option<String>, BackendError> {
     let config = Config::cargar()?;

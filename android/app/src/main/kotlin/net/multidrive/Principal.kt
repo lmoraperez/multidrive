@@ -50,8 +50,12 @@ class Principal : Activity() {
         }
         val boton = Button(this).apply { text = "Abrir volumen" }
         val cerrar = Button(this).apply { text = "Cerrar volumen" }
+        val drive = Button(this).apply { text = "Conectar Google Drive" }
+        val onedrive = Button(this).apply { text = "Conectar OneDrive" }
 
         caja.addView(estado)
+        caja.addView(drive)
+        caja.addView(onedrive)
         caja.addView(frase)
         caja.addView(boton)
         caja.addView(cerrar)
@@ -95,6 +99,28 @@ class Principal : Activity() {
                 runOnUiThread {
                     decir(dicho)
                     boton.isEnabled = true
+                }
+            }
+        }
+
+        // Conectar una cuenta: abre el navegador y espera. Es lo que quita de en medio tener
+        // que pasar credenciales por cable, que era la unica forma hasta ahora.
+        for ((b, tipo) in listOf(drive to "GDRIVE", onedrive to "ONEDRIVE")) {
+            b.setOnClickListener {
+                b.isEnabled = false
+                decir("Abriendo el navegador. Entra en tu cuenta y da permiso...")
+                thread {
+                    val dicho = try {
+                        val nombre = Nucleo.conectar(tipo, conf.absolutePath)
+                        "Cuenta conectada como '$nombre'.\nYa puedes abrir el volumen."
+                    } catch (e: Throwable) {
+                        Log.w(ETIQUETA, "no se pudo conectar $tipo", e)
+                        "No se pudo conectar:\n\n${e.message ?: e.toString()}"
+                    }
+                    runOnUiThread {
+                        decir(dicho)
+                        b.isEnabled = true
+                    }
                 }
             }
         }
