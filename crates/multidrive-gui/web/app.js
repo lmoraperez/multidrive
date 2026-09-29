@@ -51,6 +51,12 @@ async function arrancar() {
     pares.push(["del volumen", a.del_volumen.join(", ")]);
   }
   definiciones($("previo"), pares);
+  // Plegado salvo que falte algo: cuando los proveedores configurados no son los del volumen,
+  // esas dos líneas son exactamente la pregunta que hay que resolver, y esconderlas detrás de
+  // un clic sería esconder el diagnóstico.
+  const faltaAlguno =
+    a.hay_volumen && a.del_volumen.some((n) => !a.proveedores.includes(n));
+  $("detalles-previos").open = faltaAlguno || recordado("detalles-previos");
 
   // El cupo es de la cuenta del proveedor, no del volumen: se puede ver con el volumen
   // cerrado, y es justo lo que hace falta para decidir si merece la pena crear uno.
@@ -190,6 +196,28 @@ function ofrecerCerrarIgualmente(motivo) {
     quedarse.focus();
   });
 }
+
+/**
+ * Lo que el usuario dejó abierto la última vez.
+ *
+ * Solo para comodidades de esta pantalla: si el navegador no deja guardar --y puede no
+ * dejar-- se sigue igual, plegado, que es el valor por defecto.
+ */
+function recordado(clave) {
+  try {
+    return localStorage.getItem(clave) === "1";
+  } catch {
+    return false;
+  }
+}
+
+$("detalles-previos").addEventListener("toggle", () => {
+  try {
+    localStorage.setItem("detalles-previos", $("detalles-previos").open ? "1" : "0");
+  } catch {
+    // Que no se pueda recordar no es motivo para que la pantalla deje de funcionar.
+  }
+});
 
 function nota(texto) {
   const p = document.createElement("p");

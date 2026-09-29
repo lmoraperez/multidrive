@@ -51,6 +51,15 @@ dl {
   gap: 6px 20px; margin: 0 0 6px; font-size: 14px;
 }
 dt { color: var(--muted); }
+
+/* El triángulo de `details` no se toca: es el que el sistema ya sabe leer. */
+details { margin: 0 0 6px; }
+summary {
+  cursor: pointer; font-size: 13px; color: var(--muted);
+  padding: 4px 0; user-select: none;
+}
+summary:hover { color: var(--fg); }
+details[open] summary { margin-bottom: 8px; }
 dd { margin: 0; font-variant-numeric: tabular-nums; }
 
 label { display: block; font-size: 13px; color: var(--muted); margin: 18px 0 6px; }

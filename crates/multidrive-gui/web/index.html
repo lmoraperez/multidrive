@@ -47,7 +47,13 @@
 <section id="entrada" hidden>
   <div id="aviso" class="aviso" hidden></div>
 
-  <dl id="previo"></dl>
+  <!-- Plegado por defecto: son tres líneas que repiten lo mismo dos veces --los proveedores
+       configurados y los del volumen suelen coincidir-- y lo que hace falta para abrir es la
+       frase de paso, no el inventario. Se guarda si lo dejas abierto. -->
+  <details id="detalles-previos">
+    <summary>Ver qué hay configurado</summary>
+    <dl id="previo"></dl>
+  </details>
 
   <!-- Las barras van tambien aqui, con el volumen cerrado: el cupo es de la cuenta del
        proveedor, no del volumen, y poder verlo antes de escribir la frase de paso es
