@@ -20,6 +20,22 @@
 //! recoge tanto los `Err` como los panicos y los convierte en una excepcion de Java, que es lo
 //! que Kotlin sabe manejar.
 
+pub mod sesion;
+
+/// Lo que puede salir mal en la frontera, sea de JNI o nuestro.
+///
+/// Hace falta uno solo porque dentro de cada funcion se mezclan las dos cosas: convertir una
+/// cadena de Java falla con un error de JNI, y abrir un volumen falla con un texto nuestro. Al
+/// resolver con `ThrowRuntimeExAndDefault`, los dos acaban siendo la misma excepcion de Java,
+/// que es lo unico que Kotlin sabe manejar.
+#[derive(Debug, thiserror::Error)]
+enum Fallo {
+    #[error("{0}")]
+    Dicho(String),
+    #[error(transparent)]
+    Jni(#[from] jni::errors::Error),
+}
+
 use jni::errors::ThrowRuntimeExAndDefault;
 use jni::objects::JString;
 use jni::{EnvUnowned, objects::JObject};
@@ -150,99 +166,116 @@ fn porque(e: &dyn std::error::Error) -> String {
     partes.join(" <- ")
 }
 
-/// Abre el volumen y lista la raiz, cronometrando cada paso.
+/// Abre un volumen y devuelve el identificador de la sesion. **Cuesta segundos.**
 ///
-/// Es la prueba del paso 3 y **no es la interfaz definitiva**: devuelve texto porque lo que se
-/// quiere saber todavia no es como se ensena, sino cuanto tarda. La frontera de verdad
-/// --`raices`, `mirar`, `listar`, `leer`-- se escribira encima de esto cuando haya numeros.
-///
-/// La frase de paso llega como argumento y no se guarda en ningun sitio.
+/// Nunca desde el hilo de la interfaz: seis segundos medidos en un movil, de los cuales solo
+/// 156 ms son CPU. Si falla, lanza una excepcion con el motivo en vez de devolver cero: un cero
+/// se pasa por alto y una excepcion no.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_listar<'local>(
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_abrir<'local>(
     mut entorno: EnvUnowned<'local>,
     _clase: JObject<'local>,
     config: JString<'local>,
     frase: JString<'local>,
-) -> JString<'local> {
+) -> jni::sys::jlong {
     entorno
-        .with_env(|env| {
+        .with_env(|env| -> Result<i64, Fallo> {
             let config = config.try_to_string(env)?;
             let frase = frase.try_to_string(env)?;
-            env.new_string(listar(&config, &frase))
+            sesion::abrir(&config, &frase).map_err(Fallo::Dicho)
         })
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
-/// Lo mismo sin JNI, para poder ejecutarlo en cualquier sistema.
-pub fn listar(config: &str, frase: &str) -> String {
-    let arranque = match tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()
-    {
-        Ok(r) => r,
-        Err(e) => return format!("no se pudo arrancar el runtime: {e}"),
-    };
-    arranque.block_on(abrir_y_listar(config, frase))
+/// Suelta el volumen, y con el la clave derivada.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_cerrar<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+) {
+    entorno
+        .with_env(|_env| {
+            sesion::cerrar(id);
+            Ok::<(), Fallo>(())
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
 }
 
-async fn abrir_y_listar(config: &str, frase: &str) -> String {
-    use std::time::Instant;
+/// Las entradas de un directorio, en JSON.
+///
+/// JSON y no una estructura con campos porque cruzar objetos por JNI cuesta una clase y varios
+/// `GetFieldID` por cada uno, y lo que se cruza aqui es una lista de nombres. `org.json` viene
+/// con Android, asi que del otro lado no hace falta ninguna dependencia; de este se usa
+/// `serde_json`, que ya estaba en el arbol, en vez de escapar cadenas a mano: los nombres de
+/// fichero pueden traer comillas y saltos de linea, y escribir ese escapado a mano es la clase
+/// de codigo que parece correcto hasta el dia que no lo es.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_listar<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+    ruta: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let ruta = ruta.try_to_string(env)?;
+            let json = listar(id, &ruta).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(json)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
 
-    use multidrive_backend::Backend;
-    use multidrive_core::header;
-    use multidrive_core::tree::Volume;
+/// Lo que se sabe de una ruta, en JSON. `null` si no existe.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_mirar<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+    ruta: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let ruta = ruta.try_to_string(env)?;
+            let json = mirar(id, &ruta).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(json)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
 
-    let mut out = Vec::new();
-    let mut paso = |que: &str, ms: u128| out.push(format!("{que:<10} {ms:>6} ms"));
-
-    let backends = match multidrive_backend::live::configurados_de(std::path::Path::new(config)) {
-        Ok(b) if !b.is_empty() => b,
-        Ok(_) => return "no hay ningun proveedor en esa configuracion".into(),
-        Err(e) => return format!("configuracion invalida: {e}"),
-    };
-    let backends: Vec<std::sync::Arc<dyn Backend>> = backends
-        .into_iter()
-        .map(|b| std::sync::Arc::new(b) as std::sync::Arc<dyn Backend>)
+/// Las entradas de un directorio, ya en JSON. Sin JNI, para poder probarlo.
+pub fn listar(id: i64, ruta: &str) -> Result<String, String> {
+    let ruta = ruta.to_string();
+    let entradas = sesion::con(id, move |v| {
+        Box::pin(async move { v.read_dir(&ruta).await.map_err(|e| e.to_string()) })
+    })?;
+    let lista: Vec<serde_json::Value> = entradas
+        .iter()
+        .map(|(nombre, e)| entrada_json(nombre, e))
         .collect();
-    let nombres: Vec<String> = backends.iter().map(|b| b.name().to_string()).collect();
+    Ok(serde_json::Value::Array(lista).to_string())
+}
 
-    let t = Instant::now();
-    let cabecera = match header::read(&backends).await {
-        Ok(Some(h)) => h,
-        Ok(None) => return format!("no hay volumen en {}", nombres.join(", ")),
-        Err(e) => return format!("no se pudo leer la cabecera: {e}"),
-    };
-    paso("cabecera", t.elapsed().as_millis());
+/// Lo que se sabe de una ruta, ya en JSON.
+pub fn mirar(id: i64, ruta: &str) -> Result<String, String> {
+    let nombre = ruta.rsplit('/').next().unwrap_or("").to_string();
+    let ruta2 = ruta.to_string();
+    let entrada = sesion::con(id, move |v| {
+        Box::pin(async move { v.lookup(&ruta2).await.map_err(|e| e.to_string()) })
+    })?;
+    Ok(match entrada {
+        Some(e) => entrada_json(&nombre, &e).to_string(),
+        None => "null".into(),
+    })
+}
 
-    let t = Instant::now();
-    let almacen = match cabecera.almacen(backends, frase, 64 * 1024 * 1024) {
-        Ok(a) => a,
-        Err(e) => return format!("no se pudo derivar la clave: {e}"),
-    };
-    paso("clave", t.elapsed().as_millis());
-
-    let t = Instant::now();
-    let volumen = match Volume::open(almacen).await {
-        Ok(v) => v,
-        Err(e) => return format!("no se pudo abrir: {e}\n(¿es esa la frase de paso?)"),
-    };
-    paso("abrir", t.elapsed().as_millis());
-
-    let t = Instant::now();
-    let entradas = match volumen.read_dir("/").await {
-        Ok(e) => e,
-        Err(e) => return format!("no se pudo listar: {e}"),
-    };
-    paso("listar /", t.elapsed().as_millis());
-
-    out.push(String::new());
-    out.push(format!("{} sobre {}", cabecera.layout, nombres.join(", ")));
-    out.push(format!("{} entrada(s)", entradas.len()));
-    for (nombre, e) in entradas.iter().take(20) {
-        out.push(format!("  {nombre}  {}", e.len));
-    }
-    out.join("\n")
+fn entrada_json(nombre: &str, e: &multidrive_core::tree::Entry) -> serde_json::Value {
+    use multidrive_core::tree::Kind;
+    serde_json::json!({
+        "nombre": nombre,
+        "dir": matches!(e.kind, Kind::Dir),
+        "bytes": e.len,
+    })
 }
 
 /// Que abajo hay un nucleo y no solo una cadena.

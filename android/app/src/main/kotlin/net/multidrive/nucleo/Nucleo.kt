@@ -38,10 +38,21 @@ object Nucleo {
     external fun https(): String
 
     /**
-     * Abre el volumen y lista la raiz, cronometrando cada paso.
+     * Abre un volumen y devuelve el identificador de la sesion. **Tarda segundos.**
      *
-     * Prueba, no interfaz: devuelve texto porque lo que se quiere saber todavia no es como se
-     * ensena, sino cuanto tarda. La frase de paso no se guarda en ningun sitio.
+     * Nunca desde el hilo de la interfaz: seis segundos medidos en un movil, de los cuales
+     * solo 156 ms son CPU. Si falla, lanza una excepcion con el motivo.
+     *
+     * La frase de paso llega como argumento y no se guarda en ningun sitio.
      */
-    external fun listar(config: String, frase: String): String
+    external fun abrir(config: String, frase: String): Long
+
+    /** Suelta el volumen, y con el la clave derivada. */
+    external fun cerrar(sesion: Long)
+
+    /** Las entradas de un directorio, en JSON: `[{"nombre":..,"dir":..,"bytes":..}]`. */
+    external fun listar(sesion: Long, ruta: String): String
+
+    /** Lo que se sabe de una ruta, en JSON, o la cadena `null` si no existe. */
+    external fun mirar(sesion: Long, ruta: String): String
 }
