@@ -43,6 +43,37 @@ El *wrapper* de Gradle sí va, y **con la huella de la distribución** en
 `gradle-wrapper.properties`: es lo que hace que el Gradle que se descargue solo sea el que
 esperamos y no lo que haya en esa URL ese día.
 
+## Lo que la aplicación ya hace
+
+Probado de punta a punta en un TECNO POVA 5 (Android 14) el 29 de septiembre de 2026:
+
+- **Conectar una cuenta de nube** por el navegador, desde el propio móvil.
+- **Traerse las demás con la maleta**: una cuenta enlazada y la frase de paso bastan. En el
+  escritorio eso ahorra minutos; en un móvil evita cuatro vueltas al navegador y cuatro
+  pantallas de permisos con el teclado del teléfono.
+- **Abrir el volumen** con la frase, que no se guarda en ninguna parte.
+- **Aparecer en la app de Archivos** y en el selector del sistema, y navegar por las carpetas.
+- **Leer ficheros por rangos**, bajando solo los trozos que el rango toca.
+- **Enterarse de lo que sube otro equipo**, deslizando para actualizar.
+
+Lo que falta para que sea una aplicación y no una prueba es de otra naturaleza, y ninguna parte
+es investigación: una interfaz que no sean botones apilados, recordar en qué carpeta ibas,
+miniaturas, y decidir qué hacer cuando Android mata el proceso a mitad de una lectura.
+
+### Dos cosas que se corrigieron usándola
+
+**La raíz no aparecía sin sesión.** Se hizo así con el argumento de que aparecer y fallar es
+peor que no aparecer. Estaba mal: si no sale en la lista, no hay forma de distinguir «falta
+abrir el volumen» de «la aplicación no va» de «estoy mirando donde no es».
+
+**Lo subido desde otro equipo no aparecía nunca.** Un `Volume` guarda la raíz que leyó al
+abrirse y no vuelve a mirar; para un escritor es correcto, para un lector no. El comentario del
+código decía que no hacía falta caducidad «con un solo escritor», y eso era falso: un solo
+escritor significa uno cada vez, no que el lector sea el escritor.
+
+Las dos salieron el primer día que alguien la usó de verdad, y ninguna se habría visto
+compilando.
+
 ## Las herramientas, y dónde están
 
 Todo fuera del repositorio, en `C:\Users\Luis\Android`, y todo verificado contra la huella que

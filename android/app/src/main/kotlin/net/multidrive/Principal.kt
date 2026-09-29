@@ -53,10 +53,12 @@ class Principal : Activity() {
         val drive = Button(this).apply { text = "Conectar Google Drive" }
         val onedrive = Button(this).apply { text = "Conectar OneDrive" }
         val ver = Button(this).apply { text = "Ver el volumen en Archivos" }
+        val traer = Button(this).apply { text = "Traer mis cuentas de la nube" }
 
         caja.addView(estado)
         caja.addView(drive)
         caja.addView(onedrive)
+        caja.addView(traer)
         caja.addView(frase)
         caja.addView(boton)
         caja.addView(cerrar)
@@ -135,6 +137,31 @@ class Principal : Activity() {
                         decir(dicho)
                         b.isEnabled = true
                     }
+                }
+            }
+        }
+
+        // Con una cuenta enlazada, la maleta trae las demas. Es lo que evita repetir el baile
+        // del navegador una vez por cuenta en el teclado de un telefono.
+        traer.setOnClickListener {
+            val f = frase.text.toString()
+            if (f.isEmpty()) {
+                decir("Escribe primero la frase de paso: la maleta va cifrada con ella.")
+                return@setOnClickListener
+            }
+            frase.setText("")
+            traer.isEnabled = false
+            decir("Buscando la configuracion en las cuentas que ya hay...")
+            thread {
+                val dicho = try {
+                    Nucleo.recuperar(conf.absolutePath, f)
+                } catch (e: Throwable) {
+                    Log.w(ETIQUETA, "no se pudo traer la maleta", e)
+                    "No se pudo traer:\n\n${e.message ?: e.toString()}"
+                }
+                runOnUiThread {
+                    decir(dicho)
+                    traer.isEnabled = true
                 }
             }
         }

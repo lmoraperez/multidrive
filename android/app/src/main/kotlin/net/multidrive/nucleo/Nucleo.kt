@@ -67,6 +67,17 @@ object Nucleo {
      */
     external fun refrescar(sesion: Long): Boolean
 
+    /**
+     * Trae la configuracion guardada en las nubes: con **una** cuenta enlazada salen las demas.
+     *
+     * En un escritorio ahorra unos minutos. En un movil es otra cosa: enlazar cuatro cuentas
+     * son cuatro vueltas al navegador y cuatro pantallas de permisos, con el teclado del
+     * telefono. Asi es una vuelta y una frase de paso.
+     *
+     * Bloquea. Nunca desde el hilo de la interfaz.
+     */
+    external fun recuperar(config: String, frase: String): String
+
     /** Las entradas de un directorio, en JSON: `[{"nombre":..,"dir":..,"bytes":..}]`. */
     external fun listar(sesion: Long, ruta: String): String
 
