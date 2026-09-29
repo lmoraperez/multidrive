@@ -183,6 +183,17 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
       código: hay que comprar o solicitar un certificado. Las tres vías, lo que bloquea cada
       una y por qué **no hace falta un EV** están en [FIRMA.md](FIRMA.md). El guión ya firma
       binario y MSI en cuanto haya con qué; mientras tanto publica el SHA-256
+
+      **Aplazado a propósito el 28 de septiembre de 2026**, no olvidado: por ahora no va a
+      haber certificado. Queda sin marcar porque el aviso de editor desconocido sigue ahí, y
+      eso es cierto lo decida quien lo decida. Lo que sí se exige mientras tanto es que el
+      sitio lo diga antes de la descarga —ya lo dice, en «Todavía no»— y que el SHA-256 esté
+      publicado, que es la única comprobación que le queda a quien baja una copia.
+
+      Consecuencia práctica, para no llevarse el susto más adelante: **v0.2 no se puede dar
+      por cerrada**, así que «no se empieza la siguiente sin haber contestado la anterior» se
+      rompe aquí a sabiendas. Lo que sigue se hace igual, pero eso es una decisión tomada, no
+      un despiste.
 - [x] Servicio de Windows, a través del lanzador de WinFsp en vez de escribiendo uno propio:
       ya arranca con la máquina, corre como LocalSystem y está instalado y firmado. `multidrive
       servicio registrar` y el volumen se conecta desde el Explorador como unidad de red.
