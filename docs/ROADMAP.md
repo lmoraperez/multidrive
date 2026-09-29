@@ -652,6 +652,11 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 
 ## Móvil (Android)
 
+> El diseño de la aplicación —el contrato de `DocumentsProvider`, la frontera con Rust, el
+> componente Kotlin de los certificados y por dónde se empieza— está en
+> [ANDROID.md](ANDROID.md). Aquí queda el análisis de por qué Android no es un tercer objetivo
+> de montaje, y el registro de lo que se ha ido comprobando.
+
 Analizado en septiembre de 2026 y verificado contra el código. **No es un tercer objetivo de
 montaje**, sino un modelo de integración distinto: por eso tiene sección propia en vez de una
 casilla en v0.2.
