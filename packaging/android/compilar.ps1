@@ -93,6 +93,36 @@ $mib = [math]::Round((Get-Item $origen).Length / 1MB, 2)
 Write-Host ''
 Write-Host "libmultidrive.so ($mib MiB) -> android/app/src/main/jniLibs/$abi/"
 
+# El componente Kotlin del verificador de certificados, que viene dentro del propio crate.
+#
+# Se busca aqui y no desde Gradle a proposito. La receta oficial hace que Gradle ejecute
+# `cargo metadata` para localizarlo, lo cual ata la compilacion de Android a tener cargo
+# delante. Prefiero que el lado de cargo lo resuelva el guion de cargo, y que Gradle solo
+# empaquete lo que encuentre, igual que con el `.so`.
+$antes = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+$meta = & cargo metadata --format-version 1 --filter-platform aarch64-linux-android --manifest-path (Join-Path $raiz 'Cargo.toml') 2>$null | ConvertFrom-Json
+$ErrorActionPreference = $antes
+
+$paquete = $meta.packages | Where-Object { $_.name -eq 'rustls-platform-verifier-android' } | Select-Object -First 1
+if (-not $paquete) {
+    Write-Error @'
+No encuentro `rustls-platform-verifier-android` entre las dependencias de Android.
+
+Sin su componente, la primera peticion HTTPS **entra en panico** en vez de fallar. Llega por
+debajo de reqwest, asi que si no esta, es que algo cambio en el arbol de dependencias.
+'@
+}
+
+$aar = Get-ChildItem (Split-Path -Parent $paquete.manifest_path) -Recurse -Filter '*.aar' |
+    Select-Object -First 1
+if (-not $aar) { Write-Error "El crate esta, pero no trae ningun .aar dentro." }
+
+$libs = Join-Path $raiz 'android/app/libs'
+New-Item -ItemType Directory -Force $libs | Out-Null
+Copy-Item $aar.FullName (Join-Path $libs 'rustls-platform-verifier.aar') -Force
+Write-Host "$($aar.Name) -> android/app/libs/rustls-platform-verifier.aar"
+
 # Que los simbolos esten es lo unico que de verdad importa de este guion: sin ellos la
 # aplicacion compila, instala, arranca y **falla al llamar**, que es el peor momento para
 # enterarse.

@@ -37,3 +37,15 @@ android {
     }
 
 }
+
+// El componente Kotlin que exige `rustls-platform-verifier`: sin el, la primera peticion HTTPS
+// entra en panico. El `.aar` lo trae el propio crate y lo copia aqui
+// `packaging/android/compilar.ps1`, por lo mismo que el `.so`: la busqueda del lado de cargo se
+// hace en el guion, y Gradle solo empaqueta lo que encuentra.
+//
+// La receta oficial del crate hace que Gradle ejecute `cargo metadata` para localizarlo. Se
+// evita a proposito: ataria la compilacion de Android a tener cargo delante, que es justo la
+// dependencia que este proyecto no quiere en los dos sentidos.
+dependencies {
+    implementation(files("libs/rustls-platform-verifier.aar"))
+}

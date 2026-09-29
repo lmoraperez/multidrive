@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Todavia no se pide nada de red: este paso solo carga el nucleo y le pregunta. El
-         permiso se anadira cuando haya algo que pedir, y no antes: una aplicacion que pide
-         permisos que no usa es una que nadie deberia instalar. -->
+    <!-- Para hablar con las nubes. Es el unico permiso que pide la aplicacion, y no hay
+         ninguno de almacenamiento: los ficheros se entregan por el Storage Access Framework,
+         que no necesita permisos porque es el usuario quien elige. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="MultiDrive"

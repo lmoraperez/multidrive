@@ -1,5 +1,7 @@
 package net.multidrive.nucleo
 
+import android.content.Context
+
 /**
  * La unica puerta al nucleo escrito en Rust.
  *
@@ -17,9 +19,21 @@ object Nucleo {
         System.loadLibrary("multidrive")
     }
 
+    /**
+     * Prepara el proceso. **Antes que nada que use la red.**
+     *
+     * Le da al verificador de certificados el `Context` de la aplicacion, que es como llega al
+     * almacen de confianza del sistema. Sin esta llamada, la primera peticion HTTPS no falla:
+     * **entra en panico y cierra la aplicacion**.
+     */
+    external fun iniciar(contexto: Context)
+
     /** Version de MultiDrive. */
     external fun version(): String
 
     /** Describe una topologia calculandola, para probar que el nucleo esta de verdad detras. */
     external fun prueba(): String
+
+    /** Una peticion HTTPS a un sitio publico. Sin credenciales de nadie. */
+    external fun https(): String
 }

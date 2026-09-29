@@ -18,7 +18,18 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 multidrive-core.workspace = true
 multidrive-raid.workspace = true
+tokio.workspace = true
+# Con las mismas caracteristicas que el backend, para no meter una segunda pila de TLS en el
+# mismo binario.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] }
 # La misma version que arrastra `rustls-platform-verifier`, que tambien la necesita en Android.
 # Dos copias de `jni` en el mismo proceso no es un problema de compilacion, pero si de
 # entendimiento cuando algo falle.
 jni = "0.22.4"
+
+# Solo en Android, y solo para inicializarlo: el verificador llega igualmente por debajo de
+# reqwest, pero ahi no hay forma de darle el `Context` de la JVM. Sin esa llamada no falla
+# --aborta--, asi que esta dependencia directa es lo que separa «hace HTTPS» de «cierra la
+# aplicacion». Ver docs/ANDROID.md.
+[target.'cfg(target_os = "android")'.dependencies]
+rustls-platform-verifier = "0.7"
