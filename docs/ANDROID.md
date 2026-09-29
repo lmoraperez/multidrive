@@ -20,6 +20,39 @@ no hay que decidir nada al respecto.
 
 La línea de órdenes no cruza, y está bien: arrastra `fuser`. FUSE no existe para Android.
 
+## Las herramientas, y dónde están
+
+Todo fuera del repositorio, en `C:\Users\Luis\Android`, y todo verificado contra la huella que
+publica quien lo distribuye antes de descomprimirlo. Ninguna toca el `PATH` ni el registro: se
+apuntan con variables de entorno, que es lo que permite tener varias versiones y tirar una sin
+consecuencias.
+
+| Qué | Versión | Espacio | Para qué |
+|---|---|---|---|
+| NDK | r30 (LTS) | 2,01 GiB | compilar Rust para `aarch64-linux-android` |
+| JDK Temurin | 21.0.12.1+1 | 0,32 GiB | Gradle y el plugin de Android piden 17 o más |
+| SDK: plataforma | android-36 | 0,10 GiB | contra qué se compila |
+| SDK: build-tools | 36.1.0 | 0,13 GiB | empaquetar el APK |
+| SDK: platform-tools | 37.0.1 | 0,02 GiB | `adb` |
+
+**2,9 GiB en total**, de los cuales dos tercios son el NDK. Gradle no está todavía: se descarga
+solo la primera vez que se compile, por el *wrapper*, y añadirá unos cientos de megas más sus
+cachés.
+
+```powershell
+$env:JAVA_HOME    = "C:\Users\Luis\Android\jdk-21.0.12.1+1"
+$env:ANDROID_HOME = "C:\Users\Luis\Android\sdk"
+$env:ANDROID_NDK_HOME = "C:\Users\Luis\Android\android-ndk-r30"
+$env:PATH = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
+```
+
+En esta máquina hay además un Java 8 en el `PATH` del sistema, de otra cosa. No se ha tocado:
+poniendo `JAVA_HOME` delante, Gradle usa el 21 y el otro sigue donde estaba para quien lo
+necesite.
+
+Las licencias del SDK de Google están aceptadas en `sdk\licenses`. Se revocan borrando esa
+carpeta, o el SDK entero.
+
 ## La forma de la aplicación
 
 No es un montaje. Es un **`DocumentsProvider`** del Storage Access Framework: el volumen
