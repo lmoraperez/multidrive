@@ -8,6 +8,7 @@ members = [
     "crates/multidrive-cli",
     "crates/multidrive-mount",
     "crates/multidrive-gui",
+    "crates/multidrive-android",
 ]
 
 [workspace.package]
