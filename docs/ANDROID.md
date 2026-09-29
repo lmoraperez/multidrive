@@ -362,8 +362,30 @@ antes de entregar un byte.
    El mismo sondeo HTTPS, tres veces en la misma tarde y el mismo teléfono, dio 184, 3361 y
    1291 ms contra nuestro sitio. Eso es red móvil: cualquier cifra suelta de aquí es un
    semáforo, no una medida.
-4. **El `DocumentsProvider`** encima de lo anterior, con `EXTRA_LOADING`.
-5. **`openProxyFileDescriptor`** para leer por rangos, que es lo que la separa de un juguete.
+4. ~~**El `DocumentsProvider`**, con `EXTRA_LOADING`.~~ **Hecho.** Las sesiones son lo nuevo de
+   verdad: abrir cuesta seis segundos, así que se abre una vez y se guarda, y Kotlin recibe un
+   número y no un puntero envuelto —así un identificador equivocado es un error y no un fallo
+   de memoria—.
+
+   Y una corrección que salió de usarlo: al principio **no se publicaba ninguna raíz mientras
+   no hubiera sesión**, con el argumento de que aparecer y fallar es peor que no aparecer.
+   Estaba mal. Si MultiDrive no sale en la lista, no hay forma de distinguir «falta abrir el
+   volumen» de «la aplicación no va» de «estoy mirando donde no es», y ninguna de las tres se
+   arregla a ciegas. Ahora sale siempre y el resumen dice en qué estado está.
+
+5. ~~**`openProxyFileDescriptor`** para leer por rangos.~~ **Hecho.** Cada lectura del
+   descriptor se traduce en un `read_at`, que baja solo los trozos que el rango toca.
+
+   Las lecturas llegan por un `HandlerThread` propio, uno para todo el proceso. Eso
+   **serializa** las lecturas de todos los ficheros abiertos a la vez: es una limitación de
+   verdad y conviene saberla. A cambio, las de un mismo fichero llegan en orden y el lado de
+   Rust no necesita candados. Cuando haya un caso que lo pida —dos aplicaciones leyendo a la
+   vez— se pasa a uno por descriptor.
+
+6. **Conectar cuentas desde el móvil**, para no tener que pasar credenciales por cable.
+   **Hecho**, y antes de lo previsto porque probar sin ello obligaba a dejar tokens de refresco
+   en el teléfono. El flujo de OAuth no se reescribió: es el mismo de la ventana y el terminal,
+   con PKCE y el `state` comprobado, y lo único que cambia es quién abre el navegador.
 
 Los tres primeros no necesitan interfaz ninguna, y el tercero contesta la pregunta que quedó
 abierta el 29 de septiembre.

@@ -270,6 +270,45 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_mirar<'local>(
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Un trozo de un fichero, por rango.
+///
+/// Es lo que hace viable abrir un video de 2 GiB sin bajarse 2 GiB: `read_at` baja **solo los
+/// trozos que el rango toca**. Del otro lado lo consume un `ProxyFileDescriptorCallback`, que
+/// es la unica forma en Android de entregar un descriptor cuyas lecturas nos llegan a nosotros.
+///
+/// Devuelve menos bytes de los pedidos al final del fichero, que es lo que `read(2)` hace y lo
+/// que el callback espera.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_leer<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+    ruta: JString<'local>,
+    desde: jni::sys::jlong,
+    cuanto: jni::sys::jint,
+) -> jni::objects::JByteArray<'local> {
+    entorno
+        .with_env(|env| -> Result<jni::objects::JByteArray<'local>, Fallo> {
+            let ruta = ruta.try_to_string(env)?;
+            let bytes =
+                leer(id, &ruta, desde as u64, cuanto.max(0) as usize).map_err(Fallo::Dicho)?;
+            Ok(env.byte_array_from_slice(&bytes)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Lo mismo sin JNI, para poder probarlo.
+pub fn leer(id: i64, ruta: &str, desde: u64, cuanto: usize) -> Result<Vec<u8>, String> {
+    let ruta = ruta.to_string();
+    sesion::con(id, move |v| {
+        Box::pin(async move {
+            v.read_at(&ruta, desde, cuanto)
+                .await
+                .map_err(|e| e.to_string())
+        })
+    })
+}
+
 /// Las entradas de un directorio, ya en JSON. Sin JNI, para poder probarlo.
 pub fn listar(id: i64, ruta: &str) -> Result<String, String> {
     let ruta = ruta.to_string();
@@ -372,8 +411,11 @@ mod tests {
             "prueba",
             "iniciarNativo",
             "abrir",
+            "cerrar",
             "listar",
             "mirar",
+            "leer",
+            "conectar",
         ] {
             let simbolo = format!("{esperado}{metodo}");
             assert!(
