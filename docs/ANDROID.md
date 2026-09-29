@@ -334,8 +334,34 @@ antes de entregar un byte.
    El 404 de Google es la respuesta correcta a un `GET /` sobre `oauth2.googleapis.com`: lo
    que importa es que **contestó**, o sea que el saludo TLS se completó. Los 184 ms contra
    nuestro propio sitio son además el primer dato de red desde el móvil.
-3. **Abrir un volumen y listar la raíz** por JNI, enseñándolo en una lista a pelo. Aquí se sabrá
-   lo que todavía no sabemos: cuánto tarda de verdad la red desde el móvil.
+3. ~~**Abrir un volumen y listar la raíz** por JNI.~~ **Hecho el 29 de septiembre de 2026**,
+   sobre un `lineal:4` de OneDrive y tres cuentas de Drive, desde el TECNO POVA 5:
+
+   ```
+   cabecera     3063 ms
+   clave         156 ms
+   abrir        1685 ms
+   listar /     1229 ms
+
+   lineal:4 sobre onedrive, gdrive, gdrive1, gdrive2
+   0 entrada(s)
+   ```
+
+   **Seis segundos para abrir y listar**, y de ellos **156 ms son CPU**. Todo lo demás es red.
+   Esto decide el diseño de la aplicación más que cualquier otra medida que hayamos tomado:
+
+   - La **caché deja de ser una optimización**. Sin ella, cada vuelta a la app son seis
+     segundos antes de ver un nombre.
+   - `EXTRA_LOADING` no es cortesía: sin él, el selector de ficheros se queda quieto ese rato
+     y cualquiera lo lee como una aplicación rota.
+   - Y Argon2id, que era la sospecha inicial, **no es el problema**. Nunca lo fue.
+
+   Un matiz que conviene no olvidar al releer estas cifras: la raíz estaba **vacía**, así que
+   `listar /` de 1229 ms es el suelo. Un directorio con contenido paga más.
+
+   El mismo sondeo HTTPS, tres veces en la misma tarde y el mismo teléfono, dio 184, 3361 y
+   1291 ms contra nuestro sitio. Eso es red móvil: cualquier cifra suelta de aquí es un
+   semáforo, no una medida.
 4. **El `DocumentsProvider`** encima de lo anterior, con `EXTRA_LOADING`.
 5. **`openProxyFileDescriptor`** para leer por rangos, que es lo que la separa de un juguete.
 

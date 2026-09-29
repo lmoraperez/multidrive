@@ -781,9 +781,11 @@ solo escritor, y ese se resuelve empezando en solo lectura.
 - [x] Una primera pasada dio 60 ms y la siguiente 94. Por eso se mide con siete vueltas y se
       da la mediana: una sola pasada es un semáforo, no una medida, y esto ya estaba escrito
       para `multidrive check`
-- [ ] Lo que sigue sin medirse es la red desde el móvil, que era la otra mitad de la pregunta.
-      No se puede hasta que exista el componente Kotlin: no es que dé cifras malas, es que
-      revienta antes de llegar a pedir nada
+- [x] **Medida la red desde el móvil** (29 de septiembre de 2026), con la aplicación abriendo
+      un `lineal:4` de verdad: cabecera 3063 ms, clave 156 ms, abrir 1685 ms, listar la raíz
+      1229 ms. **Seis segundos para abrir y listar, de los cuales 156 ms son CPU.** La caché
+      deja de ser una optimización y pasa a ser lo que hace usable la aplicación, y Argon2id
+      —la sospecha inicial— no es el problema. Detalle en [ANDROID.md](ANDROID.md)
 
 ## Llevarse la configuración a otro equipo
 
