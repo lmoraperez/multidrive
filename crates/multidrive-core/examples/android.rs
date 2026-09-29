@@ -39,9 +39,9 @@ use std::time::Instant;
 
 use multidrive_crypto::MasterKey;
 
-const VUELTAS: usize = 3;
+const VUELTAS: usize = 7;
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
     println!("== MultiDrive en Android: que cuesta ==");
     println!("arquitectura  {}", std::env::consts::ARCH);
@@ -58,7 +58,70 @@ async fn main() {
     };
 
     fase1(&frase);
+    tls().await;
     fase2().await;
+}
+
+/// Solo TLS, sin credenciales de nadie.
+///
+/// Responde a la pregunta cara --si `rustls-platform-verifier` puede validar un certificado
+/// sin JVM-- **sin necesidad de subir al telefono un fichero con tokens de refresco**. Una
+/// peticion a un sitio publico basta: si el apreton de manos se completa, el verificador
+/// funciona; si no, falla exactamente igual que le fallaria a una cuenta de nube.
+async fn tls() {
+    const DONDE: &str = "https://multidrive.net/";
+    println!("-- Fase 1b: un HTTPS cualquiera, sin credenciales --");
+
+    // En una tarea aparte porque en Android esto **no falla: revienta**.
+    // `rustls-platform-verifier` hace `expect("Expect rustls-platform-verifier to be
+    // initialized")` en cuanto se le pide verificar sin haberle dado el `Context` de la JVM, y
+    // un panico se lleva el proceso por delante con las fases que falten. Recogido aqui, se
+    // cuenta lo que paso y se sigue.
+    let tarea = tokio::spawn(async move { intentar(DONDE).await });
+    match tarea.await {
+        Ok(()) => {}
+        Err(e) if e.is_panic() => {
+            println!("  {DONDE}  PANICO, no un error");
+            println!();
+            println!("  Es lo previsto, y peor de lo previsto: `rustls-platform-verifier` no");
+            println!("  devuelve un fallo de certificado, aborta. Busca el almacen del sistema");
+            println!("  a traves de la JVM y sin `Context` no sigue. Hace falta el componente");
+            println!("  Kotlin, o sea una aplicacion de verdad.");
+            println!();
+            return;
+        }
+        Err(e) => println!("  la tarea no termino: {e}"),
+    }
+    println!();
+}
+
+async fn intentar(donde: &str) {
+    let cliente = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            println!("  no se pudo ni construir el cliente: {e}");
+            return;
+        }
+    };
+
+    let t = Instant::now();
+    match cliente.get(donde).send().await {
+        Ok(r) => {
+            println!(
+                "  {donde}  {} en {} ms",
+                r.status(),
+                t.elapsed().as_millis()
+            );
+            println!("  El verificador de certificados FUNCIONA sin JVM.");
+        }
+        Err(e) => {
+            println!("  {donde}  FALLO tras {} ms", t.elapsed().as_millis());
+            println!("  {e}");
+        }
+    }
 }
 
 /// Argon2id, sin red y sin configuracion. Es la cifra que decide la parametrizacion.

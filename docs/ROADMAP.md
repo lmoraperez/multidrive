@@ -745,22 +745,40 @@ solo escritor, y ese se resuelve empezando en solo lectura.
 - [x] Y **enlaza**, no solo compila: `cargo build --release --target aarch64-linux-android -p
       multidrive-core --example android` produce un ELF de aarch64 de 17 MiB. Compilar y
       enlazar no son lo mismo, y era lo segundo lo que faltaba por ver
-- [ ] **La aplicación de Android va a necesitar un componente Kotlin**, y esto no estaba
+- [x] **La aplicación de Android va a necesitar un componente Kotlin**, y esto no estaba
       escrito. `reqwest` arrastra `rustls-platform-verifier`, que en Android busca el almacén
       de certificados del sistema **a través de la JVM**: exige un puntero al `Context` de una
-      aplicación y una clase Kotlin en el APK. Un binario suelto lanzado con `adb shell` no
-      tiene ni JVM ni `Context`, así que **no puede hacer HTTPS**. No hay escapatoria por
-      features: `reqwest` 0.13.5 solo ofrece `rustls` y `rustls-no-provider`, y los dos traen
-      el verificador de plataforma; los certificados empaquetados (`webpki-roots`) no son una
-      opción desde ahí
+      aplicación y una clase Kotlin en el APK. No hay escapatoria por features: `reqwest`
+      0.13.5 solo ofrece `rustls` y `rustls-no-provider`, y los dos traen el verificador de
+      plataforma; los certificados empaquetados (`webpki-roots`) no son una opción desde ahí
+- [x] Comprobado en el teléfono, y **es peor de lo que parecía**: no devuelve un error de
+      certificado, **entra en pánico** —`Expect rustls-platform-verifier to be initialized`—
+      así que se lleva el proceso por delante. Un error se maneja; un pánico en mitad de una
+      petición de red, en una aplicación, es un cierre inesperado. Conviene saberlo antes de
+      escribir la aplicación y no después
+- [x] La comprobación se hizo **sin subir credenciales al teléfono**: una petición HTTPS a un
+      sitio público basta para saber si el verificador funciona, y falla exactamente igual que
+      le fallaría a una cuenta de nube. Subir el fichero de configuración habría puesto tokens
+      de refresco en claro en un móvil para averiguar lo mismo
 - [x] Por eso la prueba de concepto se parte en dos, y la primera mitad **no toca la red**:
       `crypto/examples/android` mide Argon2id, que es el único coste de abrir un volumen que
       no depende de internet, el único comparable de verdad contra el escritorio —mismo
       trabajo, otra CPU— y el que decide si hace falta otra parametrización o solo otra
       interfaz. En este equipo, en release, la mediana es **22 ms**; en `debug` son 424, que
       es la clase de diferencia que invalidaría la comparación si no se mira
-- [ ] Correrla en un teléfono. Falta el teléfono: con `adb` ya instalado, `adb devices` no ve
-      ninguno
+- [x] **Corrida en un teléfono de verdad** (TECNO POVA 5, Android 14, aarch64), el 29 de
+      septiembre de 2026. Argon2id: **mediana de 95 ms** sobre siete vueltas, contra 22 ms en
+      el equipo de escritorio en release. Poco más de cuatro veces, y por debajo de la décima
+      de segundo: **no es un problema, y no hace falta otra parametrización**. Que eso importe
+      no es evidente: los parámetros van ligados al volumen, así que si el móvil hubiera
+      necesitado otros, un volumen creado en el escritorio se abriría lento en el móvil para
+      siempre
+- [x] Una primera pasada dio 60 ms y la siguiente 94. Por eso se mide con siete vueltas y se
+      da la mediana: una sola pasada es un semáforo, no una medida, y esto ya estaba escrito
+      para `multidrive check`
+- [ ] Lo que sigue sin medirse es la red desde el móvil, que era la otra mitad de la pregunta.
+      No se puede hasta que exista el componente Kotlin: no es que dé cifras malas, es que
+      revienta antes de llegar a pedir nada
 
 ## Llevarse la configuración a otro equipo
 
