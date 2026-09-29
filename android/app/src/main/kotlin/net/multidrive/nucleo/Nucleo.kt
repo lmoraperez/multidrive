@@ -36,4 +36,12 @@ object Nucleo {
 
     /** Una peticion HTTPS a un sitio publico. Sin credenciales de nadie. */
     external fun https(): String
+
+    /**
+     * Abre el volumen y lista la raiz, cronometrando cada paso.
+     *
+     * Prueba, no interfaz: devuelve texto porque lo que se quiere saber todavia no es como se
+     * ensena, sino cuanto tarda. La frase de paso no se guarda en ningun sitio.
+     */
+    external fun listar(config: String, frase: String): String
 }

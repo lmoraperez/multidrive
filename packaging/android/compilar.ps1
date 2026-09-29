@@ -18,6 +18,15 @@
 .PARAMETER Api
     Nivel de API contra el que compilar. 26, que es el `minSdk` de la aplicacion.
 
+.PARAMETER Credenciales
+    Fichero CLAVE=VALOR con las credenciales de la aplicacion. Por defecto,
+    `packaging\windows\credenciales.conf`, que es el mismo que usa el instalador: dice
+    «windows» por como nacio, pero lo que lleva dentro no es de ningun sistema.
+
+    Sin esto, el `.so` sale sin credenciales compiladas y la aplicacion se niega a usar una
+    cuenta ya enlazada diciendo que no trae aplicacion registrada. Pasa de verdad: costo una
+    prueba en el telefono.
+
 .PARAMETER Depuracion
     Compilar sin optimizar. Va mucho mas rapido y sirve para probar el cableado, pero **no
     para medir nada**: en el escritorio, Argon2id pasa de 22 ms a 424 entre release y debug.
@@ -26,6 +35,7 @@
 param(
     [string]$Ndk = $env:ANDROID_NDK_HOME,
     [int]$Api = 26,
+    [string]$Credenciales,
     [switch]$Depuracion
 )
 
@@ -59,6 +69,38 @@ if (-not (Test-Path $ar)) { $ar = Join-Path $bin 'llvm-ar' }
 $env:CC_aarch64_linux_android = $clang
 $env:AR_aarch64_linux_android = $ar
 $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $clang
+
+# Las credenciales de la aplicacion, que van **dentro** del binario por `option_env!`. Es la
+# misma lista y el mismo fichero que usa el instalador de Windows: tener dos seria tener uno
+# que se queda viejo.
+if (-not $Credenciales) {
+    $Credenciales = Join-Path $raiz 'packaging/windows/credenciales.conf'
+}
+$claves = @(
+    'MULTIDRIVE_APP_GDRIVE_CLIENT_ID',
+    'MULTIDRIVE_APP_GDRIVE_CLIENT_SECRET',
+    'MULTIDRIVE_APP_ONEDRIVE_CLIENT_ID',
+    'MULTIDRIVE_APP_ONEDRIVE_CLIENT_SECRET'
+)
+if (Test-Path $Credenciales) {
+    foreach ($linea in Get-Content $Credenciales) {
+        $l = $linea.Trim()
+        if (-not $l -or $l.StartsWith('#')) { continue }
+        $i = $l.IndexOf('=')
+        if ($i -lt 1) { continue }
+        $clave = $l.Substring(0, $i).Trim() -replace '^export\s+', ''
+        $valor = $l.Substring($i + 1).Trim().Trim('"').Trim("'")
+        if ($claves -contains $clave -and $valor) { Set-Item -Path "Env:$clave" -Value $valor }
+    }
+}
+# Solo los nombres, nunca los valores: esta salida acaba pegada en informes.
+$puestas = @($claves | Where-Object { (Get-Item "Env:$_" -ErrorAction SilentlyContinue).Value })
+if ($puestas.Count -eq 0) {
+    Write-Warning 'sin credenciales de aplicacion: la aplicacion se negara a usar una cuenta'
+    Write-Warning 'ya enlazada diciendo que no trae aplicacion registrada. Ver docs/APLICACION-OAUTH.md'
+} else {
+    Write-Host "==> credenciales de aplicacion: $($puestas -join ', ')"
+}
 
 $perfil = if ($Depuracion) { 'debug' } else { 'release' }
 $argumentos = @('build', '--target', $objetivo, '-p', 'multidrive-android')
