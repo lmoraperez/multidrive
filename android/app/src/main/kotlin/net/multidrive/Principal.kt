@@ -52,6 +52,7 @@ class Principal : Activity() {
         val cerrar = Button(this).apply { text = "Cerrar volumen" }
         val drive = Button(this).apply { text = "Conectar Google Drive" }
         val onedrive = Button(this).apply { text = "Conectar OneDrive" }
+        val ver = Button(this).apply { text = "Ver el volumen en Archivos" }
 
         caja.addView(estado)
         caja.addView(drive)
@@ -59,7 +60,20 @@ class Principal : Activity() {
         caja.addView(frase)
         caja.addView(boton)
         caja.addView(cerrar)
+        caja.addView(ver)
         setContentView(caja)
+
+        // Abre el selector de ficheros **del sistema**, que es donde MultiDrive tiene que
+        // aparecer como origen. Existe porque cada fabricante esconde eso en un sitio distinto:
+        // el gestor de archivos que trae el telefono puede no ensenar los origenes del Storage
+        // Access Framework, y entonces «no aparece» y «no funciona» se confunden.
+        ver.setOnClickListener {
+            val i = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+            }
+            startActivity(android.content.Intent.createChooser(i, "Busca MultiDrive en la lista"))
+        }
 
         val conf = File(filesDir, "multidrive.conf")
 

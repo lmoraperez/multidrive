@@ -48,26 +48,37 @@ class Proveedor : DocumentsProvider() {
     }
 
     /**
-     * El volumen, si hay sesion abierta.
+     * El volumen. **Siempre**, haya sesion o no.
      *
-     * Cuando no la hay **no se devuelve ninguna raiz**, y entonces MultiDrive no aparece en la
-     * app de Archivos. Es deliberado: aparecer y fallar al abrir es peor que no aparecer, y
-     * aqui no hay forma de pedir la frase de paso --un `DocumentsProvider` no tiene pantalla--.
-     * La pide la aplicacion, y al abrir sesion se notifica para que la raiz aparezca.
+     * Antes no se publicaba ninguna raiz mientras no hubiera sesion, con el argumento de que
+     * aparecer y fallar es peor que no aparecer. Estaba mal, y se vio en cuanto alguien lo uso:
+     * si MultiDrive no sale en la lista, no hay forma de saber si falta abrir el volumen, si la
+     * aplicacion no funciona o si uno esta mirando donde no es. «No aparece» y «no funciona» se
+     * confunden, y ninguna de las dos se puede arreglar a ciegas.
+     *
+     * Ahora sale siempre, y **el resumen dice en que estado esta**. Si no hay sesion, entrar
+     * enseña un mensaje que explica que hay que abrir el volumen en la aplicacion, que es algo
+     * que se puede hacer.
      */
     override fun queryRoots(projection: Array<String>?): Cursor {
         val c = MatrixCursor(projection ?: COLUMNAS_RAIZ)
-        val s = Sesion.id ?: return c
+        val s = Sesion.id
 
         c.newRow().apply {
             add(Root.COLUMN_ROOT_ID, RAIZ)
             add(Root.COLUMN_DOCUMENT_ID, "/")
             add(Root.COLUMN_TITLE, "MultiDrive")
-            add(Root.COLUMN_SUMMARY, Sesion.resumen)
+            add(
+                Root.COLUMN_SUMMARY,
+                if (s != null) Sesion.resumen else "Cerrado: abre el volumen en MultiDrive",
+            )
             // Ni `FLAG_SUPPORTS_CREATE` ni `FLAG_SUPPORTS_RECENTS`: no se crea nada y no hay
             // «recientes» que ofrecer sin un indice local que todavia no existe.
             add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_IS_CHILD)
-            add(Root.COLUMN_ICON, android.R.drawable.ic_menu_save)
+            // El icono tiene que ser un recurso **nuestro**: la app de Archivos lo carga por su
+            // identificador y dentro de nuestro paquete, asi que uno de `android.R` no lo puede
+            // resolver, y una raiz cuyo icono no se resuelve puede acabar sin aparecer.
+            add(Root.COLUMN_ICON, R.drawable.icono)
         }
         Log.i(ETIQUETA, "raiz publicada, sesion $s")
         return c
@@ -94,7 +105,19 @@ class Proveedor : DocumentsProvider() {
         sortOrder: String?,
     ): Cursor {
         val c = MatrixCursor(projection ?: COLUMNAS_DOC)
-        val s = Sesion.id ?: return c
+        if (Sesion.id == null) {
+            // `EXTRA_ERROR` es la forma que Android tiene de decir algo sin inventarse ficheros:
+            // el selector enseña este texto en vez de una carpeta vacia. Una carpeta vacia
+            // significaria «aqui no hay nada», que es mentira, y encima no dice que hacer.
+            c.extras = Bundle().apply {
+                putString(
+                    android.provider.DocumentsContract.EXTRA_ERROR,
+                    "El volumen esta cerrado. Abrelo en la aplicacion MultiDrive: hace falta la " +
+                        "frase de paso, y no se guarda en ningun sitio.",
+                )
+            }
+            return c
+        }
 
         // Esto tarda **segundos** contra cuatro cuentas: 1229 ms medidos con la raiz vacia, y
         // un directorio con contenido paga mas. Android llama desde cualquier hilo y espera
