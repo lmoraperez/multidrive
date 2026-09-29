@@ -252,10 +252,10 @@ async fn canjear(
     redirigir: &str,
     verificador: &str,
 ) -> Result<Conectada, BackendError> {
-    let cliente = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .unwrap_or_default();
+    // El del proceso, que en Android se construye con otro almacen de confianza. Fabricar uno
+    // aqui dejaria el canje de codigo fuera del arreglo, y es justo la peticion sin la que no
+    // se puede conectar ninguna cuenta.
+    let cliente = crate::http::construir(Duration::from_secs(30));
 
     let respuesta = cliente
         .post(oauth.token)

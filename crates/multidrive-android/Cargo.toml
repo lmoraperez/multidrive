@@ -18,10 +18,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 multidrive-core.workspace = true
 multidrive-raid.workspace = true
+multidrive-backend.workspace = true
 tokio.workspace = true
-# Con las mismas caracteristicas que el backend, para no meter una segunda pila de TLS en el
-# mismo binario.
-reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] }
 # La misma version que arrastra `rustls-platform-verifier`, que tambien la necesita en Android.
 # Dos copias de `jni` en el mismo proceso no es un problema de compilacion, pero si de
 # entendimiento cuando algo falle.
