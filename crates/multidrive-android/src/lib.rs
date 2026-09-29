@@ -21,6 +21,7 @@
 //! que Kotlin sabe manejar.
 
 pub mod conectar;
+pub mod maleta;
 pub mod sesion;
 
 /// Lo que puede salir mal en la frontera, sea de JNI o nuestro.
@@ -210,6 +211,41 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_abrir<'local>(
             let config = config.try_to_string(env)?;
             let frase = frase.try_to_string(env)?;
             sesion::abrir(&config, &frase).map_err(Fallo::Dicho)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Trae la configuracion guardada en las nubes: con una cuenta enlazada salen las demas.
+///
+/// Devuelve una frase para ensenar. **Bloquea**: nunca desde el hilo de la interfaz.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_recuperar<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    config: JString<'local>,
+    frase: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let config = config.try_to_string(env)?;
+            let frase = frase.try_to_string(env)?;
+            let t = maleta::recuperar(&config, &frase).map_err(Fallo::Dicho)?;
+
+            let mut dicho = format!("Encontrada en '{}'.", t.donde);
+            if t.nuevas > 0 {
+                dicho.push_str(&format!("\nSe han anadido {} cuenta(s).", t.nuevas));
+            } else {
+                dicho.push_str("\nNo habia nada que anadir: ya estaba todo.");
+            }
+            if t.distintas > 0 {
+                // Pisar una credencial que funciona con otra de una maleta vieja es la forma
+                // mas rapida de quedarse sin acceso a una cuenta, asi que no se toca y se dice.
+                dicho.push_str(&format!(
+                    "\n{} clave(s) valen aqui otra cosa y NO se han tocado.",
+                    t.distintas
+                ));
+            }
+            Ok(env.new_string(dicho)?)
         })
         .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -430,6 +466,8 @@ mod tests {
             "mirar",
             "leer",
             "conectar",
+            "refrescar",
+            "recuperar",
         ] {
             let simbolo = format!("{esperado}{metodo}");
             assert!(
