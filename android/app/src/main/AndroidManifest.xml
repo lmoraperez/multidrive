@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Todavia no se pide nada de red: este paso solo carga el nucleo y le pregunta. El
+         permiso se anadira cuando haya algo que pedir, y no antes: una aplicacion que pide
+         permisos que no usa es una que nadie deberia instalar. -->
+
+    <application
+        android:label="MultiDrive"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.Light">
+        <activity
+            android:name=".Principal"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

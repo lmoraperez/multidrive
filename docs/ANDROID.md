@@ -20,6 +20,29 @@ no hay que decidir nada al respecto.
 
 La línea de órdenes no cruza, y está bien: arrastra `fuser`. FUSE no existe para Android.
 
+## El proyecto de Android
+
+Vive en [`android/`](../android), **aparte del workspace de Rust**: son dos sistemas de
+construcción que no se entienden entre sí, y mezclarlos obligaría a quien solo quiere compilar
+el escritorio a tener instalado un SDK que no necesita.
+
+El puente entre los dos es [`packaging/android/compilar.ps1`](../packaging/android/compilar.ps1),
+que construye el `.so` con cargo y lo deja en `android/app/src/main/jniLibs/arm64-v8a/`.
+
+```powershell
+$env:ANDROID_NDK_HOME = "C:\Users\Luis\Android\android-ndk-r30"
+.\packaging\android\compilar.ps1          # el .so
+cd android; .\gradlew.bat assembleDebug   # el APK
+```
+
+`jniLibs/` no va al repositorio: es la salida de cargo copiada. Versionarla significaría que
+alguien puede clonar y compilar un APK con un núcleo que no corresponde a las fuentes que tiene
+delante.
+
+El *wrapper* de Gradle sí va, y **con la huella de la distribución** en
+`gradle-wrapper.properties`: es lo que hace que el Gradle que se descargue solo sea el que
+esperamos y no lo que haya en esa URL ese día.
+
 ## Las herramientas, y dónde están
 
 Todo fuera del repositorio, en `C:\Users\Luis\Android`, y todo verificado contra la huella que
@@ -211,8 +234,31 @@ antes de entregar un byte.
 
 ## Por dónde se empieza
 
-1. **Cargar el núcleo desde una app vacía** y que diga la versión. Suena a poco y no lo es:
-   son `cargo-ndk`, el empaquetado del `.so` en el APK, y la carga desde Kotlin.
+1. ~~**Cargar el núcleo desde una app vacía** y que diga la versión.~~ **Hecho el 29 de
+   septiembre de 2026**, corriendo en el TECNO POVA 5:
+
+   ```
+   Nucleo cargado
+   version   0.0.1
+   prueba    rs:4,2: tolera perder 2, sobrecoste 1.50x
+   abi       arm64-v8a, armeabi-v7a, armeabi
+   ```
+
+   La segunda línea es la que importa: está **calculada** por el motor RAID dentro del `.so`,
+   no escrita. Un «hola» no habría distinguido «se cargó el núcleo» de «se cargó una
+   biblioteca vacía con el nombre correcto».
+
+   Dos cosas que no estaban previstas y se resolvieron por el camino. **Desde AGP 9.0 el
+   plugin de Kotlin va dentro del de Android**: declararlo aparte no es redundante, es un
+   error de compilación que dice «ya no hace falta». Y **`cargo-ndk` no se usa**: el `.so` lo
+   construye `packaging/android/compilar.ps1` con cargo y tres variables de entorno, que es lo
+   que `cargo-ndk` haría por debajo, y lo copia a `jniLibs`. Una dependencia menos y una capa
+   menos donde mirar cuando algo falle. El día que haya que compilar cuatro arquitecturas y
+   esto se vuelva incómodo, se cambia entonces.
+
+   Ese guion comprueba además que el `.so` **exporta los símbolos `Java_`**. Sin ellos la
+   aplicación compila, instala, arranca y falla al llamar, que es el peor momento para
+   enterarse.
 2. **Inicializar el verificador de certificados** y hacer un HTTPS cualquiera. Hasta que esto
    pase, no hay nube que valga.
 3. **Abrir un volumen y listar la raíz** por JNI, enseñándolo en una lista a pelo. Aquí se sabrá
