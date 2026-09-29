@@ -711,14 +711,27 @@ tanto **en solo lectura**, o espera al *lease* renovable de v0.5.
 ### Dónde encaja
 
 Ya no por falta de capa VFS: `Volume` tiene `lookup`, `read_dir`, `read_at` y `manifiesto`,
-que es justo lo que un `DocumentsProvider` necesita. Lo que falta ahora es lo que haría
-soportable usarlo desde un móvil —índice local y caché— y resolver el modelo de un solo
-escritor. Ver [Recuperación ante desastre](ARQUITECTURA.md#recuperación-ante-desastre) para
-lo que un lector de solo lectura necesita: el id de la raíz y nada más.
+que es justo lo que un `DocumentsProvider` necesita. Ver
+[Recuperación ante desastre](ARQUITECTURA.md#recuperación-ante-desastre) para lo que un lector
+de solo lectura necesita: el id de la raíz y nada más.
 
-Lo barato mientras tanto, para no perder la opción: un job de CI con
-`cargo check --target aarch64-linux-android` sobre `multidrive-crypto` y `multidrive-raid`.
-Pasan sin NDK, así que cuesta segundos y evita que la portabilidad se pudra sin avisar.
+Esta sección decía además que faltaban «índice local y caché». **Ya no es cierto**, y llevaba
+un tiempo sin serlo: el índice local está descartado en v0.1 —la caché de trozos lo hace
+innecesario— y la caché en disco está hecha. El único bloqueo que queda es el modelo de un
+solo escritor, y ese se resuelve empezando en solo lectura.
+
+- [x] Job de CI que cruza `multidrive-crypto` y `multidrive-raid` a `aarch64-linux-android`
+      (29 de septiembre de 2026). No prueba que Android funcione —no hay versión de Android—
+      sino que **nadie ate el núcleo al sistema operativo sin darse cuenta**. Cuesta segundos
+      porque esos dos cruzan sin NDK
+- [ ] Cruzar el núcleo entero. Se comprobó el mismo día y falla exactamente donde estaba
+      previsto: `aws-lc-sys`, debajo de `rustls`, quiere un compilador de C
+      (`aarch64-linux-android-clang`). Dos salidas, y **no son equivalentes**:
+      instalar el NDK, que es dependencia *de compilación* y no cambia nada de lo que se
+      distribuye hoy; o mover rustls al proveedor `ring` —hay `rustls-no-provider` tanto en
+      `reqwest` como en `opendal-http-transport-reqwest`, así que se puede—, que sí cambiaría
+      la pila de TLS del programa que ya usa la gente en Windows. Lo primero es reversible con
+      desinstalar una carpeta; lo segundo hay que probarlo en todo lo demás
 
 ## Llevarse la configuración a otro equipo
 
