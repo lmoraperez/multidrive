@@ -1,6 +1,8 @@
 package net.multidrive.nucleo
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 
 /**
  * La unica puerta al nucleo escrito en Rust.
@@ -26,7 +28,12 @@ object Nucleo {
      * almacen de confianza del sistema. Sin esta llamada, la primera peticion HTTPS no falla:
      * **entra en panico y cierra la aplicacion**.
      */
-    external fun iniciar(contexto: Context)
+    fun iniciar(contexto: Context) {
+        this.contexto = contexto.applicationContext
+        iniciarNativo(contexto.applicationContext)
+    }
+
+    private external fun iniciarNativo(contexto: Context)
 
     /** Version de MultiDrive. */
     external fun version(): String
@@ -55,4 +62,41 @@ object Nucleo {
 
     /** Lo que se sabe de una ruta, en JSON, o la cadena `null` si no existe. */
     external fun mirar(sesion: Long, ruta: String): String
+
+    /**
+     * Conecta una cuenta de nube por el navegador y la guarda. **Bloquea hasta cinco minutos.**
+     *
+     * Devuelve el nombre con el que quedo: `gdrive`, `gdrive1`... Nunca desde el hilo de la
+     * interfaz: se queda esperando a que alguien de permiso en otra pantalla.
+     */
+    external fun conectar(tipo: String, config: String): String
+
+    /**
+     * El contexto de la aplicacion, para poder abrir el navegador desde Rust.
+     *
+     * Lo guarda `iniciar`. No es una referencia a una actividad a proposito: guardar una
+     * actividad en un objeto que vive todo el proceso es como se filtran pantallas enteras.
+     */
+    @Volatile
+    private var contexto: Context? = null
+
+    /**
+     * Abre el navegador. **La llama Rust**, no Kotlin.
+     *
+     * El flujo de OAuth vive en Rust --el mismo que usan la ventana y el terminal, con PKCE y
+     * el `state` comprobado-- y lo unico que no puede hacer es abrir una pantalla. Asi que pide
+     * esto.
+     *
+     * `@JvmStatic` no vale: JNI busca el metodo en la clase que le decimos, y en un `object` de
+     * Kotlin los metodos viven en la instancia `INSTANCE` salvo que se marquen asi. Como aqui
+     * se llama con `CallStaticVoidMethod`, tiene que ser estatico de verdad.
+     */
+    @JvmStatic
+    fun abrirNavegador(url: String) {
+        val c = contexto ?: error("el nucleo no esta inicializado")
+        val i = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        // Sin actividad detras hace falta decir que empiece una tarea propia.
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        c.startActivity(i)
+    }
 }

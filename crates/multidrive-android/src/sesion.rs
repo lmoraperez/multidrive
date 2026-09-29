@@ -63,6 +63,15 @@ fn mapa() -> std::sync::MutexGuard<'static, HashMap<i64, Arc<Volume>>> {
     abiertos().lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Corre algo en el runtime del proceso, sin volumen de por medio.
+///
+/// Lo usa conectar una cuenta, que es asincrono pero no tiene nada abierto todavia. Se comparte
+/// el runtime en vez de crear otro: dos runtimes en el mismo proceso son dos grupos de hilos y
+/// dos pilas de conexiones, y ninguna de las dos cosas hace falta.
+pub fn en_el_runtime<T>(f: impl Future<Output = Result<T, String>>) -> Result<T, String> {
+    runtime().block_on(f)
+}
+
 /// Abre un volumen y devuelve su identificador. **Cuesta segundos**: nunca en el hilo de la
 /// interfaz.
 pub fn abrir(config: &str, frase: &str) -> Result<i64, String> {

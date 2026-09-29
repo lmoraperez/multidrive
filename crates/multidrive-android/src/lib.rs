@@ -20,6 +20,7 @@
 //! recoge tanto los `Err` como los panicos y los convierte en una excepcion de Java, que es lo
 //! que Kotlin sabe manejar.
 
+pub mod conectar;
 pub mod sesion;
 
 /// Lo que puede salir mal en la frontera, sea de JNI o nuestro.
@@ -61,7 +62,7 @@ pub const CLASE: &str = "net.multidrive.nucleo.Nucleo";
 /// En los demas sistemas no hace nada y devuelve bien: asi el mismo Kotlin vale, y el mismo
 /// codigo compila para el escritorio.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_iniciar<'local>(
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_iniciarNativo<'local>(
     mut entorno: EnvUnowned<'local>,
     _clase: JObject<'local>,
     contexto: JObject<'local>,
@@ -73,12 +74,38 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_iniciar<'local>(
 
 #[cfg(target_os = "android")]
 fn iniciar(env: &mut jni::Env<'_>, contexto: JObject<'_>) -> Result<(), jni::errors::Error> {
+    // La maquina virtual se guarda aqui porque es el unico sitio donde llega: conectar una
+    // cuenta necesita volver a Kotlin para abrir el navegador, y lo hace desde un hilo del
+    // runtime que la JVM no conoce.
+    conectar::recordar_vm(env);
     rustls_platform_verifier::android::init_with_env(env, contexto)
 }
 
 #[cfg(not(target_os = "android"))]
-fn iniciar(_env: &mut jni::Env<'_>, _contexto: JObject<'_>) -> Result<(), jni::errors::Error> {
+fn iniciar(env: &mut jni::Env<'_>, _contexto: JObject<'_>) -> Result<(), jni::errors::Error> {
+    conectar::recordar_vm(env);
     Ok(())
+}
+
+/// Conecta una cuenta de nube por el navegador y la guarda. **Bloquea hasta cinco minutos.**
+///
+/// Devuelve el nombre con el que quedo: `gdrive`, `gdrive1`... Nunca desde el hilo de la
+/// interfaz: espera a que alguien de permiso en una pantalla que no es esta.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_conectar<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    tipo: JString<'local>,
+    config: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let tipo = tipo.try_to_string(env)?;
+            let config = config.try_to_string(env)?;
+            let nombre = conectar::conectar(&tipo, &config).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(nombre)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 /// Version de MultiDrive, como cadena.
@@ -340,7 +367,14 @@ mod tests {
         let esperado = format!("Java_{}_", CLASE.replace('.', "_"));
         let fuente = include_str!("lib.rs");
 
-        for metodo in ["version", "prueba"] {
+        for metodo in [
+            "version",
+            "prueba",
+            "iniciarNativo",
+            "abrir",
+            "listar",
+            "mirar",
+        ] {
             let simbolo = format!("{esperado}{metodo}");
             assert!(
                 fuente.contains(&simbolo),
