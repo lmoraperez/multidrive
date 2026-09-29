@@ -31,6 +31,40 @@ use jni::{EnvUnowned, objects::JObject};
 /// abre la aplicacion.
 pub const CLASE: &str = "net.multidrive.nucleo.Nucleo";
 
+/// Prepara el proceso. **Hay que llamarla antes que a nada que use la red.**
+///
+/// Lo unico que hace es darle al verificador de certificados el `Context` de la aplicacion,
+/// que es como llega al almacen de confianza del sistema. Sin esto, la primera peticion HTTPS
+/// **no devuelve un error: entra en panico** --`Expect rustls-platform-verifier to be
+/// initialized`-- y se lleva el proceso por delante. Comprobado en un telefono antes de
+/// escribir esta funcion.
+///
+/// Se llama desde `onCreate`, no al primer uso, porque un fallo aqui es algo que hay que
+/// ensenar entero y no en mitad de una descarga.
+///
+/// En los demas sistemas no hace nada y devuelve bien: asi el mismo Kotlin vale, y el mismo
+/// codigo compila para el escritorio.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_iniciar<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    contexto: JObject<'local>,
+) {
+    entorno
+        .with_env(|env| iniciar(env, contexto))
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[cfg(target_os = "android")]
+fn iniciar(env: &mut jni::Env<'_>, contexto: JObject<'_>) -> Result<(), jni::errors::Error> {
+    rustls_platform_verifier::android::init_with_env(env, contexto)
+}
+
+#[cfg(not(target_os = "android"))]
+fn iniciar(_env: &mut jni::Env<'_>, _contexto: JObject<'_>) -> Result<(), jni::errors::Error> {
+    Ok(())
+}
+
 /// Version de MultiDrive, como cadena.
 ///
 /// Es la primera funcion a proposito, y no es de mentira: si esto vuelve con la version
@@ -44,6 +78,79 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_version<'local>(
     entorno
         .with_env(|env| env.new_string(env!("CARGO_PKG_VERSION")))
         .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Una peticion HTTPS a un sitio publico, para saber si el verificador ya funciona.
+///
+/// Sin credenciales de nadie: si el apreton de manos se completa contra un sitio cualquiera,
+/// se completara contra una cuenta de nube. Preguntarselo a una cuenta de verdad exigiria
+/// tener la configuracion en el telefono para averiguar exactamente lo mismo.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_https<'local>(
+    mut entorno: EnvUnowned<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| env.new_string(https()))
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Lo mismo sin JNI. Una linea por sitio.
+///
+/// Varios sitios y no uno: el verificador de Android comprueba la revocacion del certificado
+/// del servidor, y **un certificado sin OCSP ni CRL no se puede comprobar**, lo que sale como
+/// `Revoked` aunque no lo este. Let's Encrypt ya no emite ninguna de las dos cosas. Asi que un
+/// solo sitio no distingue «el verificador no funciona» de «ese certificado concreto no se
+/// puede comprobar», y son dos conclusiones muy distintas.
+pub fn https() -> String {
+    const SITIOS: &[(&str, &str)] = &[
+        ("propio ", "https://multidrive.net/"),
+        ("google ", "https://oauth2.googleapis.com/"),
+        ("msft   ", "https://login.microsoftonline.com/"),
+    ];
+
+    let arranque = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(r) => r,
+        Err(e) => return format!("no se pudo arrancar el runtime: {e}"),
+    };
+
+    arranque.block_on(async {
+        let cliente = match reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .build()
+        {
+            Ok(c) => c,
+            Err(e) => return format!("no se pudo construir el cliente: {e}"),
+        };
+        let mut lineas = Vec::new();
+        for (nombre, donde) in SITIOS {
+            let t = std::time::Instant::now();
+            let dicho = match cliente.get(*donde).send().await {
+                Ok(r) => format!("{} en {} ms", r.status(), t.elapsed().as_millis()),
+                Err(e) => format!("FALLO: {}", porque(&e)),
+            };
+            lineas.push(format!("{nombre} {dicho}"));
+        }
+        lineas.join("\n")
+    })
+}
+
+/// El error **y de que viene**, hasta el fondo.
+///
+/// `reqwest` dice «error sending request for url» para cualquier cosa que pase por debajo: un
+/// nombre que no resuelve, un permiso que falta, un certificado que no valida y una red que no
+/// hay dan todos el mismo texto. Lo que distingue unos de otros esta en la cadena de causas, y
+/// sin recorrerla el mensaje no sirve para nada.
+fn porque(e: &dyn std::error::Error) -> String {
+    let mut partes = vec![e.to_string()];
+    let mut causa = e.source();
+    while let Some(c) = causa {
+        partes.push(c.to_string());
+        causa = c.source();
+    }
+    partes.join(" <- ")
 }
 
 /// Que abajo hay un nucleo y no solo una cadena.

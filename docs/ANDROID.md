@@ -143,6 +143,33 @@ Eso fija dos cosas:
   `HandlerThread` propio. No es un hilo del sistema del que se pueda abusar, y serializa las
   llamadas de un mismo descriptor, lo cual simplifica el lado de Rust.
 
+## El verificador de la plataforma no sirve en Android
+
+Escrito después de comprobarlo en un teléfono, y corrige lo que decía antes esta misma sección.
+
+El componente Kotlin **sí hace falta** y **sí funciona**: sin él, la primera petición HTTPS
+entra en pánico —`Expect rustls-platform-verifier to be initialized`— y se lleva el proceso por
+delante. Con él, Microsoft responde `200 OK`.
+
+Pero Google y nuestro propio sitio responden `invalid peer certificate: Revoked`, y **no lo
+están**. El verificador de Android comprueba la revocación del certificado del servidor, y un
+certificado sin OCSP ni CRL no se puede comprobar. Let's Encrypt ya no emite ninguna de las dos
+cosas, y Google Trust Services tampoco. El resultado es que **una comprobación imposible se
+reporta como una comprobación fallida**.
+
+No hay forma de desactivarlo: el veredicto lo emite el componente Kotlin y el lado de Rust se
+limita a traducirlo.
+
+La salida es construir el `ClientConfig` de rustls con **`webpki-roots`** —el conjunto de raíces
+de Mozilla, compilado dentro— y dárselo a `reqwest` ya hecho. Se puede: `ReqwestTransport::new`
+acepta un `reqwest::Client` nuestro, así que OpenDAL usa el que le demos en vez de fabricarse
+uno.
+
+Lo que se pierde al hacerlo hay que decirlo: el almacén de confianza pasa a ser **nuestro y no
+el del sistema**, así que no recoge las actualizaciones del sistema operativo ni las raíces que
+haya añadido una empresa o el propio usuario, y actualizarlo pasa a ser cosa nuestra. A cambio,
+la aplicación puede hablar con las nubes, que es el requisito del que cuelga todo lo demás.
+
 ## El componente Kotlin de los certificados: obligatorio
 
 Esto es lo que más cerca estuvo de ser una sorpresa cara, y por eso se comprobó pronto.
@@ -259,8 +286,30 @@ antes de entregar un byte.
    Ese guion comprueba además que el `.so` **exporta los símbolos `Java_`**. Sin ellos la
    aplicación compila, instala, arranca y falla al llamar, que es el peor momento para
    enterarse.
-2. **Inicializar el verificador de certificados** y hacer un HTTPS cualquiera. Hasta que esto
-   pase, no hay nube que valga.
+2. **Inicializar el verificador de certificados** y hacer un HTTPS cualquiera. **Hecho a
+   medias el 29 de septiembre de 2026**, y lo que faltó es más interesante que lo que salió.
+
+   Con el `.aar` del crate empaquetado y `init_with_env` llamado desde `onCreate`, **el pánico
+   desaparece**: el verificador funciona. Pero al probar contra tres sitios:
+
+   ```
+   propio  FALLO: invalid peer certificate: Revoked
+   google  FALLO: invalid peer certificate: Revoked
+   msft    200 OK en 1681 ms
+   ```
+
+   Ninguno de esos certificados está revocado. Lo que pasa es que **Android comprueba la
+   revocación y no puede**: `multidrive.net` lleva un certificado de Let's Encrypt que ya no
+   trae ni OCSP ni CRL —comprobado extensión a extensión—, y el de Google tampoco. Sin de
+   dónde sacar la información, el verificador de la plataforma responde `Revoked`, que es lo
+   peor que podía responder: una comprobación que no se puede hacer sale como una que salió
+   mal.
+
+   Y no hay interruptor. El veredicto lo da el componente Kotlin, y el lado de Rust solo lo
+   traduce.
+
+   **Google es el proveedor principal de MultiDrive**, así que esto no es una curiosidad: con
+   el verificador de la plataforma, la aplicación de Android no puede hablar con Drive.
 3. **Abrir un volumen y listar la raíz** por JNI, enseñándolo en una lista a pelo. Aquí se sabrá
    lo que todavía no sabemos: cuánto tarda de verdad la red desde el móvil.
 4. **El `DocumentsProvider`** encima de lo anterior, con `EXTRA_LOADING`.
