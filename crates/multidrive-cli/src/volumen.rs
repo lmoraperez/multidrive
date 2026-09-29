@@ -17,6 +17,7 @@ use multidrive_core::rebalance::{self, Cambio, Sacrificio};
 use multidrive_core::rescue;
 use multidrive_core::sincronizador::{Resultado, Sincronizador};
 use multidrive_core::tree::{self, Kind, Volume};
+use multidrive_core::maleta;
 use multidrive_core::writeback::{self, WriteQueue};
 use multidrive_core::{ChunkStore, CoreError};
 use multidrive_raid::Layout;
@@ -186,6 +187,9 @@ pub async fn create(spec: &str) -> Result<()> {
         .with_context(|| format!("topologia invalida: {spec}"))?;
 
     let pesos = pesos_para(layout, &backends).await;
+    // Se guarda una copia antes de entregarlos: la maleta de mas abajo los necesita, y para
+    // entonces `crear` ya se los ha llevado.
+    let para_la_maleta = backends.clone();
     let store = header::crear(backends, layout, &frase()?, pesos)
         .await
         .map_err(|e| match e {
@@ -209,9 +213,51 @@ pub async fn create(spec: &str) -> Result<()> {
         layout.tolerated_failures()
     );
     println!();
+
+    // La maleta se guarda **aqui tambien**, no solo desde la ventana. Antes solo la guardaba
+    // la ventana, asi que quien creaba el volumen por el terminal se quedaba sin ella creyendo
+    // que la tenia: lo prometido en la documentacion es del programa, no de una de sus dos
+    // caras. Es el momento en que la frase esta en la mano y los proveedores son los del
+    // volumen recien creado.
+    guardar_maleta_en_silencio(&para_la_maleta).await;
+
     println!("La frase de paso no se guarda en ninguna parte. Si la pierdes, se pierde todo.");
     avisar(&degraded);
     Ok(())
+}
+
+/// Sube la configuracion sellada, y **no tumba nada si falla**.
+///
+/// El volumen ya existe cuando esto corre. Perderlo porque no se pudo subir un fichero de
+/// configuracion seria cambiar un incordio por un desastre: se dice lo que paso y se sigue,
+/// que para eso esta `multidrive config publicar`.
+async fn guardar_maleta_en_silencio(backends: &[Arc<dyn Backend>]) {
+    let (claves, frase) = match (maleta::claves_de_este_equipo(), frase()) {
+        (Ok(c), Ok(f)) => (c, f),
+        _ => return,
+    };
+    let bulto = match maleta::empaquetar(&claves, &frase) {
+        Ok(b) => b,
+        Err(e) => {
+            println!("  AVISO: no se pudo preparar la configuracion sellada: {e}");
+            println!("         El volumen esta creado. Reintentalo con: multidrive config publicar");
+            return;
+        }
+    };
+    let resultados = maleta::guardar(backends, &bulto).await;
+    let logradas = resultados.iter().filter(|(_, f)| f.is_none()).count();
+    if logradas == 0 {
+        println!("  AVISO: la configuracion sellada no quedo en ningun proveedor.");
+        println!("         El volumen esta creado. Reintentalo con: multidrive config publicar");
+        return;
+    }
+    println!(
+        "  configuracion sellada en {} de {} proveedor(es), con esta misma frase",
+        logradas,
+        resultados.len()
+    );
+    println!("  En otro equipo: enlaza una sola de esas cuentas y `multidrive config recuperar`");
+    println!();
 }
 
 /// Lista un directorio.
