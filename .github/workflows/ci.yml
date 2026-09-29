@@ -81,13 +81,13 @@ jobs:
   # Que el nucleo siga pudiendo cruzar a Android, para que la portabilidad no se pudra sin
   # avisar.
   #
-  # Solo `crypto` y `raid`, que son los que cruzan **sin NDK**: el resto arrastra un compilador
-  # de C por `aws-lc-sys`, debajo de rustls, y montar el NDK en cada ejecucion costaria minutos
-  # para comprobar algo que hoy no se usa. Esto cuesta segundos.
-  #
   # No prueba que Android funcione --no hay version de Android-- sino que nadie ate el nucleo
   # al sistema operativo sin darse cuenta. Hoy no hay un solo `cfg(windows)` ni `cfg(unix)` en
   # todo el workspace, y eso es lo que esto protege.
+  #
+  # Se queda en estos cuatro crates a proposito. `multidrive` --la linea de ordenes-- arrastra
+  # `fuser`, y FUSE no existe para Android; tampoco haria falta, porque Android no deja montar
+  # a nadie sin root y la integracion seria un `DocumentsProvider` sobre `multidrive-core`.
   android:
     runs-on: ubuntu-latest
     steps:
@@ -96,8 +96,26 @@ jobs:
         with:
           targets: aarch64-linux-android
       - uses: Swatinem/rust-cache@v2
-      - name: Cruzar a aarch64-linux-android
+      # Los dos que cruzan sin compilador de C. Van aparte y primero porque si estos fallan,
+      # el fallo es del nucleo; si falla solo el paso siguiente, el fallo es del entorno.
+      - name: Cruzar crypto y raid, sin NDK
         run: cargo check --target aarch64-linux-android -p multidrive-crypto -p multidrive-raid
+      # El resto necesita un compilador de C por `aws-lc-sys`, debajo de rustls. El runner
+      # trae NDK, asi que no hay nada que descargar.
+      #
+      # Si algun dia deja de traerlo, esto **falla** en vez de saltarse el paso. Un paso que se
+      # salta solo y sigue en verde ensena a no mirarlo, y el dia que importe nadie se entera.
+      - name: Cruzar backend y core, con el NDK del runner
+        run: |
+          test -n "$ANDROID_NDK_LATEST_HOME" || {
+            echo "El runner ya no trae NDK. Hay que instalarlo aqui o quitar este paso."
+            exit 1
+          }
+          BIN="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$BIN/aarch64-linux-android26-clang"
+          export AR_aarch64_linux_android="$BIN/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC_aarch64_linux_android"
+          cargo check --target aarch64-linux-android -p multidrive-backend -p multidrive-core
 
   # Monta de verdad con FUSE y usa el volumen como lo usaria un programa cualquiera.
   #

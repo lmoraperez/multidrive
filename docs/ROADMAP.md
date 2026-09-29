@@ -724,14 +724,24 @@ solo escritor, y ese se resuelve empezando en solo lectura.
       (29 de septiembre de 2026). No prueba que Android funcione —no hay versión de Android—
       sino que **nadie ate el núcleo al sistema operativo sin darse cuenta**. Cuesta segundos
       porque esos dos cruzan sin NDK
-- [ ] Cruzar el núcleo entero. Se comprobó el mismo día y falla exactamente donde estaba
-      previsto: `aws-lc-sys`, debajo de `rustls`, quiere un compilador de C
-      (`aarch64-linux-android-clang`). Dos salidas, y **no son equivalentes**:
-      instalar el NDK, que es dependencia *de compilación* y no cambia nada de lo que se
-      distribuye hoy; o mover rustls al proveedor `ring` —hay `rustls-no-provider` tanto en
-      `reqwest` como en `opendal-http-transport-reqwest`, así que se puede—, que sí cambiaría
-      la pila de TLS del programa que ya usa la gente en Windows. Lo primero es reversible con
-      desinstalar una carpeta; lo segundo hay que probarlo en todo lo demás
+- [x] **El núcleo entero cruza a `aarch64-linux-android`** (29 de septiembre de 2026), con el
+      NDK r30. `aws-lc-sys` —debajo de `rustls`, debajo de `reqwest` y de OpenDAL— era lo
+      único que pedía un compilador de C, tal y como estaba previsto. Se eligió el NDK y no
+      mover rustls al proveedor `ring`: el NDK es dependencia **de compilación** y no cambia
+      un byte de lo que se distribuye, mientras que cambiar de proveedor de TLS tocaría la
+      pila del programa que la gente ya usa en Windows, para habilitar un Android que todavía
+      no existe. `rustls-no-provider` está disponible en `reqwest` y en
+      `opendal-http-transport-reqwest` por si algún día conviene
+- [x] `packaging/android/comprobar.ps1`, que lee la ruta del NDK de `ANDROID_NDK_HOME` en vez
+      de llevarla escrita: una ruta absoluta de la máquina de alguien no le sirve a nadie más
+- [x] Y la CI lo comprueba en dos pasos separados: `crypto` y `raid` sin NDK, y `backend` y
+      `core` con el que trae el runner. Separados porque **dicen cosas distintas**: si falla el
+      primero, el fallo es del núcleo; si falla solo el segundo, es del entorno. Si el runner
+      deja de traer NDK el paso falla en vez de saltarse solo, porque un paso que se salta y
+      sigue en verde enseña a no mirarlo
+- [ ] El límite portable queda dibujado, y es exactamente el que hace falta: `crypto`, `raid`,
+      `backend` y `core`. La línea de órdenes **no** cruza, porque arrastra `fuser`. No es un
+      problema que resolver: FUSE no existe para Android, y aunque existiera no se podría usar
 
 ## Llevarse la configuración a otro equipo
 
