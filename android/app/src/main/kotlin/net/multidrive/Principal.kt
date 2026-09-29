@@ -1,15 +1,16 @@
 package net.multidrive
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.provider.DocumentsContract
-import android.text.InputType
 import android.util.Log
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
-import android.widget.LinearLayout
 import android.widget.TextView
 import net.multidrive.nucleo.Nucleo
+import org.json.JSONArray
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -17,174 +18,204 @@ private const val ETIQUETA = "multidrive"
 private const val AUTORIDAD = "net.multidrive.documentos"
 
 /**
- * Pide la frase de paso y abre el volumen.
+ * La pantalla de MultiDrive.
  *
- * Es lo minimo, y no por dejadez: un `DocumentsProvider` **no tiene pantalla**, asi que alguien
- * tiene que pedir la frase, y ese alguien es esta actividad. Mientras no haya sesion, MultiDrive
- * no aparece en la app de Archivos; en cuanto la hay, se avisa al sistema y aparece.
+ * # Una sola funcion decide lo que se ve
  *
- * La frase no se guarda en ningun sitio: vive en la sesion, en memoria, y muere con el proceso.
- * Android puede matar el proceso cuando le convenga, asi que **volver a Archivos puede pedirla
- * otra vez**. Eso se dice, en vez de fingir que la sesion es eterna.
+ * [pintar] fija el estado de **todo**, siempre y por completo, no por trozos segun lo que acabe
+ * de pasar. Eso no es manía: en la ventana del escritorio el mismo fallo aparecio tres veces
+ * seguidas --un aviso, una seccion y una oferta que se quedaban de la vez anterior diciendo algo
+ * que ya no era verdad-- y las tres veces la causa fue pintar solo la rama que habia cambiado.
  *
- * Lo que todavia se hace a mano es la configuracion de las cuentas, que hay que dejar en
- * `files/multidrive.conf`. Conectarlas por el navegador es el paso siguiente; hasta entonces,
- * esta pantalla dice donde falta el fichero en vez de fallar sin explicacion.
+ * # La frase de paso
+ *
+ * Vive en la sesion, en memoria, y muere con el proceso. Se borra del campo en cuanto se toma:
+ * una frase a la vista es una captura de pantalla de mas. Android puede matar el proceso cuando
+ * le convenga, asi que puede hacer falta escribirla otra vez, y eso se dice en la pantalla en
+ * vez de fingir que la sesion es eterna.
  */
 class Principal : Activity() {
 
     private lateinit var estado: TextView
+    private lateinit var cuentas: TextView
+    private lateinit var frase: EditText
+    private lateinit var conf: File
+
+    private lateinit var drive: Button
+    private lateinit var onedrive: Button
+    private lateinit var traer: Button
+    private lateinit var abrir: Button
+    private lateinit var ver: Button
+    private lateinit var cerrar: Button
+    private lateinit var tituloVolumen: TextView
+    private lateinit var tarjetaVolumen: View
+    private lateinit var notaMaleta: TextView
+
+    /** Lo que se esta haciendo ahora mismo, si es que se esta haciendo algo. */
+    @Volatile
+    private var ocupado = false
 
     override fun onCreate(guardado: Bundle?) {
         super.onCreate(guardado)
+        setContentView(R.layout.principal)
 
-        val caja = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 96, 48, 48)
-        }
+        estado = findViewById(R.id.estado)
+        cuentas = findViewById(R.id.cuentas)
+        frase = findViewById(R.id.frase)
+        drive = findViewById(R.id.drive)
+        onedrive = findViewById(R.id.onedrive)
+        traer = findViewById(R.id.traer)
+        abrir = findViewById(R.id.abrir)
+        ver = findViewById(R.id.ver)
+        cerrar = findViewById(R.id.cerrar)
+        tituloVolumen = findViewById(R.id.titulo_volumen)
+        tarjetaVolumen = findViewById(R.id.tarjeta_volumen)
+        notaMaleta = findViewById(R.id.nota_maleta)
 
-        estado = TextView(this).apply { textSize = 15f }
-        val frase = EditText(this).apply {
-            hint = "Frase de paso"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        val boton = Button(this).apply { text = "Abrir volumen" }
-        val cerrar = Button(this).apply { text = "Cerrar volumen" }
-        val drive = Button(this).apply { text = "Conectar Google Drive" }
-        val onedrive = Button(this).apply { text = "Conectar OneDrive" }
-        val ver = Button(this).apply { text = "Ver el volumen en Archivos" }
-        val traer = Button(this).apply { text = "Traer mis cuentas de la nube" }
-
-        caja.addView(estado)
-        caja.addView(drive)
-        caja.addView(onedrive)
-        caja.addView(traer)
-        caja.addView(frase)
-        caja.addView(boton)
-        caja.addView(cerrar)
-        caja.addView(ver)
-        setContentView(caja)
-
-        // Abre el selector de ficheros **del sistema**, que es donde MultiDrive tiene que
-        // aparecer como origen. Existe porque cada fabricante esconde eso en un sitio distinto:
-        // el gestor de archivos que trae el telefono puede no ensenar los origenes del Storage
-        // Access Framework, y entonces «no aparece» y «no funciona» se confunden.
-        ver.setOnClickListener {
-            val i = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(android.content.Intent.CATEGORY_OPENABLE)
-                type = "*/*"
-            }
-            startActivity(android.content.Intent.createChooser(i, "Busca MultiDrive en la lista"))
-        }
-
-        val conf = File(filesDir, "multidrive.conf")
+        conf = File(filesDir, "multidrive.conf")
 
         try {
             Nucleo.iniciar(applicationContext)
         } catch (e: Throwable) {
-            decir("No se pudo cargar el nucleo:\n\n$e")
+            estado.text = "No se pudo cargar el núcleo:\n\n$e"
             return
         }
 
-        decir(
-            if (Sesion.id != null) "Volumen abierto. Busca MultiDrive en la app de Archivos."
-            else if (!conf.exists()) "Falta la configuracion de cuentas en:\n${conf.absolutePath}"
-            else "MultiDrive ${Nucleo.version()}\nEscribe la frase de paso."
-        )
-
-        boton.setOnClickListener {
-            val f = frase.text.toString()
-            if (f.isEmpty()) return@setOnClickListener
-            // Se borra del campo en cuanto se toma: una frase a la vista es una captura de
-            // pantalla de mas.
-            frase.setText("")
-            boton.isEnabled = false
-            decir("Abriendo... son unos segundos: hay que preguntarle a cada cuenta.")
-
-            // En otro hilo: abrir tarda seis segundos medidos, y hacerlo aqui congelaria la
-            // pantalla y Android acabaria matando la aplicacion por no responder.
-            thread {
-                val dicho = try {
-                    Sesion.abrir(conf.absolutePath, f)
-                    avisarAlSistema()
-                    "Volumen abierto. Busca MultiDrive en la app de Archivos."
-                } catch (e: Throwable) {
-                    Log.w(ETIQUETA, "no se pudo abrir", e)
-                    "No se pudo abrir:\n\n${e.message ?: e.toString()}"
-                }
-                runOnUiThread {
-                    decir(dicho)
-                    boton.isEnabled = true
-                }
-            }
-        }
-
-        // Conectar una cuenta: abre el navegador y espera. Es lo que quita de en medio tener
-        // que pasar credenciales por cable, que era la unica forma hasta ahora.
-        for ((b, tipo) in listOf(drive to "GDRIVE", onedrive to "ONEDRIVE")) {
-            b.setOnClickListener {
-                b.isEnabled = false
-                decir("Abriendo el navegador. Entra en tu cuenta y da permiso...")
-                thread {
-                    val dicho = try {
-                        val nombre = Nucleo.conectar(tipo, conf.absolutePath)
-                        "Cuenta conectada como '$nombre'.\nYa puedes abrir el volumen."
-                    } catch (e: Throwable) {
-                        Log.w(ETIQUETA, "no se pudo conectar $tipo", e)
-                        "No se pudo conectar:\n\n${e.message ?: e.toString()}"
-                    }
-                    runOnUiThread {
-                        decir(dicho)
-                        b.isEnabled = true
-                    }
-                }
-            }
-        }
-
-        // Con una cuenta enlazada, la maleta trae las demas. Es lo que evita repetir el baile
-        // del navegador una vez por cuenta en el teclado de un telefono.
-        traer.setOnClickListener {
-            val f = frase.text.toString()
-            if (f.isEmpty()) {
-                decir("Escribe primero la frase de paso: la maleta va cifrada con ella.")
-                return@setOnClickListener
-            }
-            frase.setText("")
-            traer.isEnabled = false
-            decir("Buscando la configuracion en las cuentas que ya hay...")
-            thread {
-                val dicho = try {
-                    Nucleo.recuperar(conf.absolutePath, f)
-                } catch (e: Throwable) {
-                    Log.w(ETIQUETA, "no se pudo traer la maleta", e)
-                    "No se pudo traer:\n\n${e.message ?: e.toString()}"
-                }
-                runOnUiThread {
-                    decir(dicho)
-                    traer.isEnabled = true
-                }
-            }
-        }
-
+        drive.setOnClickListener { conectar("GDRIVE") }
+        onedrive.setOnClickListener { conectar("ONEDRIVE") }
+        traer.setOnClickListener { traerMaleta() }
+        abrir.setOnClickListener { abrirVolumen() }
         cerrar.setOnClickListener {
             Sesion.cerrar()
             avisarAlSistema()
-            decir("Volumen cerrado. Ya no aparece en Archivos.")
+            pintar("Volumen cerrado. Ya no se ve en Archivos.")
+        }
+        ver.setOnClickListener {
+            val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+            }
+            startActivity(Intent.createChooser(i, "Busca MultiDrive en la lista"))
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Al volver de otra pantalla --el navegador, la app de Archivos-- el estado puede ser
+        // otro: una cuenta recien conectada, o un proceso que Android mato por el camino.
+        if (!ocupado) pintar(null)
+    }
+
+    /**
+     * Deja la pantalla entera coherente con lo que hay. **Todo, siempre.**
+     *
+     * @param dicho qué contar arriba. `null` para que lo deduzca del estado.
+     */
+    private fun pintar(dicho: String?) {
+        val lista = try {
+            JSONArray(Nucleo.cuentas(conf.absolutePath))
+        } catch (e: Throwable) {
+            Log.w(ETIQUETA, "no se pudieron leer las cuentas", e)
+            JSONArray()
+        }
+        val nombres = (0 until lista.length()).map { lista.getString(it) }
+        val hayCuentas = nombres.isNotEmpty()
+        val abierto = Sesion.id != null
+
+        cuentas.text = if (hayCuentas) {
+            "${nombres.size} configurada(s): ${nombres.joinToString(", ")}"
+        } else {
+            "Ninguna todavía. Conecta una para empezar."
+        }
+
+        // La maleta solo tiene sentido con algo enlazado: es de ahi de donde la saca.
+        val puedeTraer = hayCuentas && !abierto
+        notaMaleta.visibility = if (puedeTraer) View.VISIBLE else View.GONE
+        traer.visibility = if (puedeTraer) View.VISIBLE else View.GONE
+
+        // Sin cuentas no hay volumen que abrir, asi que la seccion entera sobra: ensenar un
+        // campo de frase de paso que no puede servir para nada solo confunde.
+        tituloVolumen.visibility = if (hayCuentas) View.VISIBLE else View.GONE
+        tarjetaVolumen.visibility = if (hayCuentas) View.VISIBLE else View.GONE
+
+        frase.visibility = if (!abierto) View.VISIBLE else View.GONE
+        abrir.visibility = if (!abierto) View.VISIBLE else View.GONE
+        ver.visibility = if (abierto) View.VISIBLE else View.GONE
+        cerrar.visibility = if (abierto) View.VISIBLE else View.GONE
+
+        // Conectar mas cuentas con el volumen abierto no vale: el volumen es de las que tiene,
+        // y una de mas no entra sin reescribir su cabecera, que es cosa del escritorio.
+        drive.isEnabled = !abierto && !ocupado
+        onedrive.isEnabled = !abierto && !ocupado
+        traer.isEnabled = !ocupado
+        abrir.isEnabled = !ocupado
+
+        estado.text = dicho ?: when {
+            !hayCuentas -> "Conecta una cuenta de nube para empezar."
+            abierto -> "Volumen abierto. Búscalo en la app de Archivos."
+            else -> "Escribe tu frase de paso y abre el volumen."
+        }
+    }
+
+    /** Lanza algo que tarda, sin congelar la pantalla y sin dejar botones a medias. */
+    private fun enSegundoPlano(mientras: String, trabajo: () -> String) {
+        ocupado = true
+        pintar(mientras)
+        thread {
+            val dicho = try {
+                trabajo()
+            } catch (e: Throwable) {
+                Log.w(ETIQUETA, "fallo", e)
+                e.message ?: e.toString()
+            }
+            runOnUiThread {
+                ocupado = false
+                pintar(dicho)
+            }
+        }
+    }
+
+    private fun conectar(tipo: String) = enSegundoPlano(
+        "Abriendo el navegador. Entra en tu cuenta y da permiso…"
+    ) {
+        val nombre = Nucleo.conectar(tipo, conf.absolutePath)
+        "Cuenta conectada como «$nombre»."
+    }
+
+    private fun traerMaleta() {
+        val f = tomarFrase() ?: return
+        enSegundoPlano("Buscando tu configuración en las cuentas que ya hay…") {
+            Nucleo.recuperar(conf.absolutePath, f)
+        }
+    }
+
+    private fun abrirVolumen() {
+        val f = tomarFrase() ?: return
+        enSegundoPlano("Abriendo. Son unos segundos: hay que preguntarle a cada cuenta…") {
+            Sesion.abrir(conf.absolutePath, f)
+            avisarAlSistema()
+            "Volumen abierto. Búscalo en la app de Archivos."
         }
     }
 
     /**
-     * Avisa de que las raices cambiaron.
+     * La frase escrita, y borra el campo.
      *
-     * Sin esto, la app de Archivos sigue ensenando lo de antes: que MultiDrive no esta cuando
-     * acaba de abrirse, o que esta cuando acaba de cerrarse.
+     * Devuelve `null` si esta vacio, y lo dice: un boton que no hace nada al pulsarlo se lee
+     * como una aplicacion rota.
      */
-    private fun avisarAlSistema() {
-        contentResolver.notifyChange(DocumentsContract.buildRootsUri(AUTORIDAD), null)
+    private fun tomarFrase(): String? {
+        val f = frase.text.toString()
+        if (f.isEmpty()) {
+            pintar("Escribe primero la frase de paso.")
+            return null
+        }
+        frase.setText("")
+        return f
     }
 
-    private fun decir(texto: String) {
-        estado.text = texto
-        Log.i(ETIQUETA, texto)
+    /** Sin esto, la app de Archivos sigue enseñando el estado de antes. */
+    private fun avisarAlSistema() {
+        contentResolver.notifyChange(DocumentsContract.buildRootsUri(AUTORIDAD), null)
     }
 }

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- La paleta de la marca, la misma que el sitio web y la ventana del escritorio.
+     Los contrastes estan medidos y anotados en marca/paleta.json; cambiarlos aqui sin mirar
+     alli es como acaban tres sitios pareciendose de lejos y no de cerca. -->
+<resources>
+    <color name="fondo">#0d1017</color>
+    <color name="panel">#151a23</color>
+    <color name="linea">#232b38</color>
+    <color name="texto">#e8eef6</color>
+    <color name="apagado">#8a94a6</color>
+    <color name="acento">#4c8ff0</color>
+    <color name="acento_suave">#7ab0f7</color>
+    <!-- Solo para el distintivo de pre-alfa. Nada mas. -->
+    <color name="aviso">#d8a657</color>
+</resources>

@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Una pantalla, tres tarjetas y lo que haga falta en cada momento.
+
+  El orden es el del recorrido real: primero las cuentas, porque sin ellas no hay nada; luego el
+  volumen, que es lo que se abre con ellas; y abajo lo que se hace con el volumen abierto.
+
+  Lo que se ve y lo que no lo decide `Principal.pintar()`, **siempre y por completo**, no por
+  trozos segun lo que acabe de pasar. En la ventana del escritorio ese mismo fallo aparecio tres
+  veces: un aviso que se quedaba de la vez anterior diciendo algo que ya no era verdad.
+-->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/fondo"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- Cabecera: el rombo y el nombre. -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:contentDescription="MultiDrive"
+                android:src="@drawable/icono" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:letterSpacing="-0.03"
+                android:text="MultiDrive"
+                android:textColor="@color/texto"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:text="pre-alfa"
+                android:textColor="@color/aviso"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <!-- Lo que esta pasando ahora mismo. Siempre visible: una pantalla que no dice en que
+             estado esta obliga a adivinarlo. -->
+        <TextView
+            android:id="@+id/estado"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/tarjeta"
+            android:padding="16dp"
+            android:textColor="@color/texto"
+            android:textSize="15sp" />
+
+        <!-- CUENTAS -->
+        <TextView
+            style="@style/Seccion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="TUS CUENTAS" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/tarjeta"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/cuentas"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/apagado"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/drive"
+                style="@style/BotonSuave"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="Conectar Google Drive" />
+
+            <Button
+                android:id="@+id/onedrive"
+                style="@style/BotonSuave"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Conectar OneDrive" />
+
+            <TextView
+                android:id="@+id/nota_maleta"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="¿Ya usas MultiDrive en otro equipo? Con una cuenta enlazada y tu frase de paso se traen las demás."
+                android:textColor="@color/apagado"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/traer"
+                style="@style/BotonSuave"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Traer mis cuentas de la nube" />
+        </LinearLayout>
+
+        <!-- VOLUMEN -->
+        <TextView
+            android:id="@+id/titulo_volumen"
+            style="@style/Seccion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="EL VOLUMEN" />
+
+        <LinearLayout
+            android:id="@+id/tarjeta_volumen"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/tarjeta"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <EditText
+                android:id="@+id/frase"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:autofillHints=""
+                android:background="@drawable/campo"
+                android:hint="Frase de paso"
+                android:importantForAutofill="no"
+                android:inputType="textPassword"
+                android:padding="14dp"
+                android:textColor="@color/texto"
+                android:textColorHint="@color/apagado"
+                android:textSize="15sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="No se guarda en ninguna parte. Si Android cierra la aplicación, habrá que escribirla otra vez."
+                android:textColor="@color/apagado"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/abrir"
+                style="@style/Boton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="Abrir volumen" />
+
+            <Button
+                android:id="@+id/ver"
+                style="@style/Boton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="Ver en la app de Archivos" />
+
+            <Button
+                android:id="@+id/cerrar"
+                style="@style/BotonSuave"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Cerrar volumen" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:layout_marginBottom="16dp"
+            android:text="Desde el móvil solo se lee. Escribir desde dos sitios a la vez es un problema que todavía no está resuelto, y fingir que sí lo está sería peor."
+            android:textColor="@color/apagado"
+            android:textSize="12sp" />
+    </LinearLayout>
+</ScrollView>

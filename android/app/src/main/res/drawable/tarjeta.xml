@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- El fondo de las tarjetas. Un borde de un pixel en vez de sombra: sobre fondo oscuro la
+     sombra no se ve y el borde si. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/panel" />
+    <stroke android:width="1dp" android:color="@color/linea" />
+    <corners android:radius="12dp" />
+</shape>
