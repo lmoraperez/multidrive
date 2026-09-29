@@ -150,6 +150,101 @@ fn porque(e: &dyn std::error::Error) -> String {
     partes.join(" <- ")
 }
 
+/// Abre el volumen y lista la raiz, cronometrando cada paso.
+///
+/// Es la prueba del paso 3 y **no es la interfaz definitiva**: devuelve texto porque lo que se
+/// quiere saber todavia no es como se ensena, sino cuanto tarda. La frontera de verdad
+/// --`raices`, `mirar`, `listar`, `leer`-- se escribira encima de esto cuando haya numeros.
+///
+/// La frase de paso llega como argumento y no se guarda en ningun sitio.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_listar<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    config: JString<'local>,
+    frase: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| {
+            let config = config.try_to_string(env)?;
+            let frase = frase.try_to_string(env)?;
+            env.new_string(listar(&config, &frase))
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Lo mismo sin JNI, para poder ejecutarlo en cualquier sistema.
+pub fn listar(config: &str, frase: &str) -> String {
+    let arranque = match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+    {
+        Ok(r) => r,
+        Err(e) => return format!("no se pudo arrancar el runtime: {e}"),
+    };
+    arranque.block_on(abrir_y_listar(config, frase))
+}
+
+async fn abrir_y_listar(config: &str, frase: &str) -> String {
+    use std::time::Instant;
+
+    use multidrive_backend::Backend;
+    use multidrive_core::header;
+    use multidrive_core::tree::Volume;
+
+    let mut out = Vec::new();
+    let mut paso = |que: &str, ms: u128| out.push(format!("{que:<10} {ms:>6} ms"));
+
+    let backends = match multidrive_backend::live::configurados_de(std::path::Path::new(config)) {
+        Ok(b) if !b.is_empty() => b,
+        Ok(_) => return "no hay ningun proveedor en esa configuracion".into(),
+        Err(e) => return format!("configuracion invalida: {e}"),
+    };
+    let backends: Vec<std::sync::Arc<dyn Backend>> = backends
+        .into_iter()
+        .map(|b| std::sync::Arc::new(b) as std::sync::Arc<dyn Backend>)
+        .collect();
+    let nombres: Vec<String> = backends.iter().map(|b| b.name().to_string()).collect();
+
+    let t = Instant::now();
+    let cabecera = match header::read(&backends).await {
+        Ok(Some(h)) => h,
+        Ok(None) => return format!("no hay volumen en {}", nombres.join(", ")),
+        Err(e) => return format!("no se pudo leer la cabecera: {e}"),
+    };
+    paso("cabecera", t.elapsed().as_millis());
+
+    let t = Instant::now();
+    let almacen = match cabecera.almacen(backends, frase, 64 * 1024 * 1024) {
+        Ok(a) => a,
+        Err(e) => return format!("no se pudo derivar la clave: {e}"),
+    };
+    paso("clave", t.elapsed().as_millis());
+
+    let t = Instant::now();
+    let volumen = match Volume::open(almacen).await {
+        Ok(v) => v,
+        Err(e) => return format!("no se pudo abrir: {e}\n(¿es esa la frase de paso?)"),
+    };
+    paso("abrir", t.elapsed().as_millis());
+
+    let t = Instant::now();
+    let entradas = match volumen.read_dir("/").await {
+        Ok(e) => e,
+        Err(e) => return format!("no se pudo listar: {e}"),
+    };
+    paso("listar /", t.elapsed().as_millis());
+
+    out.push(String::new());
+    out.push(format!("{} sobre {}", cabecera.layout, nombres.join(", ")));
+    out.push(format!("{} entrada(s)", entradas.len()));
+    for (nombre, e) in entradas.iter().take(20) {
+        out.push(format!("  {nombre}  {}", e.len));
+    }
+    out.join("\n")
+}
+
 /// Que abajo hay un nucleo y no solo una cadena.
 ///
 /// Describe una topologia **calculandola**, no escribiendola: si esto responde bien, el `.so`

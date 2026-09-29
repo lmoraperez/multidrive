@@ -61,6 +61,23 @@ class Principal : Activity() {
             runOnUiThread {
                 texto.text = cabecera.replace("consultando...", dicho)
             }
+
+            // Y, si hay configuracion puesta a mano, el volumen. Esto es la prueba del paso 3:
+            // no forma parte de la aplicacion y desaparecera cuando exista la pantalla de
+            // conectar cuentas. La frase llega por el mismo camino y no se guarda.
+            val conf = java.io.File(filesDir, "multidrive.conf")
+            val frase = java.io.File(filesDir, "frase.txt")
+            if (conf.exists() && frase.exists()) {
+                val r = try {
+                    Nucleo.listar(conf.absolutePath, frase.readText().trim())
+                } catch (e: Throwable) {
+                    "excepcion: $e"
+                }
+                Log.i(ETIQUETA, "volumen\n$r")
+                runOnUiThread { texto.text = texto.text.toString() + "\n\n" + r }
+            } else {
+                Log.i(ETIQUETA, "volumen: sin configuracion en ${filesDir}")
+            }
         }
     }
 }

@@ -87,6 +87,16 @@ pub fn configurados() -> Result<Vec<OpendalBackend>, BackendError> {
     construir(&|clave| std::env::var(clave).ok().or_else(|| config.get(clave)))
 }
 
+/// Proveedores de **un fichero concreto**, sin mirar el entorno ni los sitios de siempre.
+///
+/// Existe para Android, donde no hay ni `%APPDATA%` ni variables de entorno que podamos poner:
+/// la aplicacion sabe donde guarda sus cosas y lo dice. Tocar el entorno del proceso desde
+/// dentro no vale, porque `set_var` no es seguro con varios hilos y aqui los hay.
+pub fn configurados_de(ruta: &std::path::Path) -> Result<Vec<OpendalBackend>, BackendError> {
+    let config = Config::desde(std::slice::from_ref(&ruta.to_path_buf()))?;
+    construir(&|clave| config.get(clave))
+}
+
 /// Igual que [`configurados`], pero leyendo de donde se le diga. Existe para poder probar
 /// la logica de configuracion sin tocar el entorno del proceso, que es global y compartido
 /// entre los hilos de los tests.
