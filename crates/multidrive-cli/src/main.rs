@@ -176,11 +176,12 @@ enum VolumeCmd {
     ///
     /// No se puede deshacer y no hay papelera. Sin `--confirmar` solo ensena que se borraria.
     Destroy {
-        /// Los nombres de los proveedores separados por comas, tal y como los lista la
-        /// propia orden al ensenar lo que va a borrar.
+        /// El nombre de **uno** de los proveedores: el que la propia orden diga, contando
+        /// en la lista que ensena de lo que va a borrar.
         ///
-        /// Se piden escritos aparte a proposito: obliga a mirar la lista antes de
-        /// confirmarla, y un `--si` suelto se teclea sin leer.
+        /// Se pide escrito a proposito: obliga a mirar la lista antes de confirmarla, y un
+        /// `--si` suelto se teclea sin leer. Uno y no todos porque la lista entera crece con
+        /// el numero de cuentas, y a partir de unas pocas se copia y se pega sin leerla.
         #[arg(long)]
         confirmar: Option<String>,
     },

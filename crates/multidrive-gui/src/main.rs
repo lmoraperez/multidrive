@@ -1572,11 +1572,18 @@ struct ParaBorrar {
     bytes: u64,
     /// Proveedores donde ademas hay configuracion sellada, que tambien se va.
     con_maleta: Vec<String>,
-    /// Lo que hay que escribir para confirmar.
+    /// Lo que hay que escribir para confirmar: el nombre de **uno** de los proveedores.
     ///
-    /// Se pide escribir los nombres de los proveedores y no un «si»: obliga a mirar la lista
-    /// de lo que se va a borrar. Un boton que solo hay que pulsar se pulsa sin leer.
+    /// Se pide un nombre y no un «si» porque obliga a mirar la lista de lo que se va a borrar,
+    /// y un boton que solo hay que pulsar se pulsa sin leer. Antes se pedia la lista entera,
+    /// que cumplia lo mismo pero crecia con el numero de cuentas hasta volverse algo que se
+    /// copia y se pega sin leer.
     confirmacion: String,
+    /// Cual de la lista es, contando desde 1. Es lo unico que se le ensena al usuario.
+    ///
+    /// El nombre esperado viaja aparte para poder comparar mientras se escribe, pero **no se
+    /// escribe en la pantalla**: si se enseñara, no habria que mirar la lista.
+    posicion: usize,
 }
 
 /// Cuenta lo que hay, sin tocar nada.
@@ -1598,11 +1605,13 @@ async fn volumen_a_borrar() -> Result<ParaBorrar, String> {
         })?;
 
     let nombres: Vec<String> = backends.iter().map(|b| b.name().to_string()).collect();
+    let cual = multidrive_core::retirar::a_quien_nombrar(&header.salt, nombres.len());
     Ok(ParaBorrar {
         layout: header
             .layout()
             .map_or_else(|_| header.layout.clone(), |l| l.to_string()),
-        confirmacion: nombres.join(","),
+        confirmacion: nombres[cual].clone(),
+        posicion: cual + 1,
         proveedores: nombres,
         fragmentos: inventario.fragmentos(),
         bytes: inventario.bytes(),
@@ -1617,14 +1626,19 @@ async fn borrar_volumen(
     estado: tauri::State<'_, Estado>,
 ) -> Result<String, String> {
     let backends = proveedores()?;
-    let esperado = backends
-        .iter()
-        .map(|b| b.name().to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-    if confirmacion.trim() != esperado {
+    // Se vuelve a calcular aqui en vez de fiarse de lo que mande la pantalla: es un borrado
+    // irreversible, y quien confirma tiene que haber acertado de verdad.
+    let header = header::read(&backends)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("no hay ningun volumen en estos proveedores")?;
+    let nombres: Vec<String> = backends.iter().map(|b| b.name().to_string()).collect();
+    let cual = multidrive_core::retirar::a_quien_nombrar(&header.salt, nombres.len());
+    if confirmacion.trim() != nombres[cual] {
+        // No se dice cual era el bueno: el mensaje seria la respuesta al examen.
         return Err(format!(
-            "para confirmar hay que escribir exactamente: {esperado}"
+            "eso no es el nombre del proveedor numero {} de la lista. No se ha borrado nada.",
+            cual + 1
         ));
     }
 

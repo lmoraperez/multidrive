@@ -37,6 +37,30 @@ use multidrive_backend::Backend;
 
 use crate::{CoreError, SHARD_PREFIX, maleta};
 
+/// A cual de los proveedores hay que nombrar para confirmar el borrado. Indice desde 0.
+///
+/// Se pide **un** nombre y no la lista entera. La lista cumplia su funcion --obliga a mirar lo
+/// que se va a borrar-- pero crece con el numero de cuentas, y a partir de unas pocas lo que
+/// consigue es que se copie y se pegue sin leerla, que es exactamente lo que queria evitar.
+/// Pedir «el tercero de la lista» obliga a contar, y contar obliga a mirar.
+///
+/// Sale de la sal de la cabecera y no de un sorteo, por una razon practica: en el terminal la
+/// orden se ejecuta **dos veces** --la primera ensena que se borraria y dice que escribir, la
+/// segunda lo confirma-- y un numero distinto en cada ejecucion haria imposible acertar.
+/// Atado a la sal, es el mismo mientras sea el mismo volumen, y distinto en otro.
+///
+/// No es una medida de seguridad y no tiene que ser impredecible: quien quiera borrar su
+/// volumen puede, esto solo esta para que no se borre sin querer.
+pub fn a_quien_nombrar(salt: &[u8], cuantos: usize) -> usize {
+    if cuantos == 0 {
+        return 0;
+    }
+    // Varios bytes y no solo el primero: dos volumenes creados a la vez comparten mas de lo
+    // que parece, y aqui no cuesta nada mirar la sal entera.
+    let suma: u64 = salt.iter().map(|b| *b as u64).sum();
+    (suma % cuantos as u64) as usize
+}
+
 /// Lo que hay de un volumen en cada proveedor.
 #[derive(Debug, Clone, Default)]
 pub struct Inventario {
@@ -167,6 +191,50 @@ mod tests {
     use super::*;
     use crate::testutil::{clave, memoria};
     use multidrive_backend::OpendalBackend;
+
+    /// El que hay que nombrar es **el mismo en cada llamada**.
+    ///
+    /// Es lo que hace que la orden del terminal funcione: se ejecuta dos veces, la primera
+    /// dice que escribir y la segunda lo comprueba. Con un sorteo en cada ejecucion no se
+    /// podria acertar nunca.
+    #[test]
+    fn a_quien_nombrar_no_cambia_entre_llamadas() {
+        let sal = b"una sal cualquiera";
+        let primero = a_quien_nombrar(sal, 4);
+        for _ in 0..100 {
+            assert_eq!(a_quien_nombrar(sal, 4), primero);
+        }
+        assert!(primero < 4, "tiene que caer dentro de la lista");
+    }
+
+    /// Y cae dentro de la lista con cualquier numero de proveedores, incluido ninguno.
+    ///
+    /// Lo de «ninguno» no es teorico: un volumen cuyos proveedores no esten configurados llega
+    /// aqui con la lista vacia, y devolver un indice fuera seria un panico al ir a leerlo.
+    #[test]
+    fn a_quien_nombrar_siempre_cae_dentro() {
+        for cuantos in 0..40usize {
+            for sal in [&b""[..], &b"x"[..], &[0u8; 32][..], &[255u8; 32][..]] {
+                let i = a_quien_nombrar(sal, cuantos);
+                assert!(
+                    cuantos == 0 || i < cuantos,
+                    "con {cuantos} proveedores salio {i}"
+                );
+            }
+        }
+    }
+
+    /// Dos volumenes distintos no tienen por que pedir el mismo, que es la gracia.
+    #[test]
+    fn dos_sales_distintas_suelen_pedir_otro() {
+        let distintos = (0u8..60)
+            .map(|n| a_quien_nombrar(&[n], 4))
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(
+            distintos.len() > 1,
+            "si siempre saliera el mismo, se aprenderia de memoria"
+        );
+    }
 
     /// La maleta se va con el volumen, y se nombra antes de borrarla.
     ///
