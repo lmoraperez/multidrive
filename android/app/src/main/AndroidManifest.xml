@@ -9,7 +9,7 @@
     <application
         android:label="MultiDrive"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light">
+        android:theme="@style/TemaMultiDrive">
         <activity
             android:name=".Principal"
             android:exported="true">

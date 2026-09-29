@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Los titulos de seccion, como en el sitio web y en la ventana: pequenos, en mayusculas,
+         muy espaciados y del color de acento. Es lo que hace que las tres cosas se reconozcan
+         como el mismo programa. -->
+    <style name="Seccion">
+        <item name="android:layout_marginTop">24dp</item>
+        <item name="android:layout_marginBottom">8dp</item>
+        <item name="android:textColor">@color/acento</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.13</item>
+    </style>
+
+    <style name="Boton">
+        <item name="android:background">@drawable/boton</item>
+        <item name="android:textColor">@color/fondo</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">50dp</item>
+        <item name="android:stateListAnimator">@null</item>
+    </style>
+
+    <style name="BotonSuave">
+        <item name="android:background">@drawable/boton_suave</item>
+        <item name="android:textColor">@color/texto</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">50dp</item>
+        <item name="android:stateListAnimator">@null</item>
+    </style>
+</resources>

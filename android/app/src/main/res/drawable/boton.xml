@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Deshabilitado se ve **apagado de verdad**: un boton que no responde y parece igual que
+         uno que si es la forma mas rapida de que alguien crea que la aplicacion se colgo. -->
+    <item android:state_enabled="false">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/linea" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/acento_suave" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/acento" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+</selector>

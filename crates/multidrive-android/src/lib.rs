@@ -215,6 +215,41 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_abrir<'local>(
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Las cuentas configuradas en ese fichero, en JSON: `["gdrive","onedrive"]`.
+///
+/// No toca la red: solo lee el fichero y mira que ranuras estan puestas. La pantalla lo pide
+/// cada vez que se repinta, asi que tiene que ser barato.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_cuentas<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    config: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let config = config.try_to_string(env)?;
+            Ok(env.new_string(cuentas(&config))?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Lo mismo sin JNI.
+///
+/// Un fichero que no existe **no es un error**: es un telefono sin nada configurado todavia, que
+/// es el estado normal el primer dia. Se devuelve la lista vacia y la pantalla dice que hay que
+/// conectar una cuenta, que es lo util.
+pub fn cuentas(config: &str) -> String {
+    use multidrive_backend::Backend;
+
+    let nombres: Vec<String> =
+        match multidrive_backend::live::configurados_de(std::path::Path::new(config)) {
+            Ok(b) => b.iter().map(|b| b.name().to_string()).collect(),
+            Err(_) => Vec::new(),
+        };
+    serde_json::Value::Array(nombres.into_iter().map(serde_json::Value::String).collect())
+        .to_string()
+}
+
 /// Trae la configuracion guardada en las nubes: con una cuenta enlazada salen las demas.
 ///
 /// Devuelve una frase para ensenar. **Bloquea**: nunca desde el hilo de la interfaz.
@@ -468,6 +503,7 @@ mod tests {
             "conectar",
             "refrescar",
             "recuperar",
+            "cuentas",
         ] {
             let simbolo = format!("{esperado}{metodo}");
             assert!(

@@ -78,6 +78,14 @@ object Nucleo {
      */
     external fun recuperar(config: String, frase: String): String
 
+    /**
+     * Las cuentas configuradas, en JSON: `["gdrive","onedrive"]`.
+     *
+     * No toca la red: solo lee el fichero. La pantalla lo pide en cada repintado, asi que tiene
+     * que ser barato.
+     */
+    external fun cuentas(config: String): String
+
     /** Las entradas de un directorio, en JSON: `[{"nombre":..,"dir":..,"bytes":..}]`. */
     external fun listar(sesion: Long, ruta: String): String
 
