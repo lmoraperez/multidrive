@@ -64,6 +64,15 @@ object Nucleo {
     external fun mirar(sesion: Long, ruta: String): String
 
     /**
+     * Un trozo de un fichero, por rango.
+     *
+     * Baja **solo los trozos que el rango toca**, que es lo que permite abrir un video de 2 GiB
+     * sin bajarse 2 GiB. Puede devolver menos bytes de los pedidos al llegar al final, igual
+     * que `read(2)`.
+     */
+    external fun leer(sesion: Long, ruta: String, desde: Long, cuanto: Int): ByteArray
+
+    /**
      * Conecta una cuenta de nube por el navegador y la guarda. **Bloquea hasta cinco minutos.**
      *
      * Devuelve el nombre con el que quedo: `gdrive`, `gdrive1`... Nunca desde el hilo de la

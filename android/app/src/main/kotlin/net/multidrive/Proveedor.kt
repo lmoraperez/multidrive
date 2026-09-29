@@ -5,6 +5,7 @@ import android.database.MatrixCursor
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
+import android.os.storage.StorageManager
 import android.provider.DocumentsContract.Document
 import android.provider.DocumentsContract.Root
 import android.provider.DocumentsProvider
@@ -149,21 +150,35 @@ class Proveedor : DocumentsProvider() {
     }
 
     /**
-     * Abrir un fichero. **Todavia no.**
+     * Abrir un fichero, **sin bajarlo entero**.
      *
-     * Aqui va `StorageManager.openProxyFileDescriptor`, que es lo que permite leer por rangos
-     * --bajando solo los trozos que el rango toca-- en vez de descargar el fichero entero antes
-     * de abrirlo. Es el paso siguiente, y hasta entonces se dice que no se puede en vez de
-     * ofrecer algo que no funciona.
+     * Lo hace `openProxyFileDescriptor`: las lecturas llegan a [Lector] y cada una se traduce en
+     * un `read_at`, que baja solo los trozos que el rango toca. Es lo que hace posible abrir un
+     * video de 2 GiB sin esperar a 2 GiB.
+     *
+     * Solo lectura. `mode` se comprueba en vez de darse por bueno: el sistema no deberia pedir
+     * escritura --no se declaran las banderas-- y si lo hace, es mejor decir que no que abrir
+     * algo que luego no escribe.
      */
     override fun openDocument(
         documentId: String,
         mode: String,
         signal: CancellationSignal?,
     ): ParcelFileDescriptor {
-        throw UnsupportedOperationException(
-            "leer ficheros todavia no esta: falta openProxyFileDescriptor"
+        if (mode != "r") {
+            throw UnsupportedOperationException("este volumen es de solo lectura desde el movil")
+        }
+        val s = Sesion.id ?: throw IllegalStateException(
+            "el volumen esta cerrado: abrelo en la aplicacion MultiDrive"
         )
+
+        val json = Nucleo.mirar(s, documentId)
+        if (json == "null") throw java.io.FileNotFoundException(documentId)
+        val o = JSONObject(json)
+        if (o.getBoolean("dir")) throw java.io.FileNotFoundException("$documentId es un directorio")
+
+        val gestor = context!!.getSystemService(StorageManager::class.java)
+        return Lector.abrir(gestor, s, documentId, o.getLong("bytes"))
     }
 
     private fun fila(c: MatrixCursor, id: String, nombre: String, dir: Boolean, bytes: Long) {
