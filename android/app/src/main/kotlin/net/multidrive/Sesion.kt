@@ -56,8 +56,13 @@ object Sesion {
  * de un segundo contra cuatro cuentas, y el selector de ficheros pregunta cada vez que se pinta.
  * Sin esto, moverse por el arbol seria esperar en cada paso y volver a esperar al retroceder.
  *
- * Se vacia al cerrar la sesion. No caduca por tiempo **todavia**: con un solo escritor, lo que
- * hay arriba no cambia por su cuenta mientras el movil mira.
+ * Se vacia al cerrar la sesion y al refrescar.
+ *
+ * Aqui decia antes que no hacia falta caducidad porque «con un solo escritor, lo que hay arriba
+ * no cambia por su cuenta mientras el movil mira». **Era falso**, y se vio el primer dia que se
+ * uso: un solo escritor significa uno cada vez, no que el lector sea el escritor. El escritorio
+ * subio un fichero y en el movil no aparecio nunca; hubo que cerrar el volumen y volver a
+ * abrirlo. De ahi salio `refrescar`.
  */
 object Cache {
     val hijos = ConcurrentHashMap<String, String>()

@@ -106,6 +106,40 @@ pub fn abrir(config: &str, frase: &str) -> Result<i64, String> {
     Ok(id)
 }
 
+/// Vuelve a mirar si hay una raiz mas nueva, y se pasa a ella.
+///
+/// Devuelve `true` si algo cambio, que es lo que le dice a la pantalla si merece la pena tirar
+/// lo que tenia listado.
+///
+/// Un `Volume` guarda la raiz que leyo al abrirse. Para el escritorio eso basta --el que abre
+/// es el que escribe-- pero aqui no: el movil es un lector, y mientras mira, un escritorio
+/// puede estar escribiendo. Sin esto, lo subido desde otro equipo **no aparece nunca**, y
+/// cerrar y volver a abrir era la unica salida. Paso de verdad la primera vez que se uso.
+///
+/// No se vuelve a derivar la clave, que es lo caro: se clona el `ChunkStore`, que ya la lleva
+/// dentro, y solo se paga una lectura del puntero de raiz.
+pub fn refrescar(id: i64) -> Result<bool, String> {
+    let volumen = mapa().get(&id).cloned().ok_or("esa sesion no existe")?;
+
+    let nueva = runtime().block_on(async {
+        multidrive_core::tree::raiz_actual(volumen.store())
+            .await
+            .map_err(|e| e.to_string())
+    })?;
+    let Some(nueva) = nueva else {
+        return Ok(false);
+    };
+    if nueva.generation <= volumen.root().generation {
+        return Ok(false);
+    }
+
+    // Se sustituye en el mapa en vez de mutar: quien este leyendo con el `Arc` de antes sigue
+    // viendo un arbol coherente --los nodos son inmutables-- y termina su lectura sin sorpresas.
+    let store = volumen.store().clone();
+    mapa().insert(id, Arc::new(Volume::at(store, nueva)));
+    Ok(true)
+}
+
 /// Suelta un volumen. Con el se suelta la clave derivada, que es lo que importa.
 pub fn cerrar(id: i64) {
     mapa().remove(&id);

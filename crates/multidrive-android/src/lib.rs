@@ -214,6 +214,20 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_abrir<'local>(
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Mira si hay algo nuevo publicado y se pasa a ello. `true` si cambio.
+///
+/// **Cuesta una vuelta a la red**, asi que nunca desde el hilo de la interfaz.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_refrescar<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+) -> jni::sys::jboolean {
+    entorno
+        .with_env(|_env| -> Result<bool, Fallo> { sesion::refrescar(id).map_err(Fallo::Dicho) })
+        .resolve::<ThrowRuntimeExAndDefault>() as jni::sys::jboolean
+}
+
 /// Suelta el volumen, y con el la clave derivada.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_cerrar<'local>(

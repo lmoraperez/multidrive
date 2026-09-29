@@ -57,6 +57,16 @@ object Nucleo {
     /** Suelta el volumen, y con el la clave derivada. */
     external fun cerrar(sesion: Long)
 
+    /**
+     * Mira si hay algo publicado mas nuevo y se pasa a ello. `true` si cambio.
+     *
+     * Hace falta porque el movil es un **lector**: mientras mira, otro equipo puede estar
+     * escribiendo, y sin esto lo subido desde fuera no aparece nunca.
+     *
+     * Cuesta una vuelta a la red. Nunca desde el hilo de la interfaz.
+     */
+    external fun refrescar(sesion: Long): Boolean
+
     /** Las entradas de un directorio, en JSON: `[{"nombre":..,"dir":..,"bytes":..}]`. */
     external fun listar(sesion: Long, ruta: String): String
 
