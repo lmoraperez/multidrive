@@ -1702,14 +1702,27 @@ pub async fn destroy(confirmacion: Option<String>) -> Result<()> {
     }
     println!();
 
-    let esperado = nombres.join(",");
+    // Un solo nombre, el que toque: la lista entera crecia con el numero de cuentas y a
+    // partir de unas pocas se copiaba y se pegaba sin leerla. El numero sale de la sal, asi
+    // que es el mismo en esta ejecucion y en la que confirma.
+    let cual = multidrive_core::retirar::a_quien_nombrar(&header.salt, nombres.len());
+    let esperado = &nombres[cual];
     match confirmacion.as_deref() {
-        Some(dado) if dado == esperado => {}
-        _ => {
+        Some(dado) if dado.trim() == esperado => {}
+        Some(dado) => {
+            println!("Eso no es lo que hay que escribir: '{dado}' no es el proveedor numero");
+            println!("{} de la lista de arriba. No se ha borrado nada.", cual + 1);
+            return Ok(());
+        }
+        None => {
             println!("Esto NO se puede deshacer y no hay papelera.");
-            println!("Si es lo que quieres, repite la orden confirmando los proveedores:");
+            println!(
+                "Si es lo que quieres, repite la orden con el nombre del proveedor numero {}",
+                cual + 1
+            );
+            println!("de la lista de arriba:");
             println!();
-            println!("  multidrive volume destroy --confirmar {esperado}");
+            println!("  multidrive volume destroy --confirmar <ese-nombre>");
             return Ok(());
         }
     }

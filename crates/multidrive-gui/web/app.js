@@ -1126,7 +1126,13 @@ function pedirConfirmacion(v, caja) {
 
   const etiqueta = document.createElement("label");
   etiqueta.htmlFor = "texto-confirmar";
-  etiqueta.textContent = `Para confirmar, escribe: ${v.confirmacion}`;
+  // Se dice la posición, **no el nombre**: si se enseñara el nombre no habría que mirar la
+  // lista, que es lo único que esto pretende. Antes se pedía la lista entera, que obligaba a
+  // leerla igual pero crecía con el número de cuentas hasta volverse algo que se copia y se
+  // pega sin leer.
+  etiqueta.textContent =
+    `Para confirmar, escribe el nombre del proveedor n.º ${v.posicion} ` +
+    "de la lista de arriba";
   const campo = document.createElement("input");
   campo.type = "text";
   campo.id = "texto-confirmar";
