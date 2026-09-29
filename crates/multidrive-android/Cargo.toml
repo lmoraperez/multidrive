@@ -20,6 +20,8 @@ multidrive-core.workspace = true
 multidrive-raid.workspace = true
 multidrive-backend.workspace = true
 tokio.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
 # La misma version que arrastra `rustls-platform-verifier`, que tambien la necesita en Android.
 # Dos copias de `jni` en el mismo proceso no es un problema de compilacion, pero si de
 # entendimiento cuando algo falle.

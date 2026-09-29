@@ -18,6 +18,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- El volumen dentro de la app de Archivos y del selector del sistema.
+             `exported` tiene que ser true para que otras aplicaciones lo vean, y el permiso
+             MANAGE_DOCUMENTS es lo que impide que cualquiera pueda hacerse pasar por el
+             sistema al llamarlo: solo el propio Android lo tiene. -->
+        <provider
+            android:name=".Proveedor"
+            android:authorities="net.multidrive.documentos"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
     </application>
 
 </manifest>
