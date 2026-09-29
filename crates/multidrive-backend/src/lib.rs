@@ -17,6 +17,7 @@ pub mod catalogo;
 pub mod config;
 pub mod conformance;
 mod cuota;
+pub mod http;
 pub mod live;
 pub mod oauth;
 
@@ -392,6 +393,15 @@ impl OpendalBackend {
             // son inmutables: repetir un put reescribe los mismos bytes en la misma clave,
             // y get, exists, list y delete no tienen efectos que se acumulen.
             .layer(opendal::layers::RetryLayer::new().with_jitter());
+
+        // El transporte HTTP es **el nuestro**, no el que OpenDAL se fabrica solo. Si no, en
+        // Android las peticiones a las nubes irian por un cliente con el verificador de la
+        // plataforma, que ahi declara revocado lo que no lo esta; el resto del programa
+        // funcionaria y solo fallarian las nubes, que es lo unico que importa. Ver `http`.
+        let op = op.with_context(
+            opendal::OperationContext::new().with_http_transport(crate::http::transporte()),
+        );
+
         Ok(Self { name, op, medidor })
     }
 

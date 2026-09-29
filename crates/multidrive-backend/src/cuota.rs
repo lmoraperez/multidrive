@@ -339,19 +339,14 @@ fn espacio(ruta: &Path) -> Option<(u64, u64)> {
 // HTTP
 // ---------------------------------------------------------------------------------------
 
-/// Cliente compartido: reutiliza conexiones y, sobre todo, no rehace el saludo TLS en cada
-/// pregunta.
-fn cliente() -> &'static reqwest::Client {
-    static CLIENTE: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    CLIENTE.get_or_init(|| {
-        reqwest::Client::builder()
-            // Preguntar por el cupo es un adorno de la interfaz: mas vale decir "no se pudo"
-            // que dejar una ventana colgada esperando a una nube que no contesta.
-            .timeout(Duration::from_secs(20))
-            .build()
-            .unwrap_or_default()
-    })
-}
+/// El cliente compartido del proceso.
+///
+/// Vive en `http` y no aqui porque **en Android se construye distinto**, y tener dos sitios
+/// donde se fabrica un cliente es tener uno que se queda sin el arreglo. Preguntar por el cupo
+/// es ademas un adorno de la interfaz: mas vale decir "no se pudo" que dejar una ventana
+/// colgada esperando a una nube que no contesta, y de eso se encarga el tiempo de espera que
+/// trae puesto.
+use crate::http::cliente;
 
 /// Convierte un codigo de error en `Err`, con el cuerpo dentro.
 ///

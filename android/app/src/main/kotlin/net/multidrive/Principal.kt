@@ -2,6 +2,7 @@ package net.multidrive
 
 import android.app.Activity
 import android.os.Bundle
+import android.util.Log
 import android.widget.TextView
 import net.multidrive.nucleo.Nucleo
 import kotlin.concurrent.thread
@@ -14,6 +15,8 @@ import kotlin.concurrent.thread
  * certificados esta inicializado: cosas que pueden fallar por separado y que fallan de maneras
  * parecidas. Una pantalla bonita encima solo dificultaria ver cual de ellas fue.
  */
+private const val ETIQUETA = "multidrive"
+
 class Principal : Activity() {
     override fun onCreate(estado: Bundle?) {
         super.onCreate(estado)
@@ -40,6 +43,10 @@ class Principal : Activity() {
             return
         }
         texto.text = cabecera
+        // Tambien al registro: con el telefono bloqueado o la pantalla apagada, una captura
+        // no sirve, y `adb logcat` si. Mientras esto sea una prueba y no una aplicacion, es
+        // la unica forma fiable de leer lo que pasa.
+        Log.i(ETIQUETA, cabecera)
 
         // En otro hilo: una peticion de red en el hilo de la interfaz la bloquea, y Android
         // ademas lo prohibe. Es tambien lo que hara el `DocumentsProvider`, que se llama desde
@@ -50,6 +57,7 @@ class Principal : Activity() {
             } catch (e: Throwable) {
                 "excepcion: $e"
             }
+            Log.i(ETIQUETA, "https\n$dicho")
             runOnUiThread {
                 texto.text = cabecera.replace("consultando...", dicho)
             }

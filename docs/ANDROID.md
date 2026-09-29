@@ -160,15 +160,27 @@ reporta como una comprobación fallida**.
 No hay forma de desactivarlo: el veredicto lo emite el componente Kotlin y el lado de Rust se
 limita a traducirlo.
 
-La salida es construir el `ClientConfig` de rustls con **`webpki-roots`** —el conjunto de raíces
-de Mozilla, compilado dentro— y dárselo a `reqwest` ya hecho. Se puede: `ReqwestTransport::new`
-acepta un `reqwest::Client` nuestro, así que OpenDAL usa el que le demos en vez de fabricarse
-uno.
+La salida, **hecha y comprobada**, es construir el `ClientConfig` de rustls con `webpki-roots`
+—el conjunto de raíces de Mozilla, compilado dentro— y dárselo a `reqwest` ya hecho. Vive en
+`multidrive-backend::http`, en un solo sitio y detrás de un `cfg(target_os = "android")`: en el
+escritorio no cambia nada, porque ahí el verificador de la plataforma funciona y es mejor que
+cualquier lista que llevemos nosotros.
 
-Lo que se pierde al hacerlo hay que decirlo: el almacén de confianza pasa a ser **nuestro y no
-el del sistema**, así que no recoge las actualizaciones del sistema operativo ni las raíces que
-haya añadido una empresa o el propio usuario, y actualizarlo pasa a ser cosa nuestra. A cambio,
-la aplicación puede hablar con las nubes, que es el requisito del que cuelga todo lo demás.
+Que esté en un solo sitio no es orden por el orden. Había **tres** lugares donde se fabricaba un
+cliente —la consulta de cupo, el canje de OAuth y el que OpenDAL se hace solo— y arreglar dos de
+tres habría dejado la aplicación funcionando en casi todo menos en conectar cuentas, que es lo
+único que hace falta para que no sirva de nada. A OpenDAL se le pasa el nuestro con
+`OperationContext::with_http_transport`.
+
+Lo que se pierde hay que decirlo: el almacén de confianza pasa a ser **nuestro y no el del
+sistema**, así que no recoge las actualizaciones del sistema operativo ni las raíces que haya
+añadido una empresa o el propio usuario, y actualizarlo pasa a ser cosa nuestra —una dependencia
+más que vigilar—. A cambio, la aplicación puede hablar con las nubes, que es el requisito del
+que cuelga todo lo demás.
+
+El `.so` pasa de 0,8 a 14,8 MiB al entrar el backend entero y OpenDAL. Es el tamaño real de lo
+que hace falta para hablar con las nubes, y el APK sigue por debajo de lo que pesa cualquier
+aplicación de fotos.
 
 ## El componente Kotlin de los certificados: obligatorio
 
@@ -310,6 +322,18 @@ antes de entregar un byte.
 
    **Google es el proveedor principal de MultiDrive**, así que esto no es una curiosidad: con
    el verificador de la plataforma, la aplicación de Android no puede hablar con Drive.
+
+   **Resuelto el mismo día** con `webpki-roots` en Android, y comprobado en el teléfono:
+
+   ```
+   propio  200 OK en 184 ms
+   google  404 Not Found en 288 ms
+   msft    200 OK en 1105 ms
+   ```
+
+   El 404 de Google es la respuesta correcta a un `GET /` sobre `oauth2.googleapis.com`: lo
+   que importa es que **contestó**, o sea que el saludo TLS se completó. Los 184 ms contra
+   nuestro propio sitio son además el primer dato de red desde el móvil.
 3. **Abrir un volumen y listar la raíz** por JNI, enseñándolo en una lista a pelo. Aquí se sabrá
    lo que todavía no sabemos: cuánto tarda de verdad la red desde el móvil.
 4. **El `DocumentsProvider`** encima de lo anterior, con `EXTRA_LOADING`.

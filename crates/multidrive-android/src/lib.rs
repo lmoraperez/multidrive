@@ -117,13 +117,10 @@ pub fn https() -> String {
     };
 
     arranque.block_on(async {
-        let cliente = match reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(20))
-            .build()
-        {
-            Ok(c) => c,
-            Err(e) => return format!("no se pudo construir el cliente: {e}"),
-        };
+        // **El del backend**, no uno de aqui. Es el que en Android lleva `webpki-roots` en vez
+        // del verificador de la plataforma, y es el que usaran las nubes de verdad: un sondeo
+        // con un cliente distinto no probaria lo que hace falta probar.
+        let cliente = multidrive_backend::http::construir(std::time::Duration::from_secs(20));
         let mut lineas = Vec::new();
         for (nombre, donde) in SITIOS {
             let t = std::time::Instant::now();
