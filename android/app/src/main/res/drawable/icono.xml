@@ -1,0 +1,22 @@
+<!-- El rombo de la marca, en cuatro triangulos.
+     Tiene que ser un recurso **nuestro**: la app de Archivos carga el icono de la raiz por su
+     identificador y dentro de nuestro paquete, asi que pasarle uno de `android.R` la deja sin
+     poder resolverlo. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#2E6BE6"
+        android:pathData="M25.4,4.6 L43.4,22.6 L25.4,22.6 Z" />
+    <path
+        android:fillColor="#1B2A41"
+        android:pathData="M43.4,25.4 L25.4,43.4 L25.4,25.4 Z" />
+    <path
+        android:fillColor="#1B2A41"
+        android:pathData="M22.6,43.4 L4.6,25.4 L22.6,25.4 Z" />
+    <path
+        android:fillColor="#1B2A41"
+        android:pathData="M4.6,22.6 L22.6,4.6 L22.6,22.6 Z" />
+</vector>
