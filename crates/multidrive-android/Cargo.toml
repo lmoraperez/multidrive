@@ -1,0 +1,24 @@
+[package]
+name = "multidrive-android"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# La frontera con Kotlin. Es una biblioteca dinamica porque es lo que Android sabe cargar con
+# `System.loadLibrary`: acaba dentro del APK como `lib/<abi>/libmultidrive.so`.
+#
+# Se llama `multidrive` a secas y no `multidrive_android` porque ese nombre es el que se escribe
+# en el Kotlin, y `System.loadLibrary("multidrive")` se lee mejor.
+[lib]
+name = "multidrive"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+multidrive-core.workspace = true
+multidrive-raid.workspace = true
+# La misma version que arrastra `rustls-platform-verifier`, que tambien la necesita en Android.
+# Dos copias de `jni` en el mismo proceso no es un problema de compilacion, pero si de
+# entendimiento cuando algo falle.
+jni = "0.22.4"
