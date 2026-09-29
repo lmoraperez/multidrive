@@ -22,3 +22,14 @@
 # Credenciales de la aplicacion que se compilan dentro del binario distribuido. No son de
 # nadie en particular, pero un secreto en el historial no se borra: fuera del repositorio.
 /packaging/windows/credenciales.conf
+
+# Android: lo que genera Gradle y lo que deja el guion de compilacion.
+#
+# `jniLibs` no va al repositorio porque es la salida de cargo copiada: tenerla versionada
+# significaria que alguien puede clonar y compilar un APK con un nucleo que no corresponde a
+# las fuentes que tiene delante.
+/android/build/
+/android/app/build/
+/android/.gradle/
+/android/local.properties
+/android/app/src/main/jniLibs/

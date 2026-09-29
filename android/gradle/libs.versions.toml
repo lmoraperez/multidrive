@@ -1,0 +1,11 @@
+# Las versiones en un solo sitio. Repetirlas en cada `build.gradle.kts` es como acaban dos
+# modulos del mismo proyecto compilando contra cosas distintas sin que nadie se entere.
+
+[versions]
+# AGP 9.4 pide Gradle 9.6 o mas y JDK 17 o mas. Aqui hay Gradle 9.8 y JDK 21.
+agp = "9.4.0"
+
+[libraries]
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
