@@ -716,13 +716,27 @@ por dentro, en [ARQUITECTURA.md](ARQUITECTURA.md#la-maleta-llevarse-la-configura
       forma más rápida de quedarse sin acceso a una cuenta
 - [x] Se replica en todos los proveedores, como la cabecera, y al recogerla se prueban todas:
       en una cuenta puede haber quedado una de antes de cambiar la frase
-- [x] **La maleta se guarda sola al crear el volumen y en cada apertura**, con la frase que se
-      acaba de escribir. Abrir exige tener configurados todos los proveedores del volumen, así
-      que lo guardado nunca se queda corto. Sin el refresco al abrir, añadir una cuenta más
-      tarde dejaba la maleta vieja y el otro equipo con una configuración que no abre nada
+- [x] **La maleta se guarda sola al crear el volumen**, con la frase que se acaba de escribir,
+      y en la ventana **también en cada apertura**. Abrir exige tener configurados todos los
+      proveedores del volumen, así que lo guardado nunca se queda corto. Sin el refresco al
+      abrir, añadir una cuenta más tarde dejaba la maleta vieja y el otro equipo con una
+      configuración que no abre nada
+- [x] Esta línea decía «al crear y en cada apertura» a secas, y era falsa en el terminal:
+      `volume create` no guardaba nada, solo lo hacía la ventana. Quien creaba un volumen
+      desde la consola se quedaba sin maleta **creyendo que la tenía**, que es peor que no
+      tenerla. Ya la guarda también, con un aviso si no puede: el volumen ya existe cuando eso
+      corre, y tumbarlo por un fichero de configuración sería cambiar un incordio por un
+      desastre. Lo que sigue siendo solo de la ventana es el refresco al abrir, y ahora está
+      escrito
 - [x] **En la ventana no hay botón de guardarla**: no hace falta. Solo aparece la de traerla,
       y solo cuando la cuenta recién enlazada ya la trae. A mano sigue estando
       `multidrive config publicar`
+- [x] **El viaje entero, entre dos equipos y contra nubes reales** (28 de septiembre de 2026),
+      sobre un `lineal:4` de OneDrive y tres cuentas de Drive. Se escribió un fichero desde
+      este equipo y se leyó desde otro que **solo tenía enlazado OneDrive**: la maleta salió de
+      ahí, trajo las tres cuentas de Drive, `volume status` dio `lineal:4` con generación 1, y
+      `cat` devolvió el texto tal cual. Es el eslabón que faltaba: hasta aquí estaba visto que
+      se recupera la configuración, no que con ella se lean los datos
 - [x] Eliminar el volumen está junto a «Abrir volumen» con el volumen cerrado, y junto a
       «Cerrar» con el volumen abierto. Cada botón pinta su confirmación al lado: una
       confirmación que aparece en otra parte de la página es una que nadie lee
