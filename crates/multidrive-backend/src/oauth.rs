@@ -183,11 +183,12 @@ async fn esperar_codigo(
     estado: &str,
 ) -> Result<(String, tokio::net::TcpStream), BackendError> {
     loop {
-        let (mut socket, _) = aceptar(servidor, servidor6)
-            .await
-            .map_err(|e| BackendError::Oauth {
-                detalle: e.to_string(),
-            })?;
+        let (mut socket, _) =
+            aceptar(servidor, servidor6)
+                .await
+                .map_err(|e| BackendError::Oauth {
+                    detalle: e.to_string(),
+                })?;
 
         let mut buf = vec![0u8; 8192];
         let leidos = socket.read(&mut buf).await.unwrap_or(0);

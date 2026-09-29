@@ -533,7 +533,9 @@ mod tests_con_almacen {
             .with_writeback(Arc::new(WriteQueue::open(&d).await.unwrap()));
         let (mut v, _) = Volume::create(store).await.unwrap();
 
-        v.write_file("/cartas/una.txt", &b"corto"[..]).await.unwrap();
+        v.write_file("/cartas/una.txt", &b"corto"[..])
+            .await
+            .unwrap();
         v.write_file("/grande.bin", &vec![7u8; 5000][..])
             .await
             .unwrap();
@@ -545,7 +547,10 @@ mod tests_con_almacen {
             vec!["/grande.bin", "/cartas/una.txt"],
             "las rutas enteras, y el que mas se pierde primero"
         );
-        assert_eq!(rutas[0].bytes, 5000, "bytes en claro, los que ve el usuario");
+        assert_eq!(
+            rutas[0].bytes, 5000,
+            "bytes en claro, los que ve el usuario"
+        );
         assert_eq!(rutas[1].bytes, 5);
 
         // Y tras subir no queda ninguno: la lista es de lo que falta, no de lo que hubo.

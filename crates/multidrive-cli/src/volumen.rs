@@ -12,12 +12,12 @@ use multidrive_backend::{Backend, live};
 use multidrive_core::ChunkId;
 use multidrive_core::diskcache::DiskCache;
 use multidrive_core::header::{self, HEADER_KEY, Header};
+use multidrive_core::maleta;
 use multidrive_core::pesos::{pesos_ampliados, pesos_para};
 use multidrive_core::rebalance::{self, Cambio, Sacrificio};
 use multidrive_core::rescue;
 use multidrive_core::sincronizador::{Resultado, Sincronizador};
 use multidrive_core::tree::{self, Kind, Volume};
-use multidrive_core::maleta;
 use multidrive_core::writeback::{self, WriteQueue};
 use multidrive_core::{ChunkStore, CoreError};
 use multidrive_raid::Layout;
@@ -43,7 +43,9 @@ pub fn fijar_frase(f: String) {
 /// el mensaje sale justo cuando esa persona no sabe todavia como se hace.
 fn asi_se_pone() -> String {
     if cfg!(windows) {
-        format!("  $env:{FRASE} = '...'          # PowerShell\n  set {FRASE}=...              # cmd")
+        format!(
+            "  $env:{FRASE} = '...'          # PowerShell\n  set {FRASE}=...              # cmd"
+        )
     } else {
         format!("  export {FRASE}='...'")
     }
@@ -240,7 +242,9 @@ async fn guardar_maleta_en_silencio(backends: &[Arc<dyn Backend>]) {
         Ok(b) => b,
         Err(e) => {
             println!("  AVISO: no se pudo preparar la configuracion sellada: {e}");
-            println!("         El volumen esta creado. Reintentalo con: multidrive config publicar");
+            println!(
+                "         El volumen esta creado. Reintentalo con: multidrive config publicar"
+            );
             return;
         }
     };
