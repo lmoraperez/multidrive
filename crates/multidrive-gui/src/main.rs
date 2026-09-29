@@ -1461,6 +1461,8 @@ struct ParaBorrar {
     proveedores: Vec<String>,
     fragmentos: usize,
     bytes: u64,
+    /// Proveedores donde ademas hay configuracion sellada, que tambien se va.
+    con_maleta: Vec<String>,
     /// Lo que hay que escribir para confirmar.
     ///
     /// Se pide escribir los nombres de los proveedores y no un «si»: obliga a mirar la lista
@@ -1495,6 +1497,7 @@ async fn volumen_a_borrar() -> Result<ParaBorrar, String> {
         proveedores: nombres,
         fragmentos: inventario.fragmentos(),
         bytes: inventario.bytes(),
+        con_maleta: inventario.con_maleta,
     })
 }
 

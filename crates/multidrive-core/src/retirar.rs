@@ -6,10 +6,16 @@
 //!
 //! Dos reglas, y las dos existen por la misma razon:
 //!
-//! 1. **Solo se borra lo que es del volumen**: el prefijo de fragmentos, el puntero de raiz y
-//!    la cabecera. Si el usuario guarda otras cosas en esa carpeta —cosa que la documentacion
-//!    desaconseja pero nadie impide— se quedan donde estan. Borrar todo lo que hubiera debajo
-//!    seria mas facil de escribir y mucho peor de explicar.
+//! 1. **Solo se borra lo que es del volumen**: el prefijo de fragmentos, el puntero de raiz,
+//!    la cabecera y la maleta. Si el usuario guarda otras cosas en esa carpeta —cosa que la
+//!    documentacion desaconseja pero nadie impide— se quedan donde estan. Borrar todo lo que
+//!    hubiera debajo seria mas facil de escribir y mucho peor de explicar.
+//!
+//!    La maleta entra en la lista porque la puso MultiDrive y nadie mas. Dejarla despues de
+//!    «eliminar el volumen» significaba que la cuenta no quedaba como estaba antes: quien
+//!    borraba para no dejar rastro se dejaba atras un fichero sellado que ni siquiera sabia
+//!    que existia. Se cuenta y se ensena **antes** de confirmar, porque borrar de mas sin
+//!    avisar es tan malo como borrar de menos.
 //! 2. **Si no se puede mirar entero, no se toca nada.** Un proveedor que no se deja enumerar
 //!    no se puede limpiar, y decir «hecho» dejando fragmentos detras seria mentir sobre algo
 //!    que no tiene vuelta atras.
@@ -18,19 +24,30 @@
 //! corta a la mitad, un volumen sin fragmentos pero con cabecera se diagnostica —`scrub` dira
 //! que falta todo— mientras que fragmentos sin cabecera son basura anonima que ya nadie sabe
 //! de quien era.
+//!
+//! La maleta va **detras de la cabecera**, por lo mismo visto del otro lado: mientras el
+//! volumen exista, su maleta es el camino para volver a montarlo en otro equipo. Quitarla
+//! primero y morir a mitad dejaria un volumen vivo al que se le ha retirado la salida de
+//! emergencia.
 
 use std::sync::Arc;
 
 use futures::future::join_all;
 use multidrive_backend::Backend;
 
-use crate::{CoreError, SHARD_PREFIX};
+use crate::{CoreError, SHARD_PREFIX, maleta};
 
 /// Lo que hay de un volumen en cada proveedor.
 #[derive(Debug, Clone, Default)]
 pub struct Inventario {
     /// Nombre, cuantos fragmentos y cuantos bytes, por proveedor y en su orden.
     pub por_proveedor: Vec<(String, usize, u64)>,
+    /// Proveedores que ademas guardan la configuracion sellada.
+    ///
+    /// Va aparte de la cuenta de fragmentos porque no es un fragmento: no ocupa nada que
+    /// merezca la pena sumar, pero es lo unico de la lista que **sigue sirviendo para algo**
+    /// despues de borrar el volumen. Quien confirma tiene que verlo nombrado.
+    pub con_maleta: Vec<String>,
 }
 
 impl Inventario {
@@ -52,7 +69,9 @@ impl Inventario {
 /// pedir una confirmacion sobre una cifra que no es cierta.
 pub async fn inventariar(backends: &[Arc<dyn Backend>]) -> Result<Inventario, CoreError> {
     let listados = enumerar(backends).await?;
+    let con_maleta = donde_hay_maleta(backends).await;
     Ok(Inventario {
+        con_maleta,
         por_proveedor: listados
             .into_iter()
             .map(|(nombre, objetos)| {
@@ -102,27 +121,120 @@ async fn enumerar(
 pub async fn retirar(backends: &[Arc<dyn Backend>]) -> Result<Inventario, CoreError> {
     let listados = enumerar(backends).await?;
 
+    let con_maleta = donde_hay_maleta(backends).await;
+
     let mut hecho = Vec::with_capacity(backends.len());
     for (b, (nombre, objetos)) in backends.iter().zip(listados) {
         let bytes = objetos.iter().map(|o| o.bytes).sum();
         for o in &objetos {
             b.delete(&o.clave).await?;
         }
-        // La raiz y la cabecera, las ultimas.
+        // La raiz y la cabecera, las ultimas. Y la maleta, detras de la cabecera: mientras el
+        // volumen exista, es el camino para volver a montarlo en otro equipo.
         b.delete(crate::tree::ROOT_KEY).await?;
         b.delete(crate::header::HEADER_KEY).await?;
+        b.delete(maleta::CLAVE).await?;
         hecho.push((nombre, objetos.len(), bytes));
     }
 
     Ok(Inventario {
         por_proveedor: hecho,
+        con_maleta,
     })
+}
+
+/// En cuales de estos proveedores hay configuracion sellada.
+///
+/// No falla: que no se pueda preguntar por ella no es motivo para no borrar el volumen, y lo
+/// que se hace con la respuesta es ensenarla. Un proveedor que no contesta sale como que no
+/// la tiene, y el borrado de mas abajo la quita igual si estaba.
+async fn donde_hay_maleta(backends: &[Arc<dyn Backend>]) -> Vec<String> {
+    let hay = join_all(
+        backends
+            .iter()
+            .map(|b| async move { b.exists(maleta::CLAVE).await.unwrap_or(false) }),
+    )
+    .await;
+    backends
+        .iter()
+        .zip(hay)
+        .filter(|(_, hay)| *hay)
+        .map(|(b, _)| b.name().to_string())
+        .collect()
 }
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::testutil::{clave, memoria};
     use multidrive_backend::OpendalBackend;
+
+    /// La maleta se va con el volumen, y se nombra antes de borrarla.
+    ///
+    /// Se comprueban las dos mitades a la vez a proposito: que `inventariar` la ensene sin
+    /// tocarla --es lo que se lee al confirmar-- y que `retirar` la quite. Que se borre algo
+    /// que no aparecio en la confirmacion seria peor que no borrarlo.
+    #[tokio::test]
+    async fn la_maleta_se_va_con_el_volumen_y_se_dice_antes() {
+        let backends = memoria(2);
+        let s = crate::ChunkStore::new(
+            multidrive_raid::Layout::Mirror { n: 2 },
+            backends.clone(),
+            clave(),
+        )
+        .unwrap();
+        let (mut v, _) = crate::tree::Volume::create(s).await.unwrap();
+        v.write_file("/algo.txt", &b"hola"[..]).await.unwrap();
+        let bulto = crate::maleta::empaquetar(
+            &[("MULTIDRIVE_FS_ROOT".to_string(), "/uno".to_string())]
+                .into_iter()
+                .collect(),
+            "la-frase",
+        )
+        .unwrap();
+        for (nombre, fallo) in crate::maleta::guardar(&backends, &bulto).await {
+            assert!(fallo.is_none(), "{nombre}: {fallo:?}");
+        }
+
+        let antes = inventariar(&backends).await.unwrap();
+        assert_eq!(
+            antes.con_maleta,
+            vec!["p0".to_string(), "p1".to_string()],
+            "la confirmacion tiene que nombrar donde esta la maleta"
+        );
+        assert!(
+            backends[0].exists(maleta::CLAVE).await.unwrap(),
+            "inventariar no puede borrar nada"
+        );
+
+        let hecho = retirar(&backends).await.unwrap();
+        assert_eq!(hecho.con_maleta.len(), 2, "y decir de donde se quito");
+        for b in &backends {
+            assert!(
+                !b.exists(maleta::CLAVE).await.unwrap(),
+                "{}: la maleta sigue ahi despues de retirar el volumen",
+                b.name()
+            );
+        }
+    }
+
+    /// Retirar un volumen que nunca tuvo maleta no es un caso especial.
+    #[tokio::test]
+    async fn sin_maleta_no_pasa_nada() {
+        let backends = memoria(2);
+        let s = crate::ChunkStore::new(
+            multidrive_raid::Layout::Mirror { n: 2 },
+            backends.clone(),
+            clave(),
+        )
+        .unwrap();
+        let (mut v, _) = crate::tree::Volume::create(s).await.unwrap();
+        v.write_file("/algo.txt", &b"hola"[..]).await.unwrap();
+
+        assert!(inventariar(&backends).await.unwrap().con_maleta.is_empty());
+        let hecho = retirar(&backends).await.unwrap();
+        assert!(hecho.con_maleta.is_empty());
+        assert!(hecho.fragmentos() > 0);
+    }
 
     /// Lo que no es del volumen sobrevive.
     ///

@@ -1007,6 +1007,18 @@ function pedirConfirmacion(v, caja) {
   ]);
   partes.push(resumen);
 
+  // La configuración sellada se nombra aparte y no dentro de la lista de arriba: es lo único
+  // que seguiría sirviendo para algo después de borrar, así que quien confirma tiene que leer
+  // que también se va.
+  if (v.con_maleta.length) {
+    partes.push(
+      nota(
+        `Y la configuración sellada que hay en ${v.con_maleta.join(", ")}. ` +
+          "Sin volumen no abre nada, y dejarla sería no devolver la cuenta a como estaba.",
+      ),
+    );
+  }
+
   const grave = nota(
     "Esto borra los fragmentos, la raíz y la cabecera de TODOS los proveedores. " +
       "No se puede deshacer y no hay papelera. Lo que no sea del volumen se queda donde está.",

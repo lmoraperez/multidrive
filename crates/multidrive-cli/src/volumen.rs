@@ -1645,6 +1645,15 @@ pub async fn destroy(confirmacion: Option<String>) -> Result<()> {
         inventario.fragmentos(),
         tamano(inventario.bytes())
     );
+    // Se nombra antes de confirmar: es lo unico de la lista que sigue sirviendo para algo
+    // despues, y quien borra tiene que saber que tambien se va.
+    if !inventario.con_maleta.is_empty() {
+        println!(
+            "  configuracion sellada en {} (se borra tambien: sin volumen no abre nada, y",
+            inventario.con_maleta.join(", ")
+        );
+        println!("                dejarla es no devolver la cuenta a como estaba)");
+    }
     println!();
 
     let esperado = nombres.join(",");
@@ -1661,7 +1670,12 @@ pub async fn destroy(confirmacion: Option<String>) -> Result<()> {
 
     let hecho = multidrive_core::retirar::retirar(&backends).await?;
     for (nombre, n, _) in &hecho.por_proveedor {
-        println!("  {nombre}: {n} fragmento(s), raiz y cabecera");
+        let mas = if hecho.con_maleta.iter().any(|m| m == nombre) {
+            ", raiz, cabecera y la configuracion sellada"
+        } else {
+            ", raiz y cabecera"
+        };
+        println!("  {nombre}: {n} fragmento(s){mas}");
     }
 
     println!();
