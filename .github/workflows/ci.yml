@@ -78,6 +78,27 @@ jobs:
             target/msi/*.exe
           if-no-files-found: error
 
+  # Que el nucleo siga pudiendo cruzar a Android, para que la portabilidad no se pudra sin
+  # avisar.
+  #
+  # Solo `crypto` y `raid`, que son los que cruzan **sin NDK**: el resto arrastra un compilador
+  # de C por `aws-lc-sys`, debajo de rustls, y montar el NDK en cada ejecucion costaria minutos
+  # para comprobar algo que hoy no se usa. Esto cuesta segundos.
+  #
+  # No prueba que Android funcione --no hay version de Android-- sino que nadie ate el nucleo
+  # al sistema operativo sin darse cuenta. Hoy no hay un solo `cfg(windows)` ni `cfg(unix)` en
+  # todo el workspace, y eso es lo que esto protege.
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - name: Cruzar a aarch64-linux-android
+        run: cargo check --target aarch64-linux-android -p multidrive-crypto -p multidrive-raid
+
   # Monta de verdad con FUSE y usa el volumen como lo usaria un programa cualquiera.
   #
   # Va en un job aparte y no dentro de `test` porque necesita /dev/fuse, y un test que falla
