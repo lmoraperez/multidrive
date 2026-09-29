@@ -49,6 +49,35 @@ class Proveedor : DocumentsProvider() {
     }
 
     /**
+     * Deslizar para actualizar: mira si hay algo nuevo publicado desde otro equipo.
+     *
+     * Existe porque el movil es un **lector**, y lo que ve se queda congelado en la raiz que
+     * leyo al abrir el volumen. Sin esto, un fichero subido desde el escritorio no aparece
+     * nunca y la unica salida es cerrar el volumen y volver a abrirlo. Es exactamente lo que le
+     * paso a quien lo uso primero.
+     *
+     * **No se comprueba solo cada tanto**, y es deliberado: cada comprobacion es una vuelta a la
+     * red, y sobre datos moviles eso se paga en bateria y en plan de datos. El gesto de
+     * actualizar ya existe en el selector, lo hace quien sabe que acaba de subir algo, y no
+     * cuesta nada cuando nadie lo pide.
+     */
+    override fun refresh(uri: android.net.Uri, extras: Bundle?, signal: CancellationSignal?): Boolean {
+        val s = Sesion.id ?: return false
+        return try {
+            val cambio = Nucleo.refrescar(s)
+            if (cambio) {
+                // Todo lo listado es de la raiz vieja: no vale nada.
+                Cache.hijos.clear()
+                context!!.contentResolver.notifyChange(uri, null)
+            }
+            true
+        } catch (e: Throwable) {
+            Log.w(ETIQUETA, "no se pudo refrescar", e)
+            false
+        }
+    }
+
+    /**
      * El volumen. **Siempre**, haya sesion o no.
      *
      * Antes no se publicaba ninguna raiz mientras no hubiera sesion, con el argumento de que

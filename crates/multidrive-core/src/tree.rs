@@ -636,6 +636,19 @@ pub(crate) async fn publicar_ahora(store: &ChunkStore, root: &Root) -> Result<()
 ///
 /// Un puntero que no se abre o no se deserializa se ignora en silencio: puede ser una
 /// publicacion a medias de un proveedor que fallo. Mientras quede uno bueno, el volumen abre.
+/// La raiz que hay **ahora mismo** en los proveedores, sin abrir nada.
+///
+/// Un `Volume` guarda la raiz que leyo al abrirse y no vuelve a mirar. Para un escritor eso es
+/// correcto --es el unico que cambia el arbol-- pero para un lector no: un movil que mira un
+/// volumen mientras un escritorio escribe se queda viendo lo de antes para siempre, y eso paso
+/// de verdad.
+///
+/// Con esto y [`Volume::at`] se puede saltar a lo ultimo publicado **sin volver a derivar la
+/// clave**, que es lo caro: el `ChunkStore` se clona y solo se paga una lectura del puntero.
+pub async fn raiz_actual(store: &ChunkStore) -> Result<Option<Root>, CoreError> {
+    leer_raiz(store).await
+}
+
 async fn leer_raiz(store: &ChunkStore) -> Result<Option<Root>, CoreError> {
     let lecturas = store
         .backends
