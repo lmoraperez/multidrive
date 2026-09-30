@@ -15,254 +15,281 @@
   lo que acabe de pasar. En la ventana del escritorio ese mismo fallo apareció tres veces: un
   aviso que se quedaba de la vez anterior diciendo algo que ya no era verdad.
 -->
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/fondo"
-    android:fillViewport="true">
+    android:layout_height="match_parent">
 
-    <LinearLayout
+    <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="20dp">
+        android:layout_height="match_parent"
+        android:background="@color/fondo"
+        android:fillViewport="true">
 
-        <!-- Cabecera: el rombo y el nombre. -->
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <ImageView
-                android:layout_width="30dp"
-                android:layout_height="30dp"
-                android:contentDescription="MultiDrive"
-                android:src="@drawable/icono" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
-                android:letterSpacing="-0.03"
-                android:text="MultiDrive"
-                android:textColor="@color/texto"
-                android:textSize="22sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
-                android:text="pre-alfa"
-                android:textColor="@color/aviso"
-                android:textSize="11sp" />
-        </LinearLayout>
-
-        <!-- Lo que está pasando ahora mismo. Siempre visible: una pantalla que no dice en qué
-             estado está obliga a adivinarlo. -->
-        <TextView
-            android:id="@+id/estado"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:background="@drawable/tarjeta"
-            android:padding="16dp"
-            android:textColor="@color/texto"
-            android:textSize="15sp" />
-
-        <!-- ================= ENTRADA: sin ninguna cuenta enlazada ================= -->
-        <LinearLayout
-            android:id="@+id/entrada"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:background="@drawable/tarjeta"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="20dp">
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="MultiDrive junta varias cuentas de nube en una sola unidad cifrada. Ni el proveedor ni nadie más ve lo que guardas."
-                android:textColor="@color/apagado"
-                android:textSize="14sp" />
-
-            <Button
-                android:id="@+id/nuevo"
-                style="@style/Boton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
-                android:text="Crear un volumen desde cero" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="Conecta tus cuentas, elige cómo se reparten los archivos y pon una frase de paso."
-                android:textColor="@color/apagado"
-                android:textSize="13sp" />
-
-            <Button
-                android:id="@+id/existente"
-                style="@style/Boton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
-                android:text="Abrir un volumen que ya existe" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="Conecta una sola cuenta: si el volumen se creó en otro equipo, de ahí salen las demás."
-                android:textColor="@color/apagado"
-                android:textSize="13sp" />
-        </LinearLayout>
-
-        <!-- ================= CASA: ya hay cuentas ================= -->
-
-        <!-- TUS CUENTAS -->
-        <TextView
-            android:id="@+id/titulo_cuentas"
-            style="@style/Seccion"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="TUS CUENTAS" />
-
-        <LinearLayout
-            android:id="@+id/tarjeta_cuentas"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/tarjeta"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <!-- Una fila por cuenta, con su botón de quitar. Las pone `pintar()`: son tantas
-                 como haya, y un layout no puede saber cuántas. -->
+            <!-- Cabecera: el rombo y el nombre. -->
             <LinearLayout
-                android:id="@+id/lista_cuentas"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" />
+                android:layout_marginTop="16dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <Button
-                android:id="@+id/drive"
-                style="@style/BotonSuave"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:text="Conectar Google Drive" />
+                <ImageView
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:contentDescription="MultiDrive"
+                    android:src="@drawable/icono" />
 
-            <Button
-                android:id="@+id/onedrive"
-                style="@style/BotonSuave"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Conectar OneDrive" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:letterSpacing="-0.03"
+                    android:text="MultiDrive"
+                    android:textColor="@color/texto"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
 
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="pre-alfa"
+                    android:textColor="@color/aviso"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <!-- Lo que está pasando ahora mismo. Siempre visible: una pantalla que no dice en qué
+                 estado está obliga a adivinarlo. -->
             <TextView
-                android:id="@+id/nota_cuentas"
+                android:id="@+id/estado"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:textColor="@color/apagado"
-                android:textSize="13sp" />
-        </LinearLayout>
-
-        <!-- EL VOLUMEN -->
-        <TextView
-            android:id="@+id/titulo_volumen"
-            style="@style/Seccion"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="EL VOLUMEN" />
-
-        <LinearLayout
-            android:id="@+id/tarjeta_volumen"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/tarjeta"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <EditText
-                android:id="@+id/frase"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:autofillHints=""
-                android:background="@drawable/campo"
-                android:hint="Frase de paso"
-                android:importantForAutofill="no"
-                android:inputType="textPassword"
-                android:padding="14dp"
+                android:layout_marginTop="18dp"
+                android:background="@drawable/tarjeta"
+                android:padding="16dp"
                 android:textColor="@color/texto"
-                android:textColorHint="@color/apagado"
                 android:textSize="15sp" />
 
+            <!-- ================= ENTRADA: sin ninguna cuenta enlazada ================= -->
+            <LinearLayout
+                android:id="@+id/entrada"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:background="@drawable/tarjeta"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="MultiDrive junta varias cuentas de nube en una sola unidad cifrada. Ni el proveedor ni nadie más ve lo que guardas."
+                    android:textColor="@color/apagado"
+                    android:textSize="14sp" />
+
+                <Button
+                    android:id="@+id/nuevo"
+                    style="@style/Boton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:text="Crear un volumen desde cero" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Conecta tus cuentas, elige cómo se reparten los archivos y pon una frase de paso."
+                    android:textColor="@color/apagado"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/existente"
+                    style="@style/Boton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:text="Abrir un volumen que ya existe" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Conecta una sola cuenta: si el volumen se creó en otro equipo, de ahí salen las demás."
+                    android:textColor="@color/apagado"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <!-- ================= CASA: ya hay cuentas ================= -->
+
+            <!-- TUS CUENTAS -->
             <TextView
-                android:id="@+id/nota_frase"
+                android:id="@+id/titulo_cuentas"
+                style="@style/Seccion"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="No se guarda en ninguna parte. Si Android cierra la aplicación, habrá que escribirla otra vez."
+                android:text="TUS CUENTAS" />
+
+            <LinearLayout
+                android:id="@+id/tarjeta_cuentas"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/tarjeta"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- Una fila por cuenta, con su botón de quitar. Las pone `pintar()`: son tantas
+                     como haya, y un layout no puede saber cuántas. -->
+                <LinearLayout
+                    android:id="@+id/lista_cuentas"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+                <Button
+                    android:id="@+id/drive"
+                    style="@style/BotonSuave"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="Conectar Google Drive" />
+
+                <Button
+                    android:id="@+id/onedrive"
+                    style="@style/BotonSuave"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Conectar OneDrive" />
+
+                <TextView
+                    android:id="@+id/nota_cuentas"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:textColor="@color/apagado"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <!-- EL VOLUMEN -->
+            <TextView
+                android:id="@+id/titulo_volumen"
+                style="@style/Seccion"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="EL VOLUMEN" />
+
+            <LinearLayout
+                android:id="@+id/tarjeta_volumen"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/tarjeta"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <EditText
+                    android:id="@+id/frase"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:autofillHints=""
+                    android:background="@drawable/campo"
+                    android:hint="Frase de paso"
+                    android:importantForAutofill="no"
+                    android:inputType="textPassword"
+                    android:padding="14dp"
+                    android:textColor="@color/texto"
+                    android:textColorHint="@color/apagado"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/nota_frase"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="No se guarda en ninguna parte. Si Android cierra la aplicación, habrá que escribirla otra vez."
+                    android:textColor="@color/apagado"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/abrir"
+                    style="@style/Boton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="Abrir volumen" />
+
+                <Button
+                    android:id="@+id/eliminar"
+                    style="@style/BotonSuave"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Eliminar volumen" />
+
+                <!-- Solo cuando se sabe que no hay volumen: tras un intento de abrir que dijo que
+                     no hay ninguno, o justo después de eliminar uno. El resto del tiempo sobra, y
+                     sin él ese estado sería un callejón: abrir falla y no hay a dónde ir. -->
+                <Button
+                    android:id="@+id/crear"
+                    style="@style/Boton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Crear un volumen" />
+
+                <Button
+                    android:id="@+id/ver"
+                    style="@style/Boton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="Ver en la app de Archivos" />
+
+                <Button
+                    android:id="@+id/cerrar"
+                    style="@style/BotonSuave"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Cerrar volumen" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="22dp"
+                android:layout_marginBottom="16dp"
+                android:text="Pre-alfa: esto todavía se está construyendo. No confíes en MultiDrive como única copia de nada."
                 android:textColor="@color/apagado"
-                android:textSize="13sp" />
-
-            <Button
-                android:id="@+id/abrir"
-                style="@style/Boton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:text="Abrir volumen" />
-
-            <Button
-                android:id="@+id/eliminar"
-                style="@style/BotonSuave"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Eliminar volumen" />
-
-            <!-- Solo cuando se sabe que no hay volumen: tras un intento de abrir que dijo que
-                 no hay ninguno, o justo después de eliminar uno. El resto del tiempo sobra, y
-                 sin él ese estado sería un callejón: abrir falla y no hay a dónde ir. -->
-            <Button
-                android:id="@+id/crear"
-                style="@style/Boton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Crear un volumen" />
-
-            <Button
-                android:id="@+id/ver"
-                style="@style/Boton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:text="Ver en la app de Archivos" />
-
-            <Button
-                android:id="@+id/cerrar"
-                style="@style/BotonSuave"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Cerrar volumen" />
+                android:textSize="12sp" />
         </LinearLayout>
+    </ScrollView>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:layout_marginBottom="16dp"
-            android:text="Pre-alfa: esto todavía se está construyendo. No confíes en MultiDrive como única copia de nada."
-            android:textColor="@color/apagado"
-            android:textSize="12sp" />
-    </LinearLayout>
-</ScrollView>
+    <!-- El aviso flotante.
+
+         Vive fuera del ScrollView **a propósito**: el mensaje de «abriendo…» estaba arriba del
+         todo y el botón que lo dispara está abajo, así que al pulsarlo el mensaje quedaba fuera
+         de la pantalla y había que subir para ver si pasaba algo. Anclado aquí no depende de por
+         dónde vaya el desplazamiento.
+
+         Lo pinta `Principal.avisar()`. El texto de arriba se queda: dice en qué estado está la
+         aplicación, que es otra cosa que lo que acaba de pasar. -->
+    <TextView
+        android:id="@+id/aviso"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_margin="16dp"
+        android:background="@drawable/aviso_flotante"
+        android:elevation="8dp"
+        android:padding="16dp"
+        android:textColor="@color/texto"
+        android:textSize="14sp"
+        android:visibility="gone" />
+</FrameLayout>

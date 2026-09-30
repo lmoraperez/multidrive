@@ -5,6 +5,8 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.provider.DocumentsContract
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -52,6 +54,7 @@ private const val ETIQUETA = "multidrive"
 class Principal : Activity() {
 
     private lateinit var estado: TextView
+    private lateinit var aviso: TextView
     private lateinit var frase: EditText
     private lateinit var conf: File
 
@@ -78,6 +81,9 @@ class Principal : Activity() {
     private lateinit var ver: Button
     private lateinit var cerrar: Button
 
+    /** Quien retira el aviso flotante cuando ya no hay nada que esperar. */
+    private val quitarAviso = Handler(Looper.getMainLooper())
+
     /** Lo que se esta haciendo ahora mismo, si es que se esta haciendo algo. */
     @Volatile
     private var ocupado = false
@@ -99,6 +105,9 @@ class Principal : Activity() {
         setContentView(R.layout.principal)
 
         estado = findViewById(R.id.estado)
+        aviso = findViewById<TextView>(R.id.aviso).apply {
+            setOnClickListener { avisar(null, esperando = false) }
+        }
         frase = findViewById(R.id.frase)
 
         entrada = findViewById(R.id.entrada)
@@ -142,6 +151,7 @@ class Principal : Activity() {
             Sesion.cerrar()
             avisarAlSistema()
             pintar("Volumen cerrado. Ya no se ve en Archivos.")
+            avisar("Volumen cerrado. Ya no se ve en Archivos.", esperando = false)
         }
         ver.setOnClickListener { abrirEnArchivos() }
     }
@@ -198,6 +208,13 @@ class Principal : Activity() {
             ).show()
             startActivity(Intent(this, Archivos::class.java))
         }
+    }
+
+    override fun onDestroy() {
+        // Un aviso pendiente de retirarse sobre una pantalla que ya no existe es una fuga
+        // pequeña y un `IllegalStateException` esperando su turno.
+        quitarAviso.removeCallbacksAndMessages(null)
+        super.onDestroy()
     }
 
     override fun onResume() {
@@ -340,10 +357,34 @@ class Principal : Activity() {
         emptyList()
     }
 
+    /**
+     * Enseña algo **donde se pueda leer sin buscarlo**.
+     *
+     * El texto de estado vive arriba del todo y los botones que disparan cosas están abajo, así
+     * que al pulsar «Abrir volumen» el mensaje de «abriendo…» quedaba fuera de la pantalla y
+     * había que subir para saber si estaba pasando algo. Esto flota sobre el contenido, anclado
+     * abajo, y no depende de por dónde vaya el desplazamiento.
+     *
+     * Mientras se está haciendo algo se queda puesto: es lo que dice que hay que esperar. Cuando
+     * termina, desaparece solo a los pocos segundos, porque una noticia vieja ocupando la
+     * pantalla es lo mismo que un aviso que miente. Un toque también lo quita.
+     */
+    private fun avisar(texto: String?, esperando: Boolean) {
+        quitarAviso.removeCallbacksAndMessages(null)
+        if (texto.isNullOrEmpty()) {
+            aviso.visibility = View.GONE
+            return
+        }
+        aviso.text = texto
+        aviso.visibility = View.VISIBLE
+        if (!esperando) quitarAviso.postDelayed({ aviso.visibility = View.GONE }, 6_000)
+    }
+
     /** Lanza algo que tarda, sin congelar la pantalla y sin dejar botones a medias. */
     private fun enSegundoPlano(mientras: String, trabajo: () -> String) {
         ocupado = true
         pintar(mientras)
+        avisar(mientras, esperando = true)
         thread {
             val dicho = try {
                 trabajo()
@@ -354,6 +395,7 @@ class Principal : Activity() {
             runOnUiThread {
                 ocupado = false
                 pintar(dicho)
+                avisar(dicho, esperando = false)
             }
         }
     }
