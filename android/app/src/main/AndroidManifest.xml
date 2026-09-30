@@ -18,6 +18,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Ver y borrar lo que hay en el volumen, sin depender del gestor de ficheros del
+             fabricante. Solo se llega desde la pantalla principal. -->
+        <activity
+            android:name=".Archivos"
+            android:exported="false"
+            android:label="Ficheros" />
+
         <!-- Recibir lo que se comparte desde otra aplicacion.
              Hace falta aparte del proveedor de documentos, porque son dos mecanismos
              distintos. El proveedor sale en el selector de ficheros del sistema (guardar en,
