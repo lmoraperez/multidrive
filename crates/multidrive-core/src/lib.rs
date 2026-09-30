@@ -34,6 +34,7 @@ pub mod rescue;
 pub mod retirada;
 pub mod retirar;
 pub mod sincronizador;
+pub mod testigo;
 pub mod tree;
 pub mod writeback;
 
