@@ -34,3 +34,12 @@
 /android/local.properties
 /android/app/src/main/jniLibs/
 /android/app/libs/
+
+# La clave con la que se firman los APK, y su contrasena. Fuera del repositorio las dos.
+#
+# Quien tenga el almacen puede publicar algo que Android instale **encima** de MultiDrive sin
+# avisar a nadie, porque para el sistema seria la misma aplicacion. Y no se puede rotar: el
+# dia que se pierda, quien tenga la aplicacion instalada tendra que desinstalarla para poder
+# poner la siguiente. Copia de seguridad aparte, y no aqui.
+/packaging/android/multidrive.jks
+/packaging/android/firma.conf
