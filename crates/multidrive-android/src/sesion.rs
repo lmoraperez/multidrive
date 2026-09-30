@@ -121,18 +121,20 @@ pub fn abrir(config: &str, frase: &str, escritura: bool) -> Result<i64, String> 
 
         // El testigo **antes de abrir**, no despues. Abrir cuesta segundos; descubrir al final
         // que otro esta escribiendo seria haber hecho esperar para nada.
-        let testigo = if escritura {
-            Some(
-                multidrive_core::testigo::Guardia::coger(
-                    backends.clone(),
-                    "la aplicacion de Android",
-                )
-                .await
-                .map_err(|ocupado| ocupado.to_string())?,
+        // No se niega si otro lo tiene: escribir se reaplica si alguien se adelanta, asi que
+        // dos equipos en ficheros distintos conviven. Negarse ademas seria caro de verdad aqui:
+        // con el volumen montado como servicio en el escritorio, el movil no podria escribir
+        // nunca.
+        let (testigo, otro) = if escritura {
+            multidrive_core::testigo::Guardia::coger_o_compartir(
+                backends.clone(),
+                "la aplicacion de Android",
             )
+            .await
         } else {
-            None
+            (None, None)
         };
+        let _ = otro;
 
         let almacen = cabecera
             .almacen(backends, frase, CACHE)

@@ -386,6 +386,17 @@ async function refrescarPendiente() {
       }
     }
 
+    // Que haya otro escribiendo no impide nada: los cambios se ponen uno encima del otro. Pero
+    // si los dos tocáis el mismo fichero, uno verá un error, y eso es mejor saberlo antes.
+    if (p.otro_escribiendo) {
+      partes.unshift(
+        nota(
+          `${p.otro_escribiendo} también está escribiendo en este volumen. Mientras toquéis ` +
+            "cosas distintas no pasa nada; el mismo fichero a la vez, no.",
+        ),
+      );
+    }
+
     // Si el testigo se perdió, lo primero de todo: a partir de ese momento lo que se escriba
     // aquí puede chocar con lo de otro equipo, y eso no es un detalle del final de una lista.
     if (p.testigo_perdido) {

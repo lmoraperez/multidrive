@@ -86,6 +86,11 @@ struct Estado {
     conectadas: Mutex<HashMap<String, String>>,
     /// Lo ultimo que dijo el sincronizador, para poder ensenarlo.
     ultimo_sync: Arc<std::sync::Mutex<Option<String>>>,
+    /// Quien mas estaba escribiendo cuando se monto, si habia alguien.
+    ///
+    /// No impide nada --escribir se reaplica si otro se adelanta-- pero hay que decirlo: si dos
+    /// tocan el mismo fichero, uno vera un error, y conviene que no sea una sorpresa.
+    otro_escribiendo: Arc<std::sync::Mutex<Option<String>>>,
 }
 
 /// Lo primero que se enseña: que hay configurado y si hace falta la frase.
@@ -139,6 +144,8 @@ struct Pendiente {
     rutas: Vec<RutaPendiente>,
     /// `true` si la raiz esta sin publicar: desde otro equipo todavia no se ve nada.
     raiz_sin_publicar: bool,
+    /// Quien mas esta escribiendo en el volumen, si hay alguien.
+    otro_escribiendo: Option<String>,
     /// `true` si se perdio el testigo de escritura mientras esto estaba montado.
     ///
     /// Pasa cuando esta maquina se queda sin red mas de lo que dura el testigo y otra lo coge
@@ -344,19 +351,21 @@ async fn montar(
     // El testigo, **antes de montar**. Montar y descubrir despues que otro esta escribiendo
     // dejaria una unidad puesta que no sirve, y quitarla es mas molesto que no haberla puesto.
     // En solo lectura no se coge: leer no molesta a nadie.
-    let testigo = if escritura {
-        match multidrive_core::testigo::Guardia::coger(
+    let (testigo, otro_escribiendo) = if escritura {
+        // No se niega: escribir se reaplica si otro se adelanta, asi que dos equipos en
+        // ficheros distintos conviven. Lo que hace falta es saberlo, y se dice en el panel.
+        multidrive_core::testigo::Guardia::coger_o_compartir(
             store.backends().to_vec(),
             "la ventana, montada en escritura",
         )
         .await
-        {
-            Ok(g) => Some(g),
-            Err(ocupado) => return Err(ocupado.to_string()),
-        }
     } else {
-        None
+        (None, None)
     };
+    *estado
+        .otro_escribiendo
+        .lock()
+        .unwrap_or_else(|p| p.into_inner()) = otro_escribiendo.map(|t| t.que);
 
     let montaje = multidrive_mount::montar(compartido, &punto, !escritura).map_err(|e| {
         // Es lo primero que ve alguien sin WinFsp instalado, o que apunta a una letra
@@ -926,24 +935,37 @@ async fn pendiente(estado: tauri::State<'_, Estado>) -> Result<Pendiente, String
         .rutas_pendientes()
         .await
         .unwrap_or_default();
+    let testigo_perdido = estado
+        .montado
+        .lock()
+        .await
+        .as_ref()
+        .and_then(|m| m.testigo.as_ref())
+        .is_some_and(|g| g.perdido());
+
+    // Los dos candados de aqui son de `std`, no de tokio, y su guardia no se puede tener en la
+    // mano al cruzar un `await`: el futuro dejaria de ser `Send` y Tauri no lo acepta. Se leen
+    // aqui, donde ya no queda ninguno por delante.
+    let otro_escribiendo = estado
+        .otro_escribiendo
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone();
+    let ultimo_sync = estado
+        .ultimo_sync
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone();
+
     Ok(Pendiente {
         trozos: p.trozos,
         bytes: p.bytes,
         a_salvo: p.a_salvo(),
         rutas,
         raiz_sin_publicar: p.raiz,
-        testigo_perdido: estado
-            .montado
-            .lock()
-            .await
-            .as_ref()
-            .and_then(|m| m.testigo.as_ref())
-            .is_some_and(|g| g.perdido()),
-        ultimo_sync: estado
-            .ultimo_sync
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .clone(),
+        otro_escribiendo,
+        testigo_perdido,
+        ultimo_sync,
     })
 }
 
