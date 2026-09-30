@@ -22,6 +22,7 @@
 
 pub mod conectar;
 pub mod crear;
+pub mod cuentas;
 pub mod maleta;
 pub mod sesion;
 
@@ -341,6 +342,44 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_borrar<'local>(
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Quita del fichero todo lo de una cuenta. Devuelve una frase para ensenar.
+///
+/// **No la saca del volumen**: solo borra unas claves de este telefono. Quien llama tiene que
+/// haberlo dicho antes de llegar aqui.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_olvidar<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    config: JString<'local>,
+    nombre: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let config = config.try_to_string(env)?;
+            let nombre = nombre.try_to_string(env)?;
+            let dicho = cuentas::olvidar(&config, &nombre).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(dicho)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Si alguna de las cuentas enlazadas guarda una maleta. No hace falta la frase.
+///
+/// **Bloquea**: una peticion por cuenta. Nunca desde el hilo de la interfaz.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_hayMaleta<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    config: JString<'local>,
+) -> jni::sys::jboolean {
+    entorno
+        .with_env(|env| -> Result<bool, Fallo> {
+            let config = config.try_to_string(env)?;
+            cuentas::hay_maleta(&config).map_err(Fallo::Dicho)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>() as jni::sys::jboolean
+}
+
 /// Las topologias posibles con las cuentas enlazadas, en JSON, con el espacio de cada una.
 ///
 /// **Bloquea**: una peticion de cupo por cuenta. Nunca desde el hilo de la interfaz.
@@ -658,6 +697,8 @@ mod tests {
             "mover",
             "topologias",
             "crear",
+            "olvidar",
+            "hayMaleta",
             "escribe",
         ] {
             let simbolo = format!("{esperado}{metodo}");

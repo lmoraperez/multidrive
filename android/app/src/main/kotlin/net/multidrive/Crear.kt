@@ -16,6 +16,7 @@ import android.widget.TextView
 import net.multidrive.nucleo.Nucleo
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import kotlin.concurrent.thread
 
 private const val ETIQUETA = "multidrive"
@@ -46,6 +47,15 @@ class Crear : Activity() {
     private lateinit var otraVez: EditText
     private lateinit var boton: Button
     private lateinit var avisoFrase: TextView
+    private lateinit var pasoCuentas: LinearLayout
+    private lateinit var cuentas: TextView
+    private lateinit var drive: Button
+    private lateinit var onedrive: Button
+    private lateinit var seguir: Button
+    private lateinit var conf: File
+
+    @Volatile
+    private var ocupado = false
 
     private var opciones: List<Opcion> = emptyList()
     private var elegida: Int = -1
@@ -77,14 +87,46 @@ class Crear : Activity() {
             }
         )
         estado = TextView(this).apply {
-            textSize = 13f
-            setTextColor(getColor(R.color.apagado))
+            textSize = 14f
+            setTextColor(getColor(R.color.texto))
             setPadding(0, 0, 0, 16)
-            text = "Preguntando a tus cuentas cuánto espacio hay…"
         }
         caja.addView(estado)
 
-        lista = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        // --- Paso 1: las cuentas. Un volumen es el reparto entre varias, asi que lo primero
+        // es tenerlas. Se enlazan **todas** aqui y no de una en una mas tarde: anadir una
+        // cuenta a un volumen ya creado mueve datos, y eso hoy solo esta en el escritorio.
+        cuentas = TextView(this).apply {
+            textSize = 13f
+            setTextColor(getColor(R.color.apagado))
+            setPadding(0, 0, 0, 12)
+        }
+        drive = Button(this).apply {
+            text = "Conectar Google Drive"
+            setOnClickListener { conectar("GDRIVE") }
+        }
+        onedrive = Button(this).apply {
+            text = "Conectar OneDrive"
+            setOnClickListener { conectar("ONEDRIVE") }
+        }
+        seguir = Button(this).apply {
+            text = "Continuar"
+            setOnClickListener { alPasoDos() }
+        }
+        pasoCuentas = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(cuentas)
+            addView(drive)
+            addView(onedrive)
+            addView(seguir)
+        }
+        caja.addView(pasoCuentas)
+
+        // --- Paso 2: la topologia y la frase.
+        lista = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
         caja.addView(lista)
 
         frase = EditText(this).apply {
@@ -123,6 +165,84 @@ class Crear : Activity() {
 
         setContentView(ScrollView(this).apply { addView(caja) })
 
+        conf = File(filesDir, "multidrive.conf")
+        pintarCuentas(null)
+    }
+
+    /**
+     * Atras vuelve al paso de las cuentas antes de salir.
+     *
+     * Sin esto, quien llega a la lista de topologias y se da cuenta de que le falta una cuenta
+     * tiene que salir de la pantalla entera y empezar otra vez.
+     */
+    @Deprecated("El reemplazo moderno exige androidx, que esta aplicacion todavia no usa")
+    override fun onBackPressed() {
+        if (lista.visibility != View.VISIBLE) {
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
+            return
+        }
+        lista.visibility = View.GONE
+        frase.visibility = View.GONE
+        otraVez.visibility = View.GONE
+        avisoFrase.visibility = View.GONE
+        boton.visibility = View.GONE
+        elegida = -1
+        pasoCuentas.visibility = View.VISIBLE
+        pintarCuentas(null)
+    }
+
+    private fun enlazadas(): List<String> = try {
+        val a = JSONArray(Nucleo.cuentas(conf.absolutePath))
+        (0 until a.length()).map { a.getString(it) }
+    } catch (e: Throwable) {
+        Log.w(ETIQUETA, "no se pudieron leer las cuentas", e)
+        emptyList()
+    }
+
+    private fun pintarCuentas(dicho: String?) {
+        val hay = enlazadas()
+        cuentas.text = if (hay.isEmpty()) {
+            "Ninguna todavía."
+        } else {
+            "${hay.size} enlazada(s): ${hay.joinToString(", ")}"
+        }
+        drive.isEnabled = !ocupado
+        onedrive.isEnabled = !ocupado
+        // Con una sola cuenta lo unico que cabe es `concat`, que no reparte nada ni aguanta
+        // nada. Se deja pasar igualmente --es un volumen valido y cifrado-- pero el sitio de
+        // decir lo que cuesta es la lista, donde sale con su aviso al lado.
+        seguir.isEnabled = hay.isNotEmpty() && !ocupado
+
+        estado.text = dicho ?: if (hay.isEmpty()) {
+            "Conecta las cuentas entre las que quieres repartir tus archivos. Cuantas más, más " +
+                "espacio y más caídas aguanta."
+        } else {
+            "Conecta las que falten y continúa. Después no se pueden añadir desde el móvil."
+        }
+    }
+
+    private fun conectar(tipo: String) {
+        ocupado = true
+        pintarCuentas("Abriendo el navegador. Entra en tu cuenta y da permiso…")
+        thread {
+            val dicho = try {
+                "Cuenta conectada como «${Nucleo.conectar(tipo, conf.absolutePath)}»."
+            } catch (e: Throwable) {
+                Log.w(ETIQUETA, "no se pudo conectar", e)
+                e.message ?: e.toString()
+            }
+            runOnUiThread {
+                ocupado = false
+                pintarCuentas(dicho)
+            }
+        }
+    }
+
+    private fun alPasoDos() {
+        pasoCuentas.visibility = View.GONE
+        lista.visibility = View.VISIBLE
+        estado.text = "Preguntando a tus cuentas cuánto espacio hay…"
         cargar()
     }
 
@@ -153,7 +273,6 @@ class Crear : Activity() {
     }
 
     private fun leer(): List<Opcion> {
-        val conf = java.io.File(filesDir, "multidrive.conf")
         val json = JSONArray(Nucleo.topologias(conf.absolutePath))
         return (0 until json.length()).map { i ->
             val o: JSONObject = json.getJSONObject(i)
@@ -288,7 +407,6 @@ class Crear : Activity() {
     private fun crear(spec: String, f: String) {
         boton.isEnabled = false
         estado.text = "Creando. Son unos segundos: hay que escribir en cada cuenta…"
-        val conf = java.io.File(filesDir, "multidrive.conf")
 
         thread {
             val dicho = try {

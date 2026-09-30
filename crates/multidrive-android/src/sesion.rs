@@ -287,6 +287,29 @@ pub fn borrar(id: i64, ruta: &str) -> Result<(), String> {
     })
 }
 
+/// Los proveedores de los volumenes abiertos ahora mismo.
+///
+/// Sirve para negarse a quitar de la configuracion una cuenta que se esta usando: con el
+/// volumen abierto se sabe **con certeza** que quitarla lo dejaria sin poder abrirse, y una
+/// certeza que se calla es una trampa.
+///
+/// No bloquea el runtime: los nombres estan en la cabecera que se leyo al abrir.
+pub fn nombres_en_uso() -> Vec<String> {
+    let abiertos: Vec<Arc<Abierto>> = mapa().values().cloned().collect();
+    let mut out: Vec<String> = Vec::new();
+    for a in abiertos {
+        // `blocking_lock` se negaria dentro del runtime, y aqui no estamos en el: esto lo
+        // llama el hilo de Kotlin que atiende el boton.
+        let v = a.volumen.blocking_lock();
+        for n in v.store().backend_names() {
+            if !out.iter().any(|x| x == n) {
+                out.push(n.to_string());
+            }
+        }
+    }
+    out
+}
+
 /// Mueve o renombra. Es la misma operacion: renombrar es mover dentro del mismo directorio.
 ///
 /// El arbol lo hace en **una sola raiz**, asi que para cualquiera que este leyendo el fichero

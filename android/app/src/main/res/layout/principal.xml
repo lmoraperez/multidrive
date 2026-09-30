@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Una pantalla, tres tarjetas y lo que haga falta en cada momento.
+  Dos pantallas en una, y `Principal.pintar()` decide cual.
 
-  El orden es el del recorrido real: primero las cuentas, porque sin ellas no hay nada; luego el
-  volumen, que es lo que se abre con ellas; y abajo lo que se hace con el volumen abierto.
+  - **Entrada**: el teléfono no tiene ninguna cuenta enlazada. Dos caminos, y nada más: crear un
+    volumen desde cero, o abrir uno que ya existe. Todo lo demás sobra cuando no hay nada.
+  - **Casa**: ya hay cuentas. Dos secciones, «Tus cuentas» y «El volumen», que es lo que se usa
+    a diario.
 
-  Lo que se ve y lo que no lo decide `Principal.pintar()`, **siempre y por completo**, no por
-  trozos segun lo que acabe de pasar. En la ventana del escritorio ese mismo fallo aparecio tres
-  veces: un aviso que se quedaba de la vez anterior diciendo algo que ya no era verdad.
+  No se reparte por «volumen abierto o cerrado» sino por «hay cuentas o no», y es a propósito:
+  quien ya pasó por aquí una vez no tiene que volver a elegir camino cada vez que abre la
+  aplicación. La sección del volumen ya dice si está abierto.
+
+  Lo que se ve y lo que no lo decide `pintar()`, **siempre y por completo**, no por trozos según
+  lo que acabe de pasar. En la ventana del escritorio ese mismo fallo apareció tres veces: un
+  aviso que se quedaba de la vez anterior diciendo algo que ya no era verdad.
 -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -54,8 +60,8 @@
                 android:textSize="11sp" />
         </LinearLayout>
 
-        <!-- Lo que esta pasando ahora mismo. Siempre visible: una pantalla que no dice en que
-             estado esta obliga a adivinarlo. -->
+        <!-- Lo que está pasando ahora mismo. Siempre visible: una pantalla que no dice en qué
+             estado está obliga a adivinarlo. -->
         <TextView
             android:id="@+id/estado"
             android:layout_width="match_parent"
@@ -66,26 +72,81 @@
             android:textColor="@color/texto"
             android:textSize="15sp" />
 
-        <!-- CUENTAS -->
+        <!-- ================= ENTRADA: sin ninguna cuenta enlazada ================= -->
+        <LinearLayout
+            android:id="@+id/entrada"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/tarjeta"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="MultiDrive junta varias cuentas de nube en una sola unidad cifrada. Ni el proveedor ni nadie más ve lo que guardas."
+                android:textColor="@color/apagado"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/nuevo"
+                style="@style/Boton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="Crear un volumen desde cero" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Conecta tus cuentas, elige cómo se reparten los archivos y pon una frase de paso."
+                android:textColor="@color/apagado"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/existente"
+                style="@style/Boton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="Abrir un volumen que ya existe" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Conecta una sola cuenta: si el volumen se creó en otro equipo, de ahí salen las demás."
+                android:textColor="@color/apagado"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <!-- ================= CASA: ya hay cuentas ================= -->
+
+        <!-- TUS CUENTAS -->
         <TextView
+            android:id="@+id/titulo_cuentas"
             style="@style/Seccion"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="TUS CUENTAS" />
 
         <LinearLayout
+            android:id="@+id/tarjeta_cuentas"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/tarjeta"
             android:orientation="vertical"
             android:padding="16dp">
 
-            <TextView
-                android:id="@+id/cuentas"
+            <!-- Una fila por cuenta, con su botón de quitar. Las pone `pintar()`: son tantas
+                 como haya, y un layout no puede saber cuántas. -->
+            <LinearLayout
+                android:id="@+id/lista_cuentas"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="@color/apagado"
-                android:textSize="14sp" />
+                android:orientation="vertical" />
 
             <Button
                 android:id="@+id/drive"
@@ -104,24 +165,15 @@
                 android:text="Conectar OneDrive" />
 
             <TextView
-                android:id="@+id/nota_maleta"
+                android:id="@+id/nota_cuentas"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
-                android:text="¿Ya usas MultiDrive en otro equipo? Con una cuenta enlazada y tu frase de paso se traen las demás."
                 android:textColor="@color/apagado"
                 android:textSize="13sp" />
-
-            <Button
-                android:id="@+id/traer"
-                style="@style/BotonSuave"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Traer mis cuentas de la nube" />
         </LinearLayout>
 
-        <!-- VOLUMEN -->
+        <!-- EL VOLUMEN -->
         <TextView
             android:id="@+id/titulo_volumen"
             style="@style/Seccion"
@@ -152,6 +204,7 @@
                 android:textSize="15sp" />
 
             <TextView
+                android:id="@+id/nota_frase"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
@@ -197,7 +250,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
             android:layout_marginBottom="16dp"
-            android:text="Desde el móvil solo se lee. Escribir desde dos sitios a la vez es un problema que todavía no está resuelto, y fingir que sí lo está sería peor."
+            android:text="Pre-alfa: esto todavía se está construyendo. No confíes en MultiDrive como única copia de nada."
             android:textColor="@color/apagado"
             android:textSize="12sp" />
     </LinearLayout>
