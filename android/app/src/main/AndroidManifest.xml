@@ -18,6 +18,29 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Recibir lo que se comparte desde otra aplicacion.
+             Hace falta aparte del proveedor de documentos, porque son dos mecanismos
+             distintos. El proveedor sale en el selector de ficheros del sistema (guardar en,
+             la app de Archivos); compartir es una lista de aplicaciones, y ahi un proveedor
+             no sale nunca. Y compartir es como la gente mete cosas en una nube desde un
+             movil. -->
+        <activity
+            android:name=".Compartir"
+            android:exported="true"
+            android:label="MultiDrive"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
         <!-- El volumen dentro de la app de Archivos y del selector del sistema.
              `exported` tiene que ser true para que otras aplicaciones lo vean, y el permiso
              MANAGE_DOCUMENTS es lo que impide que cualquiera pueda hacerse pasar por el

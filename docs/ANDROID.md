@@ -122,6 +122,25 @@ porque en Android no hay otra cosa que hacer.
 Consecuencia que conviene tener presente desde el principio: **una app que use rutas crudas no
 verá nada**. No hay `open()` por ruta ni `mmap`. Lo que se entrega es un descriptor.
 
+## Compartir no es el selector de ficheros
+
+Son dos mecanismos distintos de Android, y desde fuera parecen el mismo. Confundirlos cuesta una
+tarde, así que queda escrito:
+
+| | Qué es | Dónde sale |
+|---|---|---|
+| **Storage Access Framework** (`DocumentsProvider`) | una lista de **sitios** | el selector del sistema: «guardar en», «abrir desde», la app de Archivos |
+| **Compartir** (`ACTION_SEND`) | una lista de **aplicaciones** | el menú de compartir de cualquier app |
+
+Un `DocumentsProvider` **nunca** aparece en el menú de compartir, por bien que funcione. Y
+compartir es como la gente mete cosas en una nube desde un móvil: se abre la galería, se elige
+la foto y se comparte.
+
+Por eso hacen falta los dos, y la aplicación tiene una actividad aparte
+([`Compartir.kt`](../android/app/src/main/kotlin/net/multidrive/Compartir.kt)) que recibe
+`ACTION_SEND` y sube lo que llegue. Si el volumen está cerrado, o abierto solo para leer, lo
+dice y explica qué hacer: aparecer en la lista y no poder recibir es peor que no aparecer.
+
 ## El contrato, y a qué corresponde de lo nuestro
 
 `DocumentsProvider` tiene tres métodos que hay que implementar sí o sí, y el cuarto es el que
