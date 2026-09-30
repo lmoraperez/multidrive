@@ -15,7 +15,6 @@ import java.io.File
 import kotlin.concurrent.thread
 
 private const val ETIQUETA = "multidrive"
-private const val AUTORIDAD = "net.multidrive.documentos"
 
 /**
  * La pantalla de MultiDrive.
