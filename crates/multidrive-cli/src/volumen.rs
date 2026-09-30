@@ -828,6 +828,8 @@ pub async fn mount(
     // Montar en escritura difiere siempre: cada `write` del sistema no puede ser una subida
     // sincrona a varias nubes. Lo pendiente lo sube el sincronizador de fondo.
     let store = almacen_todo(cache_mb * 1024 * 1024, disco_mb * 1024 * 1024, escritura).await?;
+    // Los mismos proveedores que el volumen, para el testigo de mas abajo.
+    let volumen_backends = store.backends().to_vec();
     // Una copia del almacen para el sincronizador: comparte cola y caches con el volumen,
     // pero no pasa por su cerrojo, asi que subir no bloquea las escrituras.
     let para_sync = store.clone();
@@ -842,6 +844,23 @@ pub async fn mount(
         ),
         Err(e) => return Err(e.into()),
     };
+    // El testigo, **antes de montar**. Montar en escritura y descubrir despues que otro esta
+    // escribiendo dejaria una unidad puesta que no se puede usar, y quitarla es mas molesto que
+    // no haberla puesto. En solo lectura no se coge: leer no molesta a nadie.
+    let testigo = if escritura {
+        match multidrive_core::testigo::Guardia::coger(
+            volumen_backends.clone(),
+            "el terminal, montado en escritura",
+        )
+        .await
+        {
+            Ok(g) => Some(g),
+            Err(ocupado) => bail!("{ocupado}"),
+        }
+    } else {
+        None
+    };
+
     let volumen = Arc::new(std::sync::RwLock::new(v));
     let montaje = multidrive_mount::montar(Arc::clone(&volumen), punto, !escritura)?;
 
@@ -910,6 +929,17 @@ pub async fn mount(
 
     di!();
     di!("desmontado");
+
+    // Si el testigo se perdio por el camino --esta maquina sin red mas de lo que dura, y otra
+    // lo cogio-- hay que decirlo **antes** de la ultima subida, porque esa subida puede ser
+    // justo la que se encuentre con que otro publico mientras tanto.
+    if let Some(g) = &testigo
+        && g.perdido()
+    {
+        di!();
+        di!("AVISO: se perdio el testigo de escritura mientras esto estaba montado.");
+        di!("Otro equipo pudo empezar a escribir. Si algo no sube, es por eso.");
+    }
 
     // Una ultima subida antes de salir: dejar cosas a medias justo al desmontar seria la
     // peor forma de perderlas, porque el usuario cree que ha terminado.

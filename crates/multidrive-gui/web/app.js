@@ -386,6 +386,17 @@ async function refrescarPendiente() {
       }
     }
 
+    // Si el testigo se perdió, lo primero de todo: a partir de ese momento lo que se escriba
+    // aquí puede chocar con lo de otro equipo, y eso no es un detalle del final de una lista.
+    if (p.testigo_perdido) {
+      const malo = document.createElement("div");
+      malo.className = "aviso mal";
+      malo.textContent =
+        "Se perdió el permiso de escritura: otro equipo pudo empezar a escribir en este " +
+        "volumen. Desmonta aquí y vuelve a montar para recuperarlo; si algo no sube, es por esto.";
+      partes.unshift(malo);
+    }
+
     // Lo último que hizo el sincronizador de fondo. Se guardaba y no lo leía nadie: un
     // sincronizador que falla en silencio es justo el que no hay que tener.
     if (p.ultimo_sync) partes.push(nota(`Última pasada: ${p.ultimo_sync}.`));

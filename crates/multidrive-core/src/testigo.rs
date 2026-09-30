@@ -239,6 +239,85 @@ pub async fn raiz_sin_cambiar(store: &crate::ChunkStore, esperada: u64) -> Resul
     }
 }
 
+/// El testigo cogido, renovandose solo, y soltandose al terminar.
+///
+/// Es la forma de usarlo que no se puede olvidar a medias: mientras el guardian exista el
+/// testigo esta vigente, y en cuanto se suelta --al salir de la funcion, al desmontar, o porque
+/// el programa termina-- se libera. Un testigo que hay que acordarse de renovar y de soltar es
+/// uno que algun camino de error se deja puesto, y entonces el volumen queda bloqueado dos
+/// minutos por nada.
+///
+/// Copia el patron del sincronizador a proposito: un hilo del sistema con su bandera de parada,
+/// y `Drop` espera a que termine. Dos formas distintas de hacer lo mismo en el mismo programa
+/// son una de mas.
+pub struct Guardia {
+    parar: Arc<std::sync::atomic::AtomicBool>,
+    hilo: Option<std::thread::JoinHandle<()>>,
+    /// Se pone a `true` si el testigo deja de ser nuestro. Quien escriba deberia mirarlo.
+    perdido: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Guardia {
+    /// Coge el testigo y lo mantiene. Tiene que llamarse desde dentro de un runtime.
+    pub async fn coger(backends: Vec<Arc<dyn Backend>>, que: &str) -> Result<Self, Ocupado> {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let mut nuestro = coger(&backends, que).await?;
+        let parar = Arc::new(AtomicBool::new(false));
+        let perdido = Arc::new(AtomicBool::new(false));
+        let rt = tokio::runtime::Handle::current();
+
+        let hilo = std::thread::spawn({
+            let parar = Arc::clone(&parar);
+            let perdido = Arc::clone(&perdido);
+            move || {
+                // Se duerme a pasos cortos para poder parar enseguida al desmontar, en vez de
+                // dejar el desmontaje esperando hasta cuarenta segundos.
+                let paso = std::time::Duration::from_millis(200);
+                let mut queda = std::time::Duration::from_secs(RENOVAR_CADA);
+                while !parar.load(Ordering::Relaxed) {
+                    if queda > std::time::Duration::ZERO {
+                        let dormir = paso.min(queda);
+                        std::thread::sleep(dormir);
+                        queda -= dormir;
+                        continue;
+                    }
+                    queda = std::time::Duration::from_secs(RENOVAR_CADA);
+                    if !rt.block_on(renovar(&backends, &mut nuestro)) {
+                        // Ya no es nuestro: otro lo cogio legitimamente mientras esta maquina
+                        // no llegaba. Se deja de renovar y se marca, que es lo unico que se
+                        // puede hacer desde aqui.
+                        perdido.store(true, Ordering::Relaxed);
+                        return;
+                    }
+                }
+                // Al parar, soltarlo para que el siguiente no espere a que caduque.
+                rt.block_on(soltar(&backends, &nuestro));
+            }
+        });
+
+        Ok(Self {
+            parar,
+            hilo: Some(hilo),
+            perdido,
+        })
+    }
+
+    /// Si el testigo dejo de ser nuestro. Quien escriba largo rato deberia mirarlo.
+    pub fn perdido(&self) -> bool {
+        self.perdido.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+impl Drop for Guardia {
+    fn drop(&mut self) {
+        self.parar.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(h) = self.hilo.take() {
+            let _ = h.join();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -309,6 +388,33 @@ mod tests {
 
         let otro = coger(&bs, "el terminal").await;
         assert!(otro.is_ok(), "{:?}", otro.err().map(|e| e.to_string()));
+    }
+
+    /// El guardian lo coge mientras vive y lo suelta al soltarlo.
+    ///
+    /// Es la propiedad entera: no hay que acordarse de nada. Si esto dejara de cumplirse, un
+    /// camino de error cualquiera dejaria el volumen bloqueado dos minutos sin que nadie lo
+    /// estuviera escribiendo.
+    #[tokio::test]
+    async fn el_guardian_lo_coge_y_lo_suelta_solo() {
+        let bs = backends(2);
+        {
+            let _g = Guardia::coger(bs.clone(), "la ventana").await.unwrap();
+            assert!(mirar(&bs).await.is_some(), "deberia estar cogido");
+
+            // Y mientras vive, otro no puede.
+            assert!(coger(&bs, "el terminal").await.is_err());
+        }
+        assert!(mirar(&bs).await.is_none(), "deberia haberse soltado");
+    }
+
+    /// Dos guardianes a la vez, no. Es el caso real: dos programas abiertos.
+    #[tokio::test]
+    async fn dos_guardianes_no() {
+        let bs = backends(2);
+        let _g = Guardia::coger(bs.clone(), "la ventana").await.unwrap();
+        let otro = Guardia::coger(bs.clone(), "la aplicacion de Android").await;
+        assert!(otro.is_err());
     }
 
     /// Uno caducado no bloquea: es lo que pasa cuando un programa muere sin soltarlo.
