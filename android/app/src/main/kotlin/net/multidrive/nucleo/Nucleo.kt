@@ -52,7 +52,7 @@ object Nucleo {
      *
      * La frase de paso llega como argumento y no se guarda en ningun sitio.
      */
-    external fun abrir(config: String, frase: String): Long
+    external fun abrir(config: String, frase: String, escritura: Boolean): Long
 
     /** Suelta el volumen, y con el la clave derivada. */
     external fun cerrar(sesion: Long)
@@ -85,6 +85,25 @@ object Nucleo {
      * que ser barato.
      */
     external fun cuentas(config: String): String
+
+    /**
+     * Sube un fichero al volumen, leyendolo de una ruta local del telefono.
+     *
+     * Se pasa una ruta y no los bytes: un fichero puede no caber en memoria, y lo que el
+     * sistema entrega al proveedor de documentos llega a trozos y por offsets. Se junta en un
+     * temporal y se sube de una vez, que es la unica forma en que el troceado y el reparto ven
+     * el fichero entero.
+     */
+    external fun escribir(sesion: Long, ruta: String, local: String)
+
+    /** Crea un directorio, con los que falten por encima. */
+    external fun crearDirectorio(sesion: Long, ruta: String)
+
+    /** Borra un fichero o un directorio vacio. */
+    external fun borrar(sesion: Long, ruta: String)
+
+    /** Si esta sesion puede escribir de verdad: se abrio para ello y conserva el permiso. */
+    external fun escribe(sesion: Long): Boolean
 
     /** Las entradas de un directorio, en JSON: `[{"nombre":..,"dir":..,"bytes":..}]`. */
     external fun listar(sesion: Long, ruta: String): String

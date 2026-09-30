@@ -29,12 +29,22 @@ object Sesion {
     var resumen: String = ""
         private set
 
-    /** Abre el volumen. **Tarda segundos: nunca desde el hilo de la interfaz.** */
-    fun abrir(config: String, frase: String): Long {
-        val s = Nucleo.abrir(config, frase)
+    /** Si se puede escribir: se abrio para ello y no se ha perdido el permiso. */
+    val escribe: Boolean
+        get() = id?.let { Nucleo.escribe(it) } ?: false
+
+    /**
+     * Abre el volumen. **Tarda segundos: nunca desde el hilo de la interfaz.**
+     *
+     * Con `escritura`, coge ademas el testigo del volumen, y **falla si lo tiene otro equipo**.
+     * Es deliberado que falle en vez de abrir en solo lectura por su cuenta: quien pidio
+     * escribir tiene que enterarse de que no puede, no descubrirlo al intentarlo.
+     */
+    fun abrir(config: String, frase: String, escritura: Boolean): Long {
+        val s = Nucleo.abrir(config, frase, escritura)
         id = s
-        resumen = "abierto"
-        Log.i(ETIQUETA, "sesion $s abierta")
+        resumen = if (escritura) "abierto para leer y escribir" else "abierto para leer"
+        Log.i(ETIQUETA, "sesion $s abierta, escritura=$escritura")
         return s
     }
 

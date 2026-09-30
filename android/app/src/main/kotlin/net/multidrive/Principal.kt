@@ -37,6 +37,7 @@ private const val AUTORIDAD = "net.multidrive.documentos"
 class Principal : Activity() {
 
     private lateinit var estado: TextView
+    private lateinit var escritura: android.widget.CheckBox
     private lateinit var cuentas: TextView
     private lateinit var frase: EditText
     private lateinit var conf: File
@@ -60,6 +61,7 @@ class Principal : Activity() {
         setContentView(R.layout.principal)
 
         estado = findViewById(R.id.estado)
+        escritura = findViewById(R.id.escritura)
         cuentas = findViewById(R.id.cuentas)
         frase = findViewById(R.id.frase)
         drive = findViewById(R.id.drive)
@@ -139,6 +141,7 @@ class Principal : Activity() {
         tarjetaVolumen.visibility = if (hayCuentas) View.VISIBLE else View.GONE
 
         frase.visibility = if (!abierto) View.VISIBLE else View.GONE
+        escritura.visibility = if (!abierto) View.VISIBLE else View.GONE
         abrir.visibility = if (!abierto) View.VISIBLE else View.GONE
         ver.visibility = if (abierto) View.VISIBLE else View.GONE
         cerrar.visibility = if (abierto) View.VISIBLE else View.GONE
@@ -192,9 +195,13 @@ class Principal : Activity() {
     private fun abrirVolumen() {
         val f = tomarFrase() ?: return
         enSegundoPlano("Abriendo. Son unos segundos: hay que preguntarle a cada cuenta…") {
-            Sesion.abrir(conf.absolutePath, f)
+            Sesion.abrir(conf.absolutePath, f, escritura.isChecked)
             avisarAlSistema()
-            "Volumen abierto. Búscalo en la app de Archivos."
+            if (escritura.isChecked) {
+                "Volumen abierto para leer y escribir. Búscalo en la app de Archivos."
+            } else {
+                "Volumen abierto para leer. Búscalo en la app de Archivos."
+            }
         }
     }
 

@@ -205,12 +205,13 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_abrir<'local>(
     _clase: JObject<'local>,
     config: JString<'local>,
     frase: JString<'local>,
+    escritura: bool,
 ) -> jni::sys::jlong {
     entorno
         .with_env(|env| -> Result<i64, Fallo> {
             let config = config.try_to_string(env)?;
             let frase = frase.try_to_string(env)?;
-            sesion::abrir(&config, &frase).map_err(Fallo::Dicho)
+            sesion::abrir(&config, &frase, escritura).map_err(Fallo::Dicho)
         })
         .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -283,6 +284,77 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_recuperar<'local>(
             Ok(env.new_string(dicho)?)
         })
         .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Sube un fichero al volumen, leyendolo de una ruta local del telefono.
+///
+/// Se pasa una ruta y no los bytes: un fichero puede no caber en memoria, y lo que el sistema
+/// entrega al proveedor de documentos llega a trozos y por offsets. Kotlin lo junta en un
+/// temporal y aqui se sube de una vez.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_escribir<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+    ruta: JString<'local>,
+    local: JString<'local>,
+) {
+    entorno
+        .with_env(|env| -> Result<(), Fallo> {
+            let ruta = ruta.try_to_string(env)?;
+            let local = local.try_to_string(env)?;
+            sesion::escribir(id, &ruta, &local).map_err(Fallo::Dicho)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Crea un directorio en el volumen, con los que falten por encima.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_crearDirectorio<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+    ruta: JString<'local>,
+) {
+    entorno
+        .with_env(|env| -> Result<(), Fallo> {
+            let ruta = ruta.try_to_string(env)?;
+            sesion::crear_directorio(id, &ruta).map_err(Fallo::Dicho)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Borra un fichero o un directorio vacio del volumen.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_borrar<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+    ruta: JString<'local>,
+) {
+    entorno
+        .with_env(|env| -> Result<(), Fallo> {
+            let ruta = ruta.try_to_string(env)?;
+            sesion::borrar(id, &ruta).map_err(Fallo::Dicho)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Si esta sesion puede escribir. La pantalla y el proveedor de documentos lo necesitan para
+/// no ofrecer lo que no van a poder hacer.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_escribe<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+) -> jni::sys::jboolean {
+    entorno
+        .with_env(|_env| -> Result<bool, Fallo> {
+            Ok(sesion::sesion(id)
+                .map(|a| a.escribe() && !a.testigo_perdido())
+                .unwrap_or(false))
+        })
+        .resolve::<ThrowRuntimeExAndDefault>() as jni::sys::jboolean
 }
 
 /// Mira si hay algo nuevo publicado y se pasa a ello. `true` si cambio.
@@ -385,9 +457,12 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_leer<'local>(
 /// Lo mismo sin JNI, para poder probarlo.
 pub fn leer(id: i64, ruta: &str, desde: u64, cuanto: usize) -> Result<Vec<u8>, String> {
     let ruta = ruta.to_string();
-    sesion::con(id, move |v| {
+    sesion::con(id, move |a| {
         Box::pin(async move {
-            v.read_at(&ruta, desde, cuanto)
+            a.volumen
+                .lock()
+                .await
+                .read_at(&ruta, desde, cuanto)
                 .await
                 .map_err(|e| e.to_string())
         })
@@ -397,8 +472,15 @@ pub fn leer(id: i64, ruta: &str, desde: u64, cuanto: usize) -> Result<Vec<u8>, S
 /// Las entradas de un directorio, ya en JSON. Sin JNI, para poder probarlo.
 pub fn listar(id: i64, ruta: &str) -> Result<String, String> {
     let ruta = ruta.to_string();
-    let entradas = sesion::con(id, move |v| {
-        Box::pin(async move { v.read_dir(&ruta).await.map_err(|e| e.to_string()) })
+    let entradas = sesion::con(id, move |a| {
+        Box::pin(async move {
+            a.volumen
+                .lock()
+                .await
+                .read_dir(&ruta)
+                .await
+                .map_err(|e| e.to_string())
+        })
     })?;
     let lista: Vec<serde_json::Value> = entradas
         .iter()
@@ -411,8 +493,15 @@ pub fn listar(id: i64, ruta: &str) -> Result<String, String> {
 pub fn mirar(id: i64, ruta: &str) -> Result<String, String> {
     let nombre = ruta.rsplit('/').next().unwrap_or("").to_string();
     let ruta2 = ruta.to_string();
-    let entrada = sesion::con(id, move |v| {
-        Box::pin(async move { v.lookup(&ruta2).await.map_err(|e| e.to_string()) })
+    let entrada = sesion::con(id, move |a| {
+        Box::pin(async move {
+            a.volumen
+                .lock()
+                .await
+                .lookup(&ruta2)
+                .await
+                .map_err(|e| e.to_string())
+        })
     })?;
     Ok(match entrada {
         Some(e) => entrada_json(&nombre, &e).to_string(),
@@ -504,6 +593,10 @@ mod tests {
             "refrescar",
             "recuperar",
             "cuentas",
+            "escribir",
+            "crearDirectorio",
+            "borrar",
+            "escribe",
         ] {
             let simbolo = format!("{esperado}{metodo}");
             assert!(
