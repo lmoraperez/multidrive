@@ -1,3 +1,7 @@
+// `java` dentro del bloque `android` resuelve a la extension de Gradle, no al paquete, asi
+// que el nombre completo `java.util.Properties` no compila ahi. Se importa.
+import java.util.Properties
+
 // Desde AGP 9.0 el plugin de Kotlin va dentro: declararlo aparte no es redundante, es un
 // error de compilacion que dice «ya no hace falta».
 plugins {
@@ -25,9 +29,40 @@ android {
     // maneras. Lo que Gradle hace es empaquetar lo que encuentre.
     sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
 
+    // La clave con la que se firma lo que se reparte.
+    //
+    // Vive fuera del repositorio, en `packaging/android/`, junto a su contrasena. Quien tenga
+    // ese almacen puede publicar algo que Android instale **encima** de MultiDrive sin avisar
+    // a nadie, porque para el sistema seria la misma aplicacion.
+    //
+    // Si no esta, no se inventa nada: `release` se queda sin firma y la compilacion falla mas
+    // abajo diciendo por que. Lo que no puede pasar es que salga un APK firmado con la clave de
+    // depuracion --que es la misma para todo el mundo-- sin que nadie se entere.
+    val firma = rootProject.file("../packaging/android/firma.conf")
+    val almacen = rootProject.file("../packaging/android/multidrive.jks")
+    val datos = Properties().apply {
+        if (firma.exists()) firma.inputStream().use { load(it) }
+    }
+
+    signingConfigs {
+        if (firma.exists() && almacen.exists()) {
+            create("reparto") {
+                storeFile = almacen
+                storePassword = datos.getProperty("almacen")
+                keyAlias = datos.getProperty("alias")
+                keyPassword = datos.getProperty("clave")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            // `debuggable` ya es falso aqui por defecto, y **es lo que importa de esta
+            // variante**: en un APK depurable cualquiera con el telefono y un cable lee el
+            // fichero de configuracion de la aplicacion, que es donde viven los tokens de
+            // acceso a las nubes de quien la instale.
+            signingConfig = signingConfigs.findByName("reparto")
         }
     }
 
@@ -48,4 +83,22 @@ android {
 // dependencia que este proyecto no quiere en los dos sentidos.
 dependencies {
     implementation(files("libs/rustls-platform-verifier.aar"))
+}
+
+// Un APK de reparto sin firmar no se instala, y descubrirlo cuando ya esta repartido es tarde.
+// Se para aqui, con el motivo y con lo que hay que hacer.
+tasks.matching { it.name == "assembleRelease" }.configureEach {
+    doFirst {
+        val firma = rootProject.file("../packaging/android/firma.conf")
+        val almacen = rootProject.file("../packaging/android/multidrive.jks")
+        if (!firma.exists() || !almacen.exists()) {
+            throw GradleException(
+                "Falta la clave de firma. Se esperan estos dos, y no estan en el repositorio " +
+                    "a proposito:\n  ${almacen.path}\n  ${firma.path}\n\n" +
+                    "Se generan con `packaging/android/firmar.ps1`. Si ya existian en otro " +
+                    "equipo, traelos de la copia de seguridad: no se pueden volver a generar " +
+                    "iguales, y con otra clave nadie puede actualizar sin desinstalar antes."
+            )
+        }
+    }
 }
