@@ -411,6 +411,8 @@ class Crear : Activity() {
         thread {
             val dicho = try {
                 val r = JSONObject(Nucleo.crear(conf.absolutePath, f, spec))
+                // Ya hay volumen: la pantalla principal vuelve a ofrecer abrirlo.
+                Sesion.sinVolumen = false
                 buildString {
                     append("Volumen creado con «${r.getString("topologia")}» en ")
                     append(r.getString("proveedores"))

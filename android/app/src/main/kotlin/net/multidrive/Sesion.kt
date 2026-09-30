@@ -57,16 +57,30 @@ object Sesion {
         get() = id?.let { Nucleo.escribe(it) } ?: false
 
     /**
+     * Si sabemos, **de verdad**, que en las cuentas enlazadas no hay ningun volumen.
+     *
+     * Vive aqui porque lo enciende una pantalla --la de eliminar-- y lo lee otra. No se puede
+     * deducir sin preguntar a las nubes, y preguntar cuesta segundos, asi que solo se enciende
+     * cuando algo lo demuestra: un intento de abrir que dijo que no hay ninguno, o una
+     * eliminacion que termino.
+     */
+    @Volatile
+    var sinVolumen: Boolean = false
+
+    /**
      * Abre el volumen. **Tarda segundos: nunca desde el hilo de la interfaz.**
      *
-     * Con `escritura`, coge ademas el testigo del volumen, y **falla si lo tiene otro equipo**.
-     * Es deliberado que falle en vez de abrir en solo lectura por su cuenta: quien pidio
-     * escribir tiene que enterarse de que no puede, no descubrirlo al intentarlo.
+     * Con `escritura` coge ademas el testigo del volumen, pero **no falla si lo tiene otro
+     * equipo**: desde que escribir se reaplica sobre la raiz nueva, dos equipos en ficheros
+     * distintos conviven. Negarse ademas seria caro aqui, porque con el volumen montado como
+     * servicio en el escritorio el movil no podria escribir nunca.
      */
     fun abrir(config: String, frase: String, escritura: Boolean): Long {
         val s = Nucleo.abrir(config, frase, escritura)
         id = s
         resumen = if (escritura) "abierto para leer y escribir" else "abierto para leer"
+        // Si se abrio, haberlo hay.
+        sinVolumen = false
         Log.i(ETIQUETA, "sesion $s abierta, escritura=$escritura")
         return s
     }

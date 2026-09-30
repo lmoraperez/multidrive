@@ -221,12 +221,23 @@
                 android:text="Abrir volumen" />
 
             <Button
-                android:id="@+id/crear"
+                android:id="@+id/eliminar"
                 style="@style/BotonSuave"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="No tengo volumen: crear uno" />
+                android:text="Eliminar volumen" />
+
+            <!-- Solo cuando se sabe que no hay volumen: tras un intento de abrir que dijo que
+                 no hay ninguno, o justo después de eliminar uno. El resto del tiempo sobra, y
+                 sin él ese estado sería un callejón: abrir falla y no hay a dónde ir. -->
+            <Button
+                android:id="@+id/crear"
+                style="@style/Boton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Crear un volumen" />
 
             <Button
                 android:id="@+id/ver"

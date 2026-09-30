@@ -106,6 +106,20 @@ object Nucleo {
     external fun mover(sesion: Long, origen: String, destino: String)
 
     /**
+     * Lo que se borraria al retirar el volumen, en JSON. **No borra nada.**
+     *
+     * **Bloquea y tarda**: enumera cada cuenta entera. Nunca desde el hilo de la interfaz.
+     */
+    external fun mirarRetirada(config: String): String
+
+    /**
+     * Retira el volumen de las cuentas: fragmentos, raiz, cabecera y la maleta.
+     *
+     * `confirmacion` es el nombre de cuenta que dijo [mirarRetirada]. **No se puede deshacer.**
+     */
+    external fun retirar(config: String, confirmacion: String): String
+
+    /**
      * Quita de este telefono todo lo de una cuenta. Devuelve una frase para ensenar.
      *
      * **No la saca del volumen**: solo borra unas claves de aqui. Si esa cuenta formaba parte

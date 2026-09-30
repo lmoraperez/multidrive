@@ -74,12 +74,25 @@ class Principal : Activity() {
     private lateinit var notaFrase: TextView
     private lateinit var abrir: Button
     private lateinit var crear: Button
+    private lateinit var eliminar: Button
     private lateinit var ver: Button
     private lateinit var cerrar: Button
 
     /** Lo que se esta haciendo ahora mismo, si es que se esta haciendo algo. */
     @Volatile
     private var ocupado = false
+
+    /**
+     * Si sabemos, **de verdad**, que en estas cuentas no hay ningun volumen.
+     *
+     * No se puede deducir sin preguntar a las nubes, y preguntar cuesta segundos, asi que no se
+     * hace al pintar. Se enciende cuando algo lo demuestra: un intento de abrir que dijo que no
+     * hay ninguno, o volver de haber eliminado uno. Mientras esta encendido, la seccion del
+     * volumen ofrece crear en vez de abrir, que es lo unico que puede funcionar.
+     */
+    private var sinVolumen
+        get() = Sesion.sinVolumen
+        set(v) { Sesion.sinVolumen = v }
 
     override fun onCreate(guardado: Bundle?) {
         super.onCreate(guardado)
@@ -104,6 +117,7 @@ class Principal : Activity() {
         notaFrase = findViewById(R.id.nota_frase)
         abrir = findViewById(R.id.abrir)
         crear = findViewById(R.id.crear)
+        eliminar = findViewById(R.id.eliminar)
         ver = findViewById(R.id.ver)
         cerrar = findViewById(R.id.cerrar)
 
@@ -119,6 +133,7 @@ class Principal : Activity() {
         nuevo.setOnClickListener { startActivity(Intent(this, Crear::class.java)) }
         existente.setOnClickListener { startActivity(Intent(this, Abrir::class.java)) }
         crear.setOnClickListener { startActivity(Intent(this, Crear::class.java)) }
+        eliminar.setOnClickListener { startActivity(Intent(this, Eliminar::class.java)) }
 
         drive.setOnClickListener { conectar("GDRIVE") }
         onedrive.setOnClickListener { conectar("ONEDRIVE") }
@@ -230,18 +245,27 @@ class Principal : Activity() {
         tituloVolumen.visibility = if (hayCuentas) View.VISIBLE else View.GONE
         tarjetaVolumen.visibility = if (hayCuentas) View.VISIBLE else View.GONE
 
-        frase.visibility = if (!abierto) View.VISIBLE else View.GONE
-        notaFrase.visibility = if (!abierto) View.VISIBLE else View.GONE
-        abrir.visibility = if (!abierto) View.VISIBLE else View.GONE
-        crear.visibility = if (!abierto) View.VISIBLE else View.GONE
+        // Abierto: solo cerrar. Cerrado: abrir y eliminar, igual que en el escritorio.
+        //
+        // `crear` no es una tercera opcion permanente: sale solo cuando **se sabe** que no hay
+        // volumen --porque abrir lo dijo, o porque se acaba de eliminar uno--. Ofrecerlo
+        // siempre ponia dos botones a competir sin decir cual tocaba; no ofrecerlo nunca
+        // dejaba ese estado en un callejon, con un «abrir» que no puede funcionar.
+        frase.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
+        notaFrase.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
+        abrir.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
+        eliminar.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
+        crear.visibility = if (!abierto && sinVolumen) View.VISIBLE else View.GONE
         ver.visibility = if (abierto) View.VISIBLE else View.GONE
         cerrar.visibility = if (abierto) View.VISIBLE else View.GONE
         abrir.isEnabled = !ocupado
+        eliminar.isEnabled = !ocupado
         crear.isEnabled = !ocupado
 
         estado.text = dicho ?: when {
             !hayCuentas -> "Empieza por uno de los dos caminos."
             abierto -> "Volumen abierto. Búscalo en la app de Archivos."
+            sinVolumen -> "En estas cuentas no hay ningún volumen."
             else -> "Escribe tu frase de paso y abre el volumen."
         }
     }
@@ -344,10 +368,21 @@ class Principal : Activity() {
     private fun abrirVolumen() {
         val f = tomarFrase() ?: return
         enSegundoPlano("Abriendo. Son unos segundos: hay que preguntarle a cada cuenta…") {
-            // Siempre con escritura. Preguntarlo no aportaba nada: desde que el testigo avisa
-            // en vez de bloquear, abrir para escribir no le quita nada a nadie, y una casilla
-            // que casi todo el mundo marca es una casilla de mas.
-            Sesion.abrir(conf.absolutePath, f, true)
+            try {
+                // Siempre con escritura. Preguntarlo no aportaba nada: desde que el testigo
+                // avisa en vez de bloquear, abrir para escribir no le quita nada a nadie, y una
+                // casilla que casi todo el mundo marca es una casilla de mas.
+                Sesion.abrir(conf.absolutePath, f, true)
+            } catch (e: Throwable) {
+                // «No hay volumen» no es lo mismo que «no se pudo abrir», y la pantalla tiene
+                // que ofrecer cosas distintas en cada caso: crear uno, o volver a intentarlo.
+                // Se mira el texto del nucleo, que es de donde viene la distincion.
+                val dicho = e.message ?: e.toString()
+                if (dicho.contains("no hay ningun volumen") || dicho.contains("no hay ningún volumen")) {
+                    sinVolumen = true
+                }
+                throw e
+            }
             avisarAlSistema()
             "Volumen abierto. Búscalo en la app de Archivos."
         }
