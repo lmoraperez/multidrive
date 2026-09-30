@@ -848,15 +848,19 @@ pub async fn mount(
     // escribiendo dejaria una unidad puesta que no se puede usar, y quitarla es mas molesto que
     // no haberla puesto. En solo lectura no se coge: leer no molesta a nadie.
     let testigo = if escritura {
-        match multidrive_core::testigo::Guardia::coger(
+        let (guardia, otro) = multidrive_core::testigo::Guardia::coger_o_compartir(
             volumen_backends.clone(),
             "el terminal, montado en escritura",
         )
-        .await
-        {
-            Ok(g) => Some(g),
-            Err(ocupado) => bail!("{ocupado}"),
+        .await;
+        // No se niega: escribir se reaplica si otro se adelanta, asi que dos equipos en
+        // ficheros distintos conviven. Lo que hace falta es **saberlo**.
+        if let Some(t) = otro {
+            di!("AVISO: {} tambien esta escribiendo en este volumen.", t.que);
+            di!("       Si tocais el mismo fichero, uno de los dos vera un error.");
+            di!();
         }
+        guardia
     } else {
         None
     };

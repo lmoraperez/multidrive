@@ -102,14 +102,11 @@ impl std::fmt::Display for Ocupado {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "el volumen lo esta escribiendo {} y le quedan {} s.\n\
-             Cierra ahi antes de escribir aqui: dos escritores a la vez no dan un error, dan \
-             ficheros que se pierden sin avisar.\n\
-             (su testigo vale hasta {}; aqui son las {})",
-            self.por.que,
-            self.por.le_queda(self.ahora),
-            self.por.hasta,
-            self.ahora
+            "{} tambien esta escribiendo en este volumen.\n\
+             No pasa nada si tocais cosas distintas: cada cambio se pone encima del otro. Lo \
+             que no se puede es cambiar los dos el mismo fichero, y si pasa se dira.\n\
+             (su permiso vale hasta {}; aqui son las {})",
+            self.por.que, self.por.hasta, self.ahora
         )
     }
 }
@@ -258,7 +255,35 @@ pub struct Guardia {
 }
 
 impl Guardia {
+    /// Coge el testigo si esta libre, y si no **dice quien lo tiene sin negarse**.
+    ///
+    /// Es la forma que hay que usar, y el porque esta en como funciona escribir. Publicar una
+    /// raiz nueva se **reaplica** si otro se adelanto, asi que dos equipos escribiendo ficheros
+    /// distintos conviven y no se pisan; lo unico que se rechaza es tocar los dos la misma ruta,
+    /// y eso se rechaza con un mensaje.
+    ///
+    /// Bloquear ademas seria de mas, y **caro**: con el volumen montado como servicio, el
+    /// escritorio tendria el testigo puesto siempre y el movil no podria escribir nunca. Esa es
+    /// la situacion normal de este programa, no un caso raro.
+    ///
+    /// Lo que queda del testigo es lo que sigue valiendo: saber que hay alguien mas, para poder
+    /// decirlo antes de que dos cambios se crucen.
+    pub async fn coger_o_compartir(
+        backends: Vec<Arc<dyn Backend>>,
+        que: &str,
+    ) -> (Option<Self>, Option<Testigo>) {
+        match Self::coger(backends, que).await {
+            Ok(g) => (Some(g), None),
+            // No se le quita a quien lo tiene: el suyo sigue siendo el bueno, y esta sesion
+            // escribe igual. Lo unico que cambia es que se sabe que no esta sola.
+            Err(ocupado) => (None, Some(ocupado.por)),
+        }
+    }
+
     /// Coge el testigo y lo mantiene. Tiene que llamarse desde dentro de un runtime.
+    ///
+    /// Falla si lo tiene otro. Para el uso normal se prefiere [`Guardia::coger_o_compartir`],
+    /// que no se niega: ver ahi por que.
     pub async fn coger(backends: Vec<Arc<dyn Backend>>, que: &str) -> Result<Self, Ocupado> {
         use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -323,9 +348,13 @@ mod tests {
     use super::*;
     use crate::testutil::backends;
 
-    /// Cogerlo dos veces desde sitios distintos no vale. Es la razon de ser de todo esto.
+    /// Cogerlo dos veces no vale: el segundo se entera de quien lo tiene.
+    ///
+    /// Que se entere es todo lo que hace falta. **No se le impide escribir**, porque publicar se
+    /// reaplica si otro se adelanta y dos equipos en ficheros distintos conviven; lo que se
+    /// evita es que se cruce un cambio sin que nadie lo supiera.
     #[tokio::test]
-    async fn dos_no_lo_cogen_a_la_vez() {
+    async fn el_segundo_se_entera_de_quien_lo_tiene() {
         let bs = backends(3);
         let uno = coger(&bs, "el terminal").await.unwrap();
 
@@ -334,17 +363,33 @@ mod tests {
         assert_eq!(e.por.quien, uno.quien);
         let dicho = e.to_string();
         assert!(dicho.contains("el terminal"), "{dicho}");
-        // El mensaje tiene que decir que hacer, no solo que no se puede.
-        assert!(dicho.contains("Cierra ahi"), "{dicho}");
+        // Y el mensaje tiene que decir que eso no impide escribir, que es lo que cambio.
+        assert!(dicho.contains("cosas distintas"), "{dicho}");
     }
 
-    /// **El caso que de verdad importa**: dos escritores, y el segundo no pisa al primero.
+    /// Compartir no se niega: devuelve quien mas hay y sigue adelante.
     ///
-    /// Sin la comprobacion de antes de publicar, esto termina bien y los ficheros del primero
-    /// quedan subidos sin que nadie los apunte: perdidos, sin error. Con ella, el segundo se
-    /// encuentra un mensaje y el volumen queda como estaba.
+    /// Es la forma que usan los tres programas. Negarse seria caro de verdad: con el volumen
+    /// montado como servicio, el escritorio tendria el testigo siempre y el movil no podria
+    /// escribir nunca.
     #[tokio::test]
-    async fn el_segundo_en_publicar_no_pisa_al_primero() {
+    async fn compartir_no_se_niega() {
+        let bs = backends(2);
+        let _primero = Guardia::coger(bs.clone(), "la ventana").await.unwrap();
+
+        let (guardia, otro) = Guardia::coger_o_compartir(bs.clone(), "el movil").await;
+        assert!(guardia.is_none(), "no se le quita a quien lo tiene");
+        assert_eq!(otro.map(|t| t.que), Some("la ventana".to_string()));
+    }
+
+    /// **El caso que de verdad importa**: dos escritores, ficheros distintos, y quedan los dos.
+    ///
+    /// Sin nada de esto, el segundo en publicar pisa al primero y los ficheros del primero
+    /// quedan subidos sin que nadie los apunte: perdidos, sin error. Ahora el segundo se
+    /// encuentra la raiz del primero, vuelve a aplicar lo suyo encima, y el volumen lleva las
+    /// dos cosas.
+    #[tokio::test]
+    async fn dos_escritores_en_rutas_distintas_conviven() {
         use multidrive_raid::Layout;
 
         use crate::ChunkStore;
@@ -364,19 +409,54 @@ mod tests {
             .await
             .unwrap();
 
-        // El segundo sigue creyendo que el volumen va por donde lo dejo, y escribe.
-        let r = segundo
+        // El segundo sigue creyendo que el volumen va por donde lo dejo, y escribe. Su
+        // publicacion choca, se reaplica sobre la raiz del primero, y sale adelante.
+        segundo
             .write_file("/del-segundo.txt", &b"lo mio tambien"[..])
-            .await;
-        let e = r.unwrap_err().to_string();
-        assert!(e.contains("otro escritor publico"), "{e}");
+            .await
+            .unwrap();
 
-        // Y lo del primero sigue estando: no se ha pisado nada.
+        // Y estan los dos. Es lo que antes no pasaba.
         let ahora = Volume::open(hacer()).await.unwrap();
-        assert!(
-            ahora.lookup("/del-primero.txt").await.unwrap().is_some(),
-            "se perdio lo del primero"
-        );
+        for ruta in ["/del-primero.txt", "/del-segundo.txt"] {
+            assert!(ahora.lookup(ruta).await.unwrap().is_some(), "falta {ruta}");
+        }
+    }
+
+    /// Y si los dos tocan **la misma ruta**, se dice en vez de elegir un ganador.
+    ///
+    /// No hay respuesta automatica que sea siempre correcta: quedarse con uno de los dos en
+    /// silencio es como se pierde el trabajo de alguien sin que se entere.
+    #[tokio::test]
+    async fn dos_escritores_en_la_misma_ruta_se_rechaza() {
+        use multidrive_raid::Layout;
+
+        use crate::ChunkStore;
+        use crate::testutil::clave;
+        use crate::tree::Volume;
+
+        let bs = backends(2);
+        let hacer = || ChunkStore::new(Layout::Mirror { n: 2 }, bs.clone(), clave()).unwrap();
+
+        let (mut primero, _) = Volume::create(hacer()).await.unwrap();
+        let mut segundo = Volume::open(hacer()).await.unwrap();
+
+        primero
+            .write_file("/la-misma.txt", &b"lo del primero"[..])
+            .await
+            .unwrap();
+        let r = segundo
+            .write_file("/la-misma.txt", &b"lo del segundo"[..])
+            .await;
+
+        let e = r.unwrap_err().to_string();
+        assert!(e.contains("la-misma.txt"), "{e}");
+        assert!(e.contains("decide tu"), "{e}");
+
+        // Y lo del primero sigue intacto: no se ha publicado nada.
+        let ahora = Volume::open(hacer()).await.unwrap();
+        let leido = ahora.read_at("/la-misma.txt", 0, 100).await.unwrap();
+        assert_eq!(leido, b"lo del primero");
     }
 
     /// Soltarlo deja pasar al siguiente sin esperar a que caduque.

@@ -420,7 +420,92 @@ impl Volume {
     /// Es el *path copying* de siempre, pero sobre la union de las ramas tocadas: se cargan
     /// los directorios por los que pasan todos los cambios, se aplican en memoria, y se
     /// escriben de abajo arriba para que cada padre vea ya a sus hijos nuevos.
+    /// Cuantas veces se reintenta cuando otro publica mientras tanto.
+    ///
+    /// Tres es de sobra para lo que esto resuelve: dos personas subiendo cosas a la vez. Si
+    /// hicieran falta mas, lo que hay no es concurrencia normal sino una pelea, y entonces es
+    /// mejor decirlo que seguir intentandolo.
+    const REINTENTOS: usize = 3;
+
+    /// Aplica los cambios y, si otro publico mientras tanto, **los vuelve a aplicar encima**.
+    ///
+    /// # Por que esto existe
+    ///
+    /// Escribir un fichero no toca solo ese fichero: reescribe su directorio, el padre de ese, y
+    /// asi hasta la raiz. Dos equipos que suben ficheros **distintos** parten los dos de la
+    /// misma raiz y producen cada uno la siguiente, y el segundo en publicar pisa al primero:
+    /// sus trozos quedan subidos pero fuera del indice. El conflicto no esta en el fichero, esta
+    /// en la raiz.
+    ///
+    /// Como los nodos son inmutables y direccionados por contenido, hay salida: al detectar que
+    /// otro se adelanto se relee su raiz y **se vuelve a aplicar el cambio encima**. Lo que ya
+    /// estaba subido no se vuelve a subir --es el mismo contenido, luego la misma clave-- y lo
+    /// unico que se rehace son los nodos del arbol, que son pequenos. El resultado lleva las dos
+    /// cosas.
+    ///
+    /// # Cuando **no** se reaplica
+    ///
+    /// Si el otro toco justo la misma ruta que nosotros, no hay respuesta automatica que sea
+    /// siempre correcta: elegir un ganador en silencio es como se pierde el trabajo de alguien.
+    /// Se rechaza y se dice cual es la ruta.
     async fn aplicar_varios(&mut self, cambios: Vec<Cambio>) -> Result<Vec<String>, CoreError> {
+        let mut intento = 0;
+        loop {
+            // Lo que habia en nuestras rutas **antes** de tocar nada: es el antepasado comun
+            // con el que se decide si el otro cambio lo mismo que nosotros.
+            let antes = self.como_estaban(&cambios).await?;
+
+            match self.aplicar_una_vez(cambios.clone()).await {
+                Ok(v) => return Ok(v),
+                Err(CoreError::Rebalanceo(dicho)) if dicho.contains("otro escritor publico") => {
+                    intento += 1;
+                    if intento > Self::REINTENTOS {
+                        return Err(CoreError::Rebalanceo(dicho));
+                    }
+                    self.rebase(&cambios, &antes).await?;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Lo que hay ahora mismo en cada ruta que se va a tocar.
+    async fn como_estaban(&self, cambios: &[Cambio]) -> Result<Vec<Option<Entry>>, CoreError> {
+        let mut out = Vec::with_capacity(cambios.len());
+        for (segs, _) in cambios {
+            out.push(self.lookup(&format!("/{}", segs.join("/"))).await?);
+        }
+        Ok(out)
+    }
+
+    /// Se pasa a la raiz que hay ahora, si el otro no toco lo mismo que nosotros.
+    async fn rebase(
+        &mut self,
+        cambios: &[Cambio],
+        antes: &[Option<Entry>],
+    ) -> Result<(), CoreError> {
+        let nueva = crate::tree::raiz_actual(&self.store)
+            .await?
+            .ok_or(CoreError::NoRoot)?;
+        let otro = Volume::at(self.store.clone(), nueva.clone());
+
+        for ((segs, _), antes) in cambios.iter().zip(antes) {
+            let ruta = format!("/{}", segs.join("/"));
+            let ahora = otro.lookup(&ruta).await?;
+            if ahora.as_ref().map(|e| &e.node.id) != antes.as_ref().map(|e| &e.node.id) {
+                return Err(CoreError::Rebalanceo(format!(
+                    "otro equipo cambio «{ruta}» mientras tanto, asi que lo de aqui no se puede \
+                     poner encima sin tirar lo suyo.\nNo se ha publicado nada. Mira como esta \
+                     ahora y decide tu."
+                )));
+            }
+        }
+
+        self.root = nueva;
+        Ok(())
+    }
+
+    async fn aplicar_una_vez(&mut self, cambios: Vec<Cambio>) -> Result<Vec<String>, CoreError> {
         if cambios.is_empty() {
             return Ok(Vec::new());
         }
