@@ -6,6 +6,17 @@
          que no necesita permisos porque es el usuario quien elige. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Desde Android 11 una aplicacion no ve que otras hay instaladas si no dice cuales le
+         interesan. Sin esto, preguntar quien sabe navegar por origenes de documentos devuelve
+         una lista vacia aunque el navegador del sistema este ahi, y la pantalla principal
+         acabaria mandando a su propio listado creyendo que el telefono no lo trae. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="vnd.android.document/root" />
+        </intent>
+    </queries>
+
     <application
         android:label="MultiDrive"
         android:supportsRtl="true"
