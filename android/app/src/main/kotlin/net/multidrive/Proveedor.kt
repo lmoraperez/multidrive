@@ -209,7 +209,7 @@ class Proveedor : DocumentsProvider() {
                         "aplicacion MultiDrive."
                 )
             }
-            return Escritor.abrir(gestor, context!!.cacheDir, s, documentId)
+            return Escritor.abrir(gestor, context!!, s, documentId)
         }
 
         val json = Nucleo.mirar(s, documentId)
@@ -251,7 +251,7 @@ class Proveedor : DocumentsProvider() {
                 vacio.delete()
             }
         }
-        olvidar(parentDocumentId)
+        Cache.olvidar(context!!, hijo)
         return hijo
     }
 
@@ -261,19 +261,7 @@ class Proveedor : DocumentsProvider() {
             throw UnsupportedOperationException("este volumen esta abierto solo para leer")
         }
         Nucleo.borrar(s, documentId)
-        olvidar(documentId.substringBeforeLast('/').ifEmpty { "/" })
-    }
-
-    /**
-     * Tira lo listado de un directorio y avisa al selector.
-     *
-     * Sin esto, lo que se acaba de crear o borrar no aparece --ni desaparece-- hasta refrescar
-     * a mano: el listado que hay en la cache es el de antes del cambio.
-     */
-    private fun olvidar(ruta: String) {
-        Cache.hijos.remove(ruta)
-        val uri = android.provider.DocumentsContract.buildChildDocumentsUri(AUTORIDAD, ruta)
-        context!!.contentResolver.notifyChange(uri, null)
+        Cache.olvidar(context!!, documentId)
     }
 
     private fun fila(c: MatrixCursor, id: String, nombre: String, dir: Boolean, bytes: Long) {
@@ -298,7 +286,6 @@ class Proveedor : DocumentsProvider() {
 
     private companion object {
         const val ETIQUETA = "multidrive"
-        const val AUTORIDAD = "net.multidrive.documentos"
         const val RAIZ = "multidrive"
 
         val COLUMNAS_RAIZ = arrayOf(

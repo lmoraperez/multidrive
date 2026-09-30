@@ -8,6 +8,9 @@ import kotlin.concurrent.thread
 
 private const val ETIQUETA = "multidrive"
 
+/** La autoridad del proveedor de documentos. Una sola, aqui, para que no haya dos que discrepen. */
+const val AUTORIDAD = "net.multidrive.documentos"
+
 /**
  * El volumen abierto, compartido entre la aplicacion y el proveedor de documentos.
  *
@@ -76,6 +79,26 @@ object Sesion {
  */
 object Cache {
     val hijos = ConcurrentHashMap<String, String>()
+
+    /**
+     * Olvida el listado del directorio que contiene `ruta` y avisa al sistema.
+     *
+     * **Hay que llamarla despues de cada escritura**, venga de donde venga: del selector de
+     * ficheros, de compartir una foto, de borrar algo. Escribir cambia el arbol, y el listado
+     * que hay guardado es el de antes del cambio.
+     *
+     * Vive aqui y no en cada sitio que escribe porque lo que se olvida es esto. Tenerlo repetido
+     * es tener un camino que se olvida de olvidar, y entonces lo que acabas de subir no aparece
+     * y parece que no se subio. Paso exactamente eso con compartir.
+     */
+    fun olvidar(contexto: android.content.Context, ruta: String) {
+        val padre = ruta.substringBeforeLast('/').ifEmpty { "/" }
+        hijos.remove(padre)
+        contexto.contentResolver.notifyChange(
+            android.provider.DocumentsContract.buildChildDocumentsUri(AUTORIDAD, padre),
+            null,
+        )
+    }
 }
 
 /**

@@ -118,6 +118,9 @@ class Compartir : Activity() {
                 temporal.outputStream().use { salida -> entrada.copyTo(salida) }
             }
             Nucleo.escribir(sesion, "/$nombre", temporal.absolutePath)
+            // Sin esto, lo que se acaba de subir no sale en la app de Archivos: el listado
+            // guardado es el de antes de subirlo, y parece que no se subio.
+            Cache.olvidar(this, "/$nombre")
             Log.i(ETIQUETA, "subido /$nombre desde compartir")
         } finally {
             temporal.delete()

@@ -48,14 +48,14 @@ object Escritor {
 
     fun abrir(
         gestor: StorageManager,
-        cache: File,
+        contexto: android.content.Context,
         sesion: Long,
         ruta: String,
     ): ParcelFileDescriptor {
-        val temporal = File.createTempFile("subiendo-", ".tmp", cache)
+        val temporal = File.createTempFile("subiendo-", ".tmp", contexto.cacheDir)
         return gestor.openProxyFileDescriptor(
             ParcelFileDescriptor.MODE_READ_WRITE,
-            Callback(sesion, ruta, temporal),
+            Callback(sesion, ruta, temporal, contexto.applicationContext),
             reparto,
         )
     }
@@ -64,6 +64,8 @@ object Escritor {
         private val sesion: Long,
         private val ruta: String,
         private val temporal: File,
+        /** El contexto de la **aplicacion**: guardar el de una actividad la filtraria entera. */
+        private val contexto: android.content.Context,
     ) : ProxyFileDescriptorCallback() {
 
         private val fichero = RandomAccessFile(temporal, "rw")
@@ -107,6 +109,7 @@ object Escritor {
             try {
                 Nucleo.escribir(sesion, ruta, temporal.absolutePath)
                 temporal.delete()
+                Cache.olvidar(contexto, ruta)
                 Log.i(ETIQUETA, "subido $ruta")
             } catch (e: Throwable) {
                 // Aqui ya no se puede avisar a nadie: el sistema dio la escritura por buena. Lo
