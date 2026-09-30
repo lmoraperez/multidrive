@@ -194,20 +194,86 @@ class Proveedor : DocumentsProvider() {
         mode: String,
         signal: CancellationSignal?,
     ): ParcelFileDescriptor {
-        if (mode != "r") {
-            throw UnsupportedOperationException("este volumen es de solo lectura desde el movil")
-        }
         val s = Sesion.id ?: throw IllegalStateException(
             "el volumen esta cerrado: abrelo en la aplicacion MultiDrive"
         )
+        val gestor = context!!.getSystemService(StorageManager::class.java)
+
+        // Escribir: se junta en un temporal y se sube al cerrar. No se puede subir al vuelo
+        // porque el sistema escribe por offsets y en el orden que quiera, y un volumen de
+        // MultiDrive necesita ver el fichero entero para trocearlo y repartirlo.
+        if (mode.contains("w")) {
+            if (!Sesion.escribe) {
+                throw UnsupportedOperationException(
+                    "este volumen esta abierto solo para leer. Abrelo con escritura en la " +
+                        "aplicacion MultiDrive."
+                )
+            }
+            return Escritor.abrir(gestor, context!!.cacheDir, s, documentId)
+        }
 
         val json = Nucleo.mirar(s, documentId)
         if (json == "null") throw java.io.FileNotFoundException(documentId)
         val o = JSONObject(json)
         if (o.getBoolean("dir")) throw java.io.FileNotFoundException("$documentId es un directorio")
 
-        val gestor = context!!.getSystemService(StorageManager::class.java)
         return Lector.abrir(gestor, s, documentId, o.getLong("bytes"))
+    }
+
+    /**
+     * Crea un fichero vacio o un directorio. Lo llama el selector al «guardar aqui».
+     *
+     * El fichero se crea **vacio de verdad**: el sistema llama a esto y despues abre el
+     * documento para escribir en el. Crearlo ya con contenido no tendria sentido, y no crearlo
+     * dejaria al selector sin nada a lo que escribir.
+     */
+    override fun createDocument(
+        parentDocumentId: String,
+        mimeType: String,
+        displayName: String,
+    ): String {
+        val s = Sesion.id ?: throw IllegalStateException("el volumen esta cerrado")
+        if (!Sesion.escribe) {
+            throw UnsupportedOperationException("este volumen esta abierto solo para leer")
+        }
+        val hijo =
+            if (parentDocumentId == "/") "/$displayName" else "$parentDocumentId/$displayName"
+
+        if (mimeType == Document.MIME_TYPE_DIR) {
+            Nucleo.crearDirectorio(s, hijo)
+        } else {
+            // Un temporal vacio, que es lo que significa «crear»: el contenido llega despues
+            // por `openDocument`.
+            val vacio = java.io.File.createTempFile("vacio-", ".tmp", context!!.cacheDir)
+            try {
+                Nucleo.escribir(s, hijo, vacio.absolutePath)
+            } finally {
+                vacio.delete()
+            }
+        }
+        olvidar(parentDocumentId)
+        return hijo
+    }
+
+    override fun deleteDocument(documentId: String) {
+        val s = Sesion.id ?: throw IllegalStateException("el volumen esta cerrado")
+        if (!Sesion.escribe) {
+            throw UnsupportedOperationException("este volumen esta abierto solo para leer")
+        }
+        Nucleo.borrar(s, documentId)
+        olvidar(documentId.substringBeforeLast('/').ifEmpty { "/" })
+    }
+
+    /**
+     * Tira lo listado de un directorio y avisa al selector.
+     *
+     * Sin esto, lo que se acaba de crear o borrar no aparece --ni desaparece-- hasta refrescar
+     * a mano: el listado que hay en la cache es el de antes del cambio.
+     */
+    private fun olvidar(ruta: String) {
+        Cache.hijos.remove(ruta)
+        val uri = android.provider.DocumentsContract.buildChildDocumentsUri(AUTORIDAD, ruta)
+        context!!.contentResolver.notifyChange(uri, null)
     }
 
     private fun fila(c: MatrixCursor, id: String, nombre: String, dir: Boolean, bytes: Long) {
@@ -216,8 +282,16 @@ class Proveedor : DocumentsProvider() {
             add(Document.COLUMN_DISPLAY_NAME, nombre)
             add(Document.COLUMN_MIME_TYPE, if (dir) Document.MIME_TYPE_DIR else "application/octet-stream")
             add(Document.COLUMN_SIZE, bytes)
-            // Sin banderas: ni escritura, ni borrado, ni renombrado. Ver la nota de la clase.
-            add(Document.COLUMN_FLAGS, 0)
+            // Las banderas dependen del permiso que haya **ahora**: con el volumen abierto solo
+            // para leer, el selector no ofrece guardar aqui ni borrar. Es mejor no aparecer como
+            // destino que aparecer y fallar.
+            var banderas = 0
+            if (Sesion.escribe) {
+                banderas = banderas or Document.FLAG_SUPPORTS_DELETE
+                if (dir) banderas = banderas or Document.FLAG_DIR_SUPPORTS_CREATE
+                else banderas = banderas or Document.FLAG_SUPPORTS_WRITE
+            }
+            add(Document.COLUMN_FLAGS, banderas)
             // Sin fecha: el arbol no la guarda todavia, y poner la de ahora seria inventarla.
         }
     }

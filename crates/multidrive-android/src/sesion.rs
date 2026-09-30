@@ -48,8 +48,36 @@ fn runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 
-fn abiertos() -> &'static Mutex<HashMap<i64, Arc<Volume>>> {
-    static A: OnceLock<Mutex<HashMap<i64, Arc<Volume>>>> = OnceLock::new();
+/// Un volumen abierto, y con que permiso.
+pub struct Abierto {
+    /// El volumen. Va tras un candado porque escribir necesita `&mut`, y porque escribir y leer
+    /// a la vez sobre el mismo arbol no tendria sentido.
+    ///
+    /// Serializar las lecturas no cuesta nada aqui: ya lo estaban. El descriptor que entrega el
+    /// proveedor de documentos las reparte por **un solo** hilo, asi que el candado no anade
+    /// espera que no hubiera.
+    pub volumen: Arc<tokio::sync::Mutex<Volume>>,
+    /// El permiso de escritura mientras dure la sesion. `None` si se abrio para leer.
+    ///
+    /// Vive aqui y no en una variable suelta porque asi se suelta **con la sesion**: cerrar el
+    /// volumen libera el testigo, y que Android mate el proceso tambien, porque entonces caduca.
+    testigo: Option<multidrive_core::testigo::Guardia>,
+}
+
+impl Abierto {
+    /// Si esta sesion puede escribir.
+    pub fn escribe(&self) -> bool {
+        self.testigo.is_some()
+    }
+
+    /// Si el permiso se perdio por el camino.
+    pub fn testigo_perdido(&self) -> bool {
+        self.testigo.as_ref().is_some_and(|g| g.perdido())
+    }
+}
+
+fn abiertos() -> &'static Mutex<HashMap<i64, Arc<Abierto>>> {
+    static A: OnceLock<Mutex<HashMap<i64, Arc<Abierto>>>> = OnceLock::new();
     A.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -59,7 +87,7 @@ fn abiertos() -> &'static Mutex<HashMap<i64, Arc<Volume>>> {
 /// dentro es un mapa de volumenes abiertos: si alguien reventó sosteniendolo, el mapa sigue
 /// siendo un mapa. Negarse a seguir por eso convertiria un fallo de una operacion en una
 /// aplicacion que ya no abre nada hasta reiniciarla.
-fn mapa() -> std::sync::MutexGuard<'static, HashMap<i64, Arc<Volume>>> {
+fn mapa() -> std::sync::MutexGuard<'static, HashMap<i64, Arc<Abierto>>> {
     abiertos().lock().unwrap_or_else(|e| e.into_inner())
 }
 
@@ -74,7 +102,7 @@ pub fn en_el_runtime<T>(f: impl Future<Output = Result<T, String>>) -> Result<T,
 
 /// Abre un volumen y devuelve su identificador. **Cuesta segundos**: nunca en el hilo de la
 /// interfaz.
-pub fn abrir(config: &str, frase: &str) -> Result<i64, String> {
+pub fn abrir(config: &str, frase: &str, escritura: bool) -> Result<i64, String> {
     let backends = multidrive_backend::live::configurados_de(Path::new(config))
         .map_err(|e| format!("configuracion invalida: {e}"))?;
     if backends.is_empty() {
@@ -85,24 +113,47 @@ pub fn abrir(config: &str, frase: &str) -> Result<i64, String> {
         .map(|b| Arc::new(b) as Arc<dyn Backend>)
         .collect();
 
-    let volumen = runtime().block_on(async {
+    let (volumen, testigo) = runtime().block_on(async {
         let cabecera = header::read(&backends)
             .await
             .map_err(|e| format!("no se pudo leer la cabecera: {e}"))?
             .ok_or("no hay ningun volumen en esas cuentas")?;
+
+        // El testigo **antes de abrir**, no despues. Abrir cuesta segundos; descubrir al final
+        // que otro esta escribiendo seria haber hecho esperar para nada.
+        let testigo = if escritura {
+            Some(
+                multidrive_core::testigo::Guardia::coger(
+                    backends.clone(),
+                    "la aplicacion de Android",
+                )
+                .await
+                .map_err(|ocupado| ocupado.to_string())?,
+            )
+        } else {
+            None
+        };
+
         let almacen = cabecera
             .almacen(backends, frase, CACHE)
             .map_err(|e| format!("no se pudo derivar la clave: {e}"))?;
         // Una frase equivocada no da error de descifrado: da un puntero de raiz que no se abre,
         // o sea «no hay raiz». Sin decirlo, parece corrupcion.
-        Volume::open(almacen)
+        let v = Volume::open(almacen)
             .await
-            .map_err(|e| format!("no se pudo abrir: {e}\n¿Es esa la frase de paso?"))
+            .map_err(|e| format!("no se pudo abrir: {e}\n¿Es esa la frase de paso?"))?;
+        Ok::<_, String>((v, testigo))
     })?;
 
     static SIGUIENTE: AtomicI64 = AtomicI64::new(1);
     let id = SIGUIENTE.fetch_add(1, Ordering::Relaxed);
-    mapa().insert(id, Arc::new(volumen));
+    mapa().insert(
+        id,
+        Arc::new(Abierto {
+            volumen: Arc::new(tokio::sync::Mutex::new(volumen)),
+            testigo,
+        }),
+    );
     Ok(id)
 }
 
@@ -119,25 +170,27 @@ pub fn abrir(config: &str, frase: &str) -> Result<i64, String> {
 /// No se vuelve a derivar la clave, que es lo caro: se clona el `ChunkStore`, que ya la lleva
 /// dentro, y solo se paga una lectura del puntero de raiz.
 pub fn refrescar(id: i64) -> Result<bool, String> {
-    let volumen = mapa().get(&id).cloned().ok_or("esa sesion no existe")?;
+    let abierto = mapa().get(&id).cloned().ok_or("esa sesion no existe")?;
 
-    let nueva = runtime().block_on(async {
-        multidrive_core::tree::raiz_actual(volumen.store())
+    runtime().block_on(async {
+        // El candado se coge y se suelta dentro: quien estuviera leyendo termina su lectura
+        // antes de que el arbol cambie debajo, y los nodos son inmutables, asi que lo que ya
+        // tenia en la mano sigue siendo coherente.
+        let mut v = abierto.volumen.lock().await;
+
+        let nueva = multidrive_core::tree::raiz_actual(v.store())
             .await
-            .map_err(|e| e.to_string())
-    })?;
-    let Some(nueva) = nueva else {
-        return Ok(false);
-    };
-    if nueva.generation <= volumen.root().generation {
-        return Ok(false);
-    }
-
-    // Se sustituye en el mapa en vez de mutar: quien este leyendo con el `Arc` de antes sigue
-    // viendo un arbol coherente --los nodos son inmutables-- y termina su lectura sin sorpresas.
-    let store = volumen.store().clone();
-    mapa().insert(id, Arc::new(Volume::at(store, nueva)));
-    Ok(true)
+            .map_err(|e| e.to_string())?;
+        let Some(nueva) = nueva else {
+            return Ok(false);
+        };
+        if nueva.generation <= v.root().generation {
+            return Ok(false);
+        }
+        let store = v.store().clone();
+        *v = Volume::at(store, nueva);
+        Ok(true)
+    })
 }
 
 /// Suelta un volumen. Con el se suelta la clave derivada, que es lo que importa.
@@ -152,13 +205,84 @@ pub fn cerrar(id: i64) {
 /// cosa mientras tanto.
 pub fn con<T, F>(id: i64, f: F) -> Result<T, String>
 where
-    F: FnOnce(Arc<Volume>) -> std::pin::Pin<Box<dyn Future<Output = Result<T, String>> + Send>>,
+    F: FnOnce(Arc<Abierto>) -> std::pin::Pin<Box<dyn Future<Output = Result<T, String>> + Send>>,
 {
-    let volumen = mapa()
-        .get(&id)
-        .cloned()
-        .ok_or("esa sesion no existe: puede que la aplicacion se cerrara y haya que volver a abrir el volumen")?;
-    runtime().block_on(f(volumen))
+    let abierto = sesion(id)?;
+    runtime().block_on(f(abierto))
+}
+
+/// La sesion, o un error que dice que hacer.
+///
+/// Que no exista es el caso normal, no el raro: Android mata el proceso cuando le conviene, y
+/// Kotlin puede volver con un identificador de antes de que lo matara.
+pub fn sesion(id: i64) -> Result<Arc<Abierto>, String> {
+    mapa().get(&id).cloned().ok_or_else(|| {
+        "esa sesion no existe: puede que la aplicacion se cerrara y haya que volver a abrir el \
+         volumen"
+            .to_string()
+    })
+}
+
+/// Escribe un fichero en el volumen, leyendolo de una ruta local del telefono.
+///
+/// Se pasa una ruta y no los bytes a proposito: un fichero puede no caber en memoria, y lo que
+/// el proveedor de documentos recibe del sistema llega a trozos y por offsets. Lo junta el lado
+/// de Kotlin en un temporal y aqui se sube de una vez, que es la unica forma en que el troceado
+/// y el reparto ven el fichero entero.
+pub fn escribir(id: i64, ruta: &str, local: &str) -> Result<(), String> {
+    let abierto = sesion(id)?;
+    if !abierto.escribe() {
+        return Err("este volumen esta abierto solo para leer".into());
+    }
+    if abierto.testigo_perdido() {
+        return Err(
+            "se perdio el permiso de escritura: otro equipo pudo empezar a escribir. Cierra el \
+             volumen y vuelve a abrirlo."
+                .into(),
+        );
+    }
+
+    let ruta = ruta.to_string();
+    let local = local.to_string();
+    runtime().block_on(async move {
+        let fichero = tokio::fs::File::open(&local)
+            .await
+            .map_err(|e| format!("no se pudo leer lo que se iba a subir: {e}"))?;
+        let mut v = abierto.volumen.lock().await;
+        v.write_file(&ruta, fichero)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+}
+
+/// Crea un directorio, con los que falten por encima.
+pub fn crear_directorio(id: i64, ruta: &str) -> Result<(), String> {
+    let abierto = sesion(id)?;
+    if !abierto.escribe() {
+        return Err("este volumen esta abierto solo para leer".into());
+    }
+    let ruta = ruta.to_string();
+    runtime().block_on(async move {
+        let mut v = abierto.volumen.lock().await;
+        v.mkdir_p(&ruta)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+}
+
+/// Borra un fichero o un directorio vacio.
+pub fn borrar(id: i64, ruta: &str) -> Result<(), String> {
+    let abierto = sesion(id)?;
+    if !abierto.escribe() {
+        return Err("este volumen esta abierto solo para leer".into());
+    }
+    let ruta = ruta.to_string();
+    runtime().block_on(async move {
+        let mut v = abierto.volumen.lock().await;
+        v.remove(&ruta).await.map(|_| ()).map_err(|e| e.to_string())
+    })
 }
 
 #[cfg(test)]
