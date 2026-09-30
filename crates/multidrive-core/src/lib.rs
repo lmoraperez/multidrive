@@ -451,6 +451,14 @@ impl ChunkStore {
         self.backends.iter().map(|b| b.name().to_string()).collect()
     }
 
+    /// Los proveedores del volumen, en su orden.
+    ///
+    /// Hace falta fuera para coger el testigo de escritura sobre **los mismos** que el volumen:
+    /// cogerlo sobre los configurados seria otra lista el dia que haya alguno de mas.
+    pub fn backends(&self) -> &[Arc<dyn Backend>] {
+        &self.backends
+    }
+
     pub fn reparto(&self) -> u32 {
         self.reparto
     }

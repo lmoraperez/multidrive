@@ -139,6 +139,12 @@ struct Pendiente {
     rutas: Vec<RutaPendiente>,
     /// `true` si la raiz esta sin publicar: desde otro equipo todavia no se ve nada.
     raiz_sin_publicar: bool,
+    /// `true` si se perdio el testigo de escritura mientras esto estaba montado.
+    ///
+    /// Pasa cuando esta maquina se queda sin red mas de lo que dura el testigo y otra lo coge
+    /// legitimamente. A partir de ahi, lo que se escriba aqui puede chocar con lo de alla, y
+    /// eso hay que decirlo: es la diferencia entre un aviso y una perdida silenciosa.
+    testigo_perdido: bool,
     /// Lo ultimo que hizo el sincronizador de fondo, si dijo algo.
     ///
     /// Se guardaba y **no lo leia nadie**: el hilo que sube en segundo plano dejaba aqui lo
@@ -273,6 +279,8 @@ struct Montado {
     escritura: bool,
     _montaje: multidrive_mount::Montaje,
     _sincronizador: Option<Sincronizador>,
+    /// El testigo de escritura. Se suelta solo al desmontar, porque desmontar suelta esto.
+    testigo: Option<multidrive_core::testigo::Guardia>,
 }
 
 #[derive(Serialize, Default)]
@@ -333,6 +341,23 @@ async fn montar(
     )));
     drop(guardia);
 
+    // El testigo, **antes de montar**. Montar y descubrir despues que otro esta escribiendo
+    // dejaria una unidad puesta que no sirve, y quitarla es mas molesto que no haberla puesto.
+    // En solo lectura no se coge: leer no molesta a nadie.
+    let testigo = if escritura {
+        match multidrive_core::testigo::Guardia::coger(
+            store.backends().to_vec(),
+            "la ventana, montada en escritura",
+        )
+        .await
+        {
+            Ok(g) => Some(g),
+            Err(ocupado) => return Err(ocupado.to_string()),
+        }
+    } else {
+        None
+    };
+
     let montaje = multidrive_mount::montar(compartido, &punto, !escritura).map_err(|e| {
         // Es lo primero que ve alguien sin WinFsp instalado, o que apunta a una letra
         // ocupada: el error merece llegar entero y no resumido.
@@ -371,6 +396,7 @@ async fn montar(
         escritura,
         _montaje: montaje,
         _sincronizador: sincronizador,
+        testigo,
     });
 
     // Con la ventana cerrada, el rotulo de la bandeja es lo unico que queda diciendo que hay
@@ -906,6 +932,13 @@ async fn pendiente(estado: tauri::State<'_, Estado>) -> Result<Pendiente, String
         a_salvo: p.a_salvo(),
         rutas,
         raiz_sin_publicar: p.raiz,
+        testigo_perdido: estado
+            .montado
+            .lock()
+            .await
+            .as_ref()
+            .and_then(|m| m.testigo.as_ref())
+            .is_some_and(|g| g.perdido()),
         ultimo_sync: estado
             .ultimo_sync
             .lock()
