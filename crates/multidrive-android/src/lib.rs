@@ -340,6 +340,24 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_borrar<'local>(
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Mueve o renombra. Es la misma operacion vista desde dos sitios.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_mover<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+    origen: JString<'local>,
+    destino: JString<'local>,
+) {
+    entorno
+        .with_env(|env| -> Result<(), Fallo> {
+            let origen = origen.try_to_string(env)?;
+            let destino = destino.try_to_string(env)?;
+            sesion::mover(id, &origen, &destino).map_err(Fallo::Dicho)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 /// Si esta sesion puede escribir. La pantalla y el proveedor de documentos lo necesitan para
 /// no ofrecer lo que no van a poder hacer.
 #[unsafe(no_mangle)]
@@ -596,6 +614,7 @@ mod tests {
             "escribir",
             "crearDirectorio",
             "borrar",
+            "mover",
             "escribe",
         ] {
             let simbolo = format!("{esperado}{metodo}");

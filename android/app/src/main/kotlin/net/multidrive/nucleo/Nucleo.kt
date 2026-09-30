@@ -102,6 +102,9 @@ object Nucleo {
     /** Borra un fichero o un directorio vacio. */
     external fun borrar(sesion: Long, ruta: String)
 
+    /** Mueve o renombra. No pisa lo que ya exista en el destino. */
+    external fun mover(sesion: Long, origen: String, destino: String)
+
     /** Si esta sesion puede escribir de verdad: se abrio para ello y conserva el permiso. */
     external fun escribe(sesion: Long): Boolean
 
