@@ -62,12 +62,20 @@ pub struct Abierto {
     /// Vive aqui y no en una variable suelta porque asi se suelta **con la sesion**: cerrar el
     /// volumen libera el testigo, y que Android mate el proceso tambien, porque entonces caduca.
     testigo: Option<multidrive_core::testigo::Guardia>,
+    /// Si esta sesion se abrio para escribir.
+    ///
+    /// Va **aparte del testigo**, y eso es el arreglo de un fallo real: desde que el testigo
+    /// dejo de bloquear, no tenerlo solo significa que hay otro equipo escribiendo tambien, no
+    /// que aqui no se pueda. Mientras esto miraba el testigo, abrir con escritura mientras el
+    /// escritorio tenia el volumen montado dejaba la aplicacion creyendose de solo lectura: sin
+    /// borrar, sin compartir y sin decir por que.
+    escritura: bool,
 }
 
 impl Abierto {
     /// Si esta sesion puede escribir.
     pub fn escribe(&self) -> bool {
-        self.testigo.is_some()
+        self.escritura
     }
 
     /// Si el permiso se perdio por el camino.
@@ -125,7 +133,7 @@ pub fn abrir(config: &str, frase: &str, escritura: bool) -> Result<i64, String> 
         // dos equipos en ficheros distintos conviven. Negarse ademas seria caro de verdad aqui:
         // con el volumen montado como servicio en el escritorio, el movil no podria escribir
         // nunca.
-        let (testigo, otro) = if escritura {
+        let (testigo, _otro) = if escritura {
             multidrive_core::testigo::Guardia::coger_o_compartir(
                 backends.clone(),
                 "la aplicacion de Android",
@@ -134,7 +142,6 @@ pub fn abrir(config: &str, frase: &str, escritura: bool) -> Result<i64, String> 
         } else {
             (None, None)
         };
-        let _ = otro;
 
         let almacen = cabecera
             .almacen(backends, frase, CACHE)
@@ -154,6 +161,7 @@ pub fn abrir(config: &str, frase: &str, escritura: bool) -> Result<i64, String> 
         Arc::new(Abierto {
             volumen: Arc::new(tokio::sync::Mutex::new(volumen)),
             testigo,
+            escritura,
         }),
     );
     Ok(id)
@@ -236,14 +244,6 @@ pub fn escribir(id: i64, ruta: &str, local: &str) -> Result<(), String> {
     if !abierto.escribe() {
         return Err("este volumen esta abierto solo para leer".into());
     }
-    if abierto.testigo_perdido() {
-        return Err(
-            "se perdio el permiso de escritura: otro equipo pudo empezar a escribir. Cierra el \
-             volumen y vuelve a abrirlo."
-                .into(),
-        );
-    }
-
     let ruta = ruta.to_string();
     let local = local.to_string();
     runtime().block_on(async move {
