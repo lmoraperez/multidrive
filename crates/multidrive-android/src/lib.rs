@@ -24,6 +24,7 @@ pub mod conectar;
 pub mod crear;
 pub mod cuentas;
 pub mod maleta;
+pub mod retirar;
 pub mod sesion;
 
 /// Lo que puede salir mal en la frontera, sea de JNI o nuestro.
@@ -338,6 +339,44 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_borrar<'local>(
         .with_env(|env| -> Result<(), Fallo> {
             let ruta = ruta.try_to_string(env)?;
             sesion::borrar(id, &ruta).map_err(Fallo::Dicho)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Lo que se borraria al retirar el volumen, en JSON. **No borra nada.**
+///
+/// **Bloquea y tarda**: enumera cada cuenta entera. Nunca desde el hilo de la interfaz.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_mirarRetirada<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    config: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let config = config.try_to_string(env)?;
+            let json = retirar::mirar(&config).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(json)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Retira el volumen de las cuentas. `confirmacion` es el nombre que dijo `mirarRetirada`.
+///
+/// **No se puede deshacer.** Bloquea y tarda: nunca desde el hilo de la interfaz.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_retirar<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    config: JString<'local>,
+    confirmacion: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let config = config.try_to_string(env)?;
+            let confirmacion = confirmacion.try_to_string(env)?;
+            let dicho = retirar::retirar_volumen(&config, &confirmacion).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(dicho)?)
         })
         .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -699,6 +738,8 @@ mod tests {
             "crear",
             "olvidar",
             "hayMaleta",
+            "mirarRetirada",
+            "retirar",
             "escribe",
         ] {
             let simbolo = format!("{esperado}{metodo}");
