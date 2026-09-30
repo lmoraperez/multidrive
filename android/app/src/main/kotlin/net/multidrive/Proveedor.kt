@@ -102,9 +102,19 @@ class Proveedor : DocumentsProvider() {
                 Root.COLUMN_SUMMARY,
                 if (s != null) Sesion.resumen else "Cerrado: abre el volumen en MultiDrive",
             )
-            // Ni `FLAG_SUPPORTS_CREATE` ni `FLAG_SUPPORTS_RECENTS`: no se crea nada y no hay
-            // «recientes» que ofrecer sin un indice local que todavia no existe.
-            add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_IS_CHILD)
+            // `FLAG_SUPPORTS_CREATE` es lo que hace que la app de Archivos trate esta raíz como
+            // **modificable**, y de eso cuelgan también borrar y renombrar: sin ella, las
+            // banderas de cada documento no se miran siquiera y no aparece ninguna acción.
+            //
+            // Este comentario decía antes que no se ponía porque «no se crea nada». Era cierto
+            // cuando el volumen era de solo lectura y dejó de serlo al abrir la escritura, que
+            // es como una decisión correcta se queda vieja sin que nadie la toque.
+            //
+            // `FLAG_SUPPORTS_RECENTS` sigue fuera: no hay «recientes» que ofrecer sin un índice
+            // local, que no existe.
+            var raiz = Root.FLAG_SUPPORTS_IS_CHILD
+            if (s != null && Sesion.escribe) raiz = raiz or Root.FLAG_SUPPORTS_CREATE
+            add(Root.COLUMN_FLAGS, raiz)
             // El icono tiene que ser un recurso **nuestro**: la app de Archivos lo carga por su
             // identificador y dentro de nuestro paquete, asi que uno de `android.R` no lo puede
             // resolver, y una raiz cuyo icono no se resuelve puede acabar sin aparecer.
