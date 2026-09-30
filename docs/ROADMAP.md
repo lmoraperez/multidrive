@@ -395,9 +395,25 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 - [x] La interfaz de escritorio lo hace con un botón, y se niega **con la unidad montada o con
       algo sin subir**: lo que se escribiera mientras tanto se colocaría con el reparto viejo
       y, al publicar la cabecera, se buscaría donde no está
-- [ ] Retirar un proveedor de un volumen lineal. No es la operación simétrica: al añadir, lo
-      que se mueve lo decide el sorteo y siempre cabe; al retirar hay que colocar en los que
-      quedan todo lo que tenía el que se va, y puede no caber. Hoy se rechaza diciendo eso
+- [x] **Retirar un proveedor de un volumen lineal** (30 de septiembre de 2026), y es barato: el
+      sorteo ponderado tiene, vista del otro lado, la misma propiedad que hace barato añadir. Al
+      quitar un peso los únicos trozos que cambian de dueño son **los que tenía el que se va**;
+      entre los que quedan no se mueve nada. Retirar una cuenta de cuatro mueve un cuarto, no el
+      volumen
+- [x] Lo que sí hay que comprobar antes es que **quepa**. Al añadir siempre cabe —lo que se mueve
+      va a un sitio recién llegado y vacío—; al retirar hay que meter lo del que se va en lo que
+      les quede libre a los demás. `ChunkStore::medir_retirada` lo calcula entero primero y lo
+      enseña por proveedor, y si no cabe **no se mueve nada**: descubrirlo a mitad no cuesta solo
+      el tiempo, deja el volumen con media mudanza hecha y a quien lo mire sin saber en qué
+      estado está
+- [x] Y quien no declara cupo **no cuenta como que cabe**: sale aparte, como «no se puede
+      asegurar». Decir que cabe apoyándose en una cuenta que no ha contestado es la clase de
+      promesa que este programa no hace
+- [ ] Solo se puede retirar **el último de la lista**. El índice de cada proveedor es parte de la
+      clave de sus fragmentos, así que quitar uno de en medio correría a los de detrás y dejaría
+      lo escrito ilocalizable. Se rechaza diciendo eso y enseñando el orden. Hacerlo general
+      significa reescribir el volumen entero, que ya sabe hacerse —es el camino de `rs` y
+      `espejo`— pero cuesta lo que cuesta y no se ha enganchado
 - [x] **Aplicación registrada en Azure** para OneDrive (28 de septiembre de 2026). Ni
       evaluación de ámbitos ni tope de usuarios, al contrario que Google. Conectada una cuenta
       real por el navegador y pasadas **las once comprobaciones** de `multidrive check` con

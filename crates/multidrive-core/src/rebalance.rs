@@ -414,16 +414,22 @@ impl ChunkStore {
 
 /// Si pasar de `antes` a `despues` solo cambia de sitio una parte de los trozos.
 ///
-/// Es el tercer caso de anadir un proveedor, y el unico barato de verdad. En `lineal` cada
-/// trozo vive entero en un proveedor, y a cual le toca lo decide un sorteo ponderado por los
-/// pesos. Ese sorteo tiene la propiedad que lo hace util aqui: al anadir un peso, los trozos
-/// que cambian de dueno son **solo** los que gana el que llega, y ninguno se mueve entre los
-/// que ya estaban. Anadir una cuenta a un volumen de 1 TB mueve lo que esa cuenta aporta, no
-/// el terabyte.
+/// Es el caso barato de verdad, y vale **en los dos sentidos**. En `lineal` cada trozo vive
+/// entero en un proveedor, y a cual le toca lo decide un sorteo ponderado por los pesos. Ese
+/// sorteo tiene una propiedad que se aprovecha aqui dos veces:
+///
+/// - Al **anadir** un peso, los trozos que cambian de dueno son solo los que gana el que
+///   llega. Anadir una cuenta a un volumen de 1 TB mueve lo que esa cuenta aporta, no el
+///   terabyte.
+/// - Al **quitar** un peso, los que cambian son solo los que tenia el que se va. Los demas se
+///   quedan donde estan, asi que retirar una cuenta de cuatro mueve aproximadamente un cuarto.
+///
+/// En ninguno de los dos casos se mueve nada entre los que se quedan, que es lo que separa
+/// esto de reescribir el volumen entero.
 pub fn muda_una_fraccion(antes: Layout, despues: Layout) -> bool {
     matches!(
         (antes, despues),
-        (Layout::Lineal { n }, Layout::Lineal { n: n2 }) if n2 >= n
+        (Layout::Lineal { .. }, Layout::Lineal { .. })
     )
 }
 
@@ -440,6 +446,16 @@ pub fn muda_una_fraccion(antes: Layout, despues: Layout) -> bool {
 /// de un veterano a otro-- y entonces se devuelve 1.0, que es el peor caso: puede moverse
 /// todo. Decir el peor caso es preferible a dar un numero bonito que luego no se cumple.
 pub fn fraccion_que_se_mueve(viejos: &[u64], nuevos: &[u64]) -> f64 {
+    // Retirar: los pesos nuevos son los viejos sin los ultimos. Lo que se mueve es lo que
+    // tenian los que se van, medido **sobre el total de antes**, que es el volumen que hay.
+    if viejos.starts_with(nuevos) && nuevos.len() < viejos.len() {
+        let total: u64 = viejos.iter().sum();
+        if total == 0 {
+            return 0.0;
+        }
+        return viejos[nuevos.len()..].iter().sum::<u64>() as f64 / total as f64;
+    }
+
     let total: u64 = nuevos.iter().sum();
     if total == 0 {
         return 0.0;
@@ -530,15 +546,22 @@ impl ChunkStore {
             return Err(CoreError::SinSitio);
         }
 
-        // Los proveedores que ya estaban tienen que seguir donde estaban. Si uno cambia de
+        // Los proveedores que siguen tienen que seguir **donde estaban**. Si uno cambia de
         // posicion su indice cambia, y el indice es parte de la clave de cada fragmento: lo
         // que hay escrito se volveria ilocalizable.
-        for (i, nombre) in self.backend_names().iter().enumerate() {
-            if todos[i].name() != *nombre {
+        //
+        // Vale en los dos sentidos: al anadir, `todos` empieza por los de ahora y trae mas
+        // detras; al retirar, `todos` es lo que queda por delante. Lo que se comprueba es la
+        // parte comun, que es la que tiene que casar posicion a posicion.
+        let antes_nombres = self.backend_names();
+        let comun = antes_nombres.len().min(todos.len());
+        for i in 0..comun {
+            if todos[i].name() != antes_nombres[i] {
                 return Err(CoreError::Rebalanceo(format!(
-                    "en la posicion {i} el volumen tiene {nombre} y se ha dado {}. Los \
-                     proveedores que ya estaban no se pueden mover ni quitar: solo se pueden \
-                     anadir otros detras.",
+                    "en la posicion {i} el volumen tiene {} y se ha dado {}. Los proveedores \
+                     que se quedan no se pueden mover: solo se pueden anadir otros detras, o \
+                     quitar los de detras.",
+                    antes_nombres[i],
                     todos[i].name()
                 )));
             }
@@ -688,19 +711,17 @@ pub fn planear_retirada(
         (Layout::ReedSolomon { k, m }, Sacrificio::Espacio) if k > cuantos => {
             Layout::ReedSolomon { k: k - cuantos, m }
         }
-        // De un volumen lineal se podria retirar --mudando a los que quedan lo que tenia el
-        // que se va-- pero no esta hecho, y no es la operacion simetrica de anadir: al anadir,
-        // lo que se mueve lo decide el sorteo y siempre cabe; al retirar hay que colocar todo
-        // lo del que se va, y puede no caber en ninguna parte. Se dice eso, en vez de dejar
-        // que conteste el error de abajo, que habla de otra cosa.
-        (Layout::Lineal { .. }, _) => {
-            return Err(CoreError::Rebalanceo(
-                "retirar un proveedor de un volumen lineal todavia no esta hecho: habria que \
-                 mudar a los que quedan todo lo que tenia el que se va, y antes comprobar que \
-                 les cabe."
-                    .into(),
-            ));
-        }
+        // En lineal cada trozo vive entero en un proveedor, asi que al retirar uno hay que
+        // mudar **lo suyo** a los que quedan. El sorteo ponderado tiene la propiedad que lo
+        // hace barato, la misma que al anadir vista del otro lado: al quitar un peso, los
+        // trozos que cambian de dueno son solo los que tenia el que se va, y ninguno se mueve
+        // entre los que quedan.
+        //
+        // Lo que no se puede dar por hecho es que **quepa**. Al anadir siempre cabe, porque lo
+        // que se mueve va a un sitio que acaba de llegar vacio; al retirar hay que meter lo
+        // del que se va en lo que les quede libre a los demas. Por eso hay que medirlo antes,
+        // y de eso se encarga [`ChunkStore::medir_retirada`].
+        (Layout::Lineal { n }, _) if n > cuantos => Layout::Lineal { n: n - cuantos },
         _ => {
             return Err(CoreError::Rebalanceo(format!(
                 "no se pueden retirar {cuantos} proveedor(es) de {antes} sin quedarse sin \

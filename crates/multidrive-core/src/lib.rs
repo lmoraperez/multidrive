@@ -31,6 +31,7 @@ pub mod maleta;
 pub mod pesos;
 pub mod rebalance;
 pub mod rescue;
+pub mod retirada;
 pub mod retirar;
 pub mod sincronizador;
 pub mod tree;
@@ -414,7 +415,7 @@ impl ChunkStore {
     /// El reparto uniforme es un respaldo razonable, no un valor util: reparte igual entre
     /// proveedores desiguales, que es justo lo que `lineal` existe para evitar. Quien cree un
     /// volumen lineal deberia pasar los de verdad.
-    fn pesos_efectivos(&self) -> Vec<u64> {
+    pub(crate) fn pesos_efectivos(&self) -> Vec<u64> {
         if self.pesos.len() == self.backends.len() {
             self.pesos.clone()
         } else {

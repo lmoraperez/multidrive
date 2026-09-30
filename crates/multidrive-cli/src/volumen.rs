@@ -1438,6 +1438,23 @@ pub async fn providers_remove(nombre: &str, sacrificio: Sacrificio) -> Result<()
     let es_el_ultimo = posicion == header.backends.len() - 1;
     let recorte = es_el_ultimo && rebalance::basta_con_recortar(antes, destino);
 
+    // En lineal cada trozo vive entero en un proveedor, asi que lo del que se va hay que
+    // mudarlo a los demas. Solo se puede sin reescribir el volumen si el que sale es **el
+    // ultimo**: el indice de cada proveedor es parte de la clave de sus fragmentos, y quitar
+    // uno de en medio correria a los de detras y dejaria lo escrito ilocalizable.
+    let muda = matches!(antes, Layout::Lineal { .. });
+    if muda && !es_el_ultimo {
+        bail!(
+            "de un volumen lineal solo se puede retirar el ultimo proveedor de la lista, y \
+             '{nombre}' esta en la posicion {posicion} de {}.\n\n\
+             El indice de cada proveedor forma parte de la clave de sus fragmentos: quitar uno \
+             de en medio correria a los de detras y habria que reescribir el volumen entero. \
+             Los de esta lista, en orden: {}",
+            header.backends.len(),
+            header.backends.join(", ")
+        );
+    }
+
     println!("retirando     {nombre}  (posicion {posicion})");
     println!("topologia     {antes}  ->  {destino}");
     println!(
@@ -1454,6 +1471,8 @@ pub async fn providers_remove(nombre: &str, sacrificio: Sacrificio) -> Result<()
         "coste         {}",
         if recorte {
             "ninguno: no se mueve ni un fragmento"
+        } else if muda {
+            "muda lo que tenia el que se va; lo demas se queda donde esta"
         } else {
             "reescribe el volumen entero"
         }
@@ -1479,8 +1498,106 @@ pub async fn providers_remove(nombre: &str, sacrificio: Sacrificio) -> Result<()
         .map(|(_, b)| Arc::clone(b))
         .collect();
 
+    // Los pesos de los que se quedan **no se tocan**: se quita el del que sale y ya. Cambiar
+    // alguno de los demas movería trozos entre veteranos, que es justo lo que este camino
+    // evita.
+    let pesos_nuevos: Vec<u64> = if muda {
+        header
+            .pesos
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != posicion)
+            .map(|(_, p)| *p)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // Medir **antes** de mover nada. Descubrir a mitad que no cabe no cuesta solo el tiempo:
+    // deja el volumen con media mudanza hecha y a quien lo mire sin saber en que estado esta.
+    if muda {
+        let medida = volumen
+            .store()
+            .medir_retirada(posicion, &pesos_nuevos, &quedan, &trozos)
+            .await?;
+        println!(
+            "hay que mudar {} trozo(s), {}",
+            medida.trozos,
+            tamano(medida.bytes)
+        );
+        for r in &medida.reciben {
+            let hueco = match r.libre {
+                Some(l) => tamano(l),
+                None => "no lo dice".to_string(),
+            };
+            println!(
+                "  {:<12} recibe {:>10}   libre {}",
+                r.nombre,
+                tamano(r.bytes),
+                hueco
+            );
+        }
+
+        let no_caben = medida.no_caben();
+        if !no_caben.is_empty() {
+            bail!(
+                "no cabe: {}.\n\nNo se ha movido nada. Haz sitio en esas cuentas, o retira \
+                 antes contenido del volumen.",
+                no_caben
+                    .iter()
+                    .map(|r| format!(
+                        "a {} le faltan {}",
+                        r.nombre,
+                        tamano(r.bytes.saturating_sub(r.libre.unwrap_or(0)))
+                    ))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            );
+        }
+        let sin_medir = medida.sin_medir();
+        if !sin_medir.is_empty() {
+            // No se bloquea: hay proveedores que no declaran cupo y son perfectamente validos.
+            // Pero tampoco se dice que quepa, porque no se sabe.
+            println!(
+                "AVISO: {} no dice(n) cuanto tiene(n) libre, asi que no se puede asegurar que \
+                 quepa",
+                sin_medir
+                    .iter()
+                    .map(|r| r.nombre.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        println!();
+    }
+
     let reparto_nuevo = if recorte {
         // Nada que mover: los que se quedan ya tienen sus fragmentos donde toca.
+        header.reparto
+    } else if muda {
+        // Mudanza, no reescritura. Solo cambian de dueno los trozos que tenia el que se va, y
+        // se copian a su destino **bajo el mismo reparto**: con la cabecera vieja nadie los
+        // busca ahi, porque con los pesos viejos les tocaba el que se va, y el original sigue
+        // intacto mientras tanto. Publicar la cabecera nueva es lo que los pone en juego.
+        println!("mudando lo que tenia {nombre}...");
+        println!("Se puede interrumpir: lo copiado no se repite y el volumen se sigue leyendo.");
+        println!();
+
+        let informe = volumen
+            .store()
+            .mudar_reparto(destino, &pesos_nuevos, &quedan, &trozos)
+            .await?;
+        println!("trozos        {}", informe.trozos);
+        println!("quietos       {}", informe.quietos);
+        println!("ya estaban    {}", informe.ya_estaban);
+        println!(
+            "mudados       {} trozo(s), {}",
+            informe.mudados,
+            tamano(informe.bytes)
+        );
+        if !informe.completo() {
+            return Err(fallo_a_medias(&informe.fallidos));
+        }
         header.reparto
     } else {
         let nuevo = header.reparto + 1;
@@ -1510,8 +1627,12 @@ pub async fn providers_remove(nombre: &str, sacrificio: Sacrificio) -> Result<()
     };
 
     // El punto de compromiso.
+    //
+    // Los pesos van **solo** en lineal, y son los de los que se quedan. Dejarlos vacios aqui
+    // haria que el volumen se leyera con pesos de uno para todos, y entonces cada trozo se
+    // buscaria donde no esta: un volumen que se abre y no encuentra nada.
     let cabecera = Header {
-        pesos: Vec::new(),
+        pesos: pesos_nuevos.clone(),
         version: header.version,
         layout: destino.to_string(),
         reparto: reparto_nuevo,
