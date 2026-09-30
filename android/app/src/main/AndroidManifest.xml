@@ -37,6 +37,14 @@
             android:exported="false"
             android:label="Ficheros" />
 
+        <!-- Crear el volumen. Se llega desde la pantalla principal cuando hay cuentas
+             enlazadas y no hay nada abierto. Sin esto habria que ir a buscar un ordenador
+             para empezar, teniendo las cuentas en el propio telefono. -->
+        <activity
+            android:name=".Crear"
+            android:exported="false"
+            android:label="Crear volumen" />
+
         <!-- Recibir lo que se comparte desde otra aplicacion.
              Hace falta aparte del proveedor de documentos, porque son dos mecanismos
              distintos. El proveedor sale en el selector de ficheros del sistema (guardar en,

@@ -45,6 +45,7 @@ class Principal : Activity() {
     private lateinit var onedrive: Button
     private lateinit var traer: Button
     private lateinit var abrir: Button
+    private lateinit var crear: Button
     private lateinit var ver: Button
     private lateinit var cerrar: Button
     private lateinit var tituloVolumen: TextView
@@ -66,6 +67,7 @@ class Principal : Activity() {
         onedrive = findViewById(R.id.onedrive)
         traer = findViewById(R.id.traer)
         abrir = findViewById(R.id.abrir)
+        crear = findViewById(R.id.crear)
         ver = findViewById(R.id.ver)
         cerrar = findViewById(R.id.cerrar)
         tituloVolumen = findViewById(R.id.titulo_volumen)
@@ -85,6 +87,7 @@ class Principal : Activity() {
         onedrive.setOnClickListener { conectar("ONEDRIVE") }
         traer.setOnClickListener { traerMaleta() }
         abrir.setOnClickListener { abrirVolumen() }
+        crear.setOnClickListener { startActivity(Intent(this, Crear::class.java)) }
         cerrar.setOnClickListener {
             Sesion.cerrar()
             avisarAlSistema()
@@ -188,6 +191,7 @@ class Principal : Activity() {
 
         frase.visibility = if (!abierto) View.VISIBLE else View.GONE
         abrir.visibility = if (!abierto) View.VISIBLE else View.GONE
+        crear.visibility = if (!abierto) View.VISIBLE else View.GONE
         ver.visibility = if (abierto) View.VISIBLE else View.GONE
         cerrar.visibility = if (abierto) View.VISIBLE else View.GONE
 
@@ -197,6 +201,7 @@ class Principal : Activity() {
         onedrive.isEnabled = !abierto && !ocupado
         traer.isEnabled = !ocupado
         abrir.isEnabled = !ocupado
+        crear.isEnabled = !ocupado
 
         estado.text = dicho ?: when {
             !hayCuentas -> "Conecta una cuenta de nube para empezar."

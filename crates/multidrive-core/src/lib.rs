@@ -36,6 +36,7 @@ pub mod retirada;
 pub mod retirar;
 pub mod sincronizador;
 pub mod testigo;
+pub mod topologias;
 pub mod tree;
 pub mod writeback;
 

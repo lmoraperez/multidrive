@@ -168,6 +168,14 @@
                 android:text="Abrir volumen" />
 
             <Button
+                android:id="@+id/crear"
+                style="@style/BotonSuave"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="No tengo volumen: crear uno" />
+
+            <Button
                 android:id="@+id/ver"
                 style="@style/Boton"
                 android:layout_width="match_parent"

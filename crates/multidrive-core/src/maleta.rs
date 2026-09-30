@@ -61,6 +61,22 @@ pub fn viaja(clave: &str) -> bool {
     clave.starts_with(PREFIJO) && !NUNCA.contains(&clave)
 }
 
+/// Las claves que viajan, leidas de **un fichero concreto** y de nada mas.
+///
+/// Existe por Android. Alli no hay entorno que exportar ni ninguno de los sitios donde
+/// [`claves_de_este_equipo`] mira: la aplicacion guarda su configuracion en un fichero de su
+/// propio directorio y ese fichero es toda la verdad que hay. Llamar a la otra desde el movil
+/// devolveria un mapa vacio y se guardaria una maleta sin nada dentro, que es peor que no
+/// guardarla: parece que se hizo.
+pub fn claves_de(ruta: &std::path::Path) -> Result<BTreeMap<String, String>, CoreError> {
+    let cfg = multidrive_backend::config::Config::desde(std::slice::from_ref(&ruta.to_path_buf()))?;
+    Ok(cfg
+        .claves()
+        .filter(|c| viaja(c))
+        .filter_map(|c| cfg.get(c).map(|v| (c.to_string(), v)))
+        .collect())
+}
+
 /// Lo que este equipo esta usando de verdad: el fichero de configuracion **y** el entorno.
 ///
 /// No basta con leer el fichero. Quien exporta las variables en su terminal tiene proveedores

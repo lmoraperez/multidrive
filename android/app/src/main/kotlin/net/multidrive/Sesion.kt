@@ -19,6 +19,18 @@ const val AUTORIDAD = "net.multidrive.documentos"
  */
 const val RAIZ = "multidrive"
 
+/** Bytes en algo que se pueda leer de un vistazo. */
+fun legible(bytes: Long): String {
+    val u = listOf("B", "KiB", "MiB", "GiB", "TiB")
+    var n = bytes.toDouble()
+    var i = 0
+    while (n >= 1024 && i < u.size - 1) {
+        n /= 1024
+        i++
+    }
+    return if (i == 0) "$bytes B" else String.format("%.1f %s", n, u[i])
+}
+
 /**
  * El volumen abierto, compartido entre la aplicacion y el proveedor de documentos.
  *
