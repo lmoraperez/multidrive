@@ -21,6 +21,7 @@
 //! que Kotlin sabe manejar.
 
 pub mod conectar;
+pub mod crear;
 pub mod maleta;
 pub mod sesion;
 
@@ -340,6 +341,46 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_borrar<'local>(
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Las topologias posibles con las cuentas enlazadas, en JSON, con el espacio de cada una.
+///
+/// **Bloquea**: una peticion de cupo por cuenta. Nunca desde el hilo de la interfaz.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_topologias<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    config: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let config = config.try_to_string(env)?;
+            let json = crear::topologias(&config).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(json)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Crea el volumen. Devuelve en JSON lo que hay que contar de el.
+///
+/// **Bloquea** y cuesta segundos. Nunca desde el hilo de la interfaz.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_crear<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    config: JString<'local>,
+    frase: JString<'local>,
+    spec: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let config = config.try_to_string(env)?;
+            let frase = frase.try_to_string(env)?;
+            let spec = spec.try_to_string(env)?;
+            let json = crear::crear(&config, &frase, &spec).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(json)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 /// Mueve o renombra. Es la misma operacion vista desde dos sitios.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_mover<'local>(
@@ -615,6 +656,8 @@ mod tests {
             "crearDirectorio",
             "borrar",
             "mover",
+            "topologias",
+            "crear",
             "escribe",
         ] {
             let simbolo = format!("{esperado}{metodo}");

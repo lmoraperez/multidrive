@@ -230,14 +230,4 @@ class Archivos : Activity() {
         }
     }
 
-    private fun legible(bytes: Long): String {
-        val u = listOf("B", "KiB", "MiB", "GiB", "TiB")
-        var n = bytes.toDouble()
-        var i = 0
-        while (n >= 1024 && i < u.size - 1) {
-            n /= 1024
-            i++
-        }
-        return if (i == 0) "$bytes B" else String.format("%.1f %s", n, u[i])
-    }
 }

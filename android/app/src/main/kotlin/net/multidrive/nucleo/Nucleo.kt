@@ -105,6 +105,20 @@ object Nucleo {
     /** Mueve o renombra. No pisa lo que ya exista en el destino. */
     external fun mover(sesion: Long, origen: String, destino: String)
 
+    /**
+     * Las topologias posibles con las cuentas enlazadas, en JSON, con el espacio de cada una.
+     *
+     * **Bloquea**: pregunta el cupo a cada cuenta. Nunca desde el hilo de la interfaz.
+     */
+    external fun topologias(config: String): String
+
+    /**
+     * Crea el volumen. Devuelve en JSON lo que hay que contar de el.
+     *
+     * **Bloquea** y cuesta segundos. Nunca desde el hilo de la interfaz.
+     */
+    external fun crear(config: String, frase: String, spec: String): String
+
     /** Si esta sesion puede escribir de verdad: se abrio para ello y conserva el permiso. */
     external fun escribe(sesion: Long): Boolean
 
