@@ -875,6 +875,22 @@ pub async fn mount(
         crate::servicio::confirmar_al_lanzador()?;
     }
 
+    // Mirar si otro equipo publico algo. Va **siempre**, no solo en escritura: una unidad
+    // montada en solo lectura es justo la que mas tiempo pasa abierta, y sin esto ensena el
+    // volumen de cuando se monto. El sintoma es el peor posible: no hay error, simplemente no
+    // aparece lo que otro subio.
+    let refrescador = multidrive_core::refrescador::Refrescador::arrancar(
+        Arc::clone(&volumen),
+        std::time::Duration::from_secs(sync_cada),
+        Box::new(move |r| {
+            if desde_lanzador {
+                eprintln!("  [nuevo] otro equipo publico; generacion {}", r.generation);
+            } else {
+                println!("  [nuevo] otro equipo publico; generacion {}", r.generation);
+            }
+        }),
+    );
+
     let sincronizador = escritura.then(|| {
         Sincronizador::arrancar(
             para_sync,
@@ -930,6 +946,7 @@ pub async fn mount(
     tokio::signal::ctrl_c().await?;
     drop(montaje);
     drop(sincronizador);
+    drop(refrescador);
 
     di!();
     di!("desmontado");
