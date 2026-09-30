@@ -85,7 +85,19 @@ class Compartir : Activity() {
                     append(fallos.take(3).joinToString("\n"))
                 }
             }
-            runOnUiThread { terminar(texto, dicho) }
+            runOnUiThread {
+                if (fallos.isEmpty()) {
+                    // Salio bien: se dice con un aviso flotante y **se cierra**. Quien comparte
+                    // una foto quiere volver a la galeria, no quedarse mirando una pantalla que
+                    // no tiene nada mas que ofrecer y de la que no hay forma clara de salir.
+                    Toast.makeText(this, "MultiDrive: $dicho", Toast.LENGTH_SHORT).show()
+                    finish()
+                } else {
+                    // Si algo fallo, la pantalla se queda: el motivo hay que poder leerlo. Pero
+                    // con una salida, que es lo que faltaba.
+                    terminar(texto, dicho)
+                }
+            }
         }
     }
 
@@ -144,9 +156,30 @@ class Compartir : Activity() {
         else -> emptyList()
     }
 
+    /**
+     * Enseña lo que pasó y **deja salir**.
+     *
+     * El botón no es adorno: esta pantalla llega desde el menú de compartir de otra aplicación
+     * y no tiene barra ni sitio a donde ir. Sin él, quien lea el mensaje se queda mirándolo.
+     */
     private fun terminar(texto: TextView, dicho: String) {
         texto.text = dicho
         Log.i(ETIQUETA, dicho)
-        Toast.makeText(this, dicho.lineSequence().first(), Toast.LENGTH_LONG).show()
+
+        val caja = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 96, 48, 48)
+            setBackgroundColor(getColor(R.color.fondo))
+        }
+        // El TextView viene de `onCreate` con su propio relleno; dentro de la caja sobra.
+        texto.setPadding(0, 0, 0, 0)
+        caja.addView(texto)
+        caja.addView(
+            android.widget.Button(this).apply {
+                text = "Cerrar"
+                setOnClickListener { finish() }
+            }
+        )
+        setContentView(caja)
     }
 }
