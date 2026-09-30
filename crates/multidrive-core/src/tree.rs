@@ -612,7 +612,27 @@ async fn publicar(store: &ChunkStore, root: &Root) -> Result<(), CoreError> {
 }
 
 /// Publica de verdad, sin mirar la cola. Es lo que usa `sync` cuando ya no queda nada arriba.
+///
+/// # La comprobacion de antes de publicar
+///
+/// Se relee la raiz y se comprueba que sigue siendo la que este volumen creia. Si otro
+/// escritor publico mientras tanto, **no se publica** y se dice.
+///
+/// Sin esto, el segundo en publicar pisa al primero: los ficheros del primero quedan subidos
+/// pero sin que nadie los apunte, o sea perdidos, sin error y sin aviso. Que dos escritores no
+/// coincidan es cosa del testigo (ver [`crate::testigo`]); esto es lo que queda por si el
+/// testigo no bastó, y es barato: una lectura de unos cientos de bytes por publicacion.
+///
+/// **No cierra la ventana del todo.** Entre comprobar y escribir cabe una publicacion ajena.
+/// La hace mucho mas estrecha, y sobre todo convierte el caso normal --uno que llego tarde-- en
+/// un mensaje en vez de en una perdida silenciosa.
 pub(crate) async fn publicar_ahora(store: &ChunkStore, root: &Root) -> Result<(), CoreError> {
+    // La generacion de la que venimos: la nuestra menos uno, porque `root` es la que se va a
+    // publicar. La raiz cero es la de un volumen recien creado, donde no hay nada que pisar.
+    if root.generation > 0 {
+        crate::testigo::raiz_sin_cambiar(store, root.generation - 1).await?;
+    }
+
     let claro = serde_json::to_vec(root)?;
     let sellado = store.key.seal(&claro, ROOT_KEY.as_bytes())?;
 
