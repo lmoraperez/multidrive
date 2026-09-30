@@ -106,6 +106,21 @@ object Nucleo {
     external fun mover(sesion: Long, origen: String, destino: String)
 
     /**
+     * Quita de este telefono todo lo de una cuenta. Devuelve una frase para ensenar.
+     *
+     * **No la saca del volumen**: solo borra unas claves de aqui. Si esa cuenta formaba parte
+     * de un volumen, lo que se consigue es que ese volumen ya no abra.
+     */
+    external fun olvidar(config: String, nombre: String): String
+
+    /**
+     * Si alguna de las cuentas enlazadas guarda una maleta. No hace falta la frase.
+     *
+     * **Bloquea**: una peticion por cuenta. Nunca desde el hilo de la interfaz.
+     */
+    external fun hayMaleta(config: String): Boolean
+
+    /**
      * Las topologias posibles con las cuentas enlazadas, en JSON, con el espacio de cada una.
      *
      * **Bloquea**: pregunta el cupo a cada cuenta. Nunca desde el hilo de la interfaz.

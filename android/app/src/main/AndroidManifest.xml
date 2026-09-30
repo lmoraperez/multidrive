@@ -45,6 +45,14 @@
             android:exported="false"
             android:label="Crear volumen" />
 
+        <!-- Abrir un volumen que ya existe en un teléfono donde no hay nada configurado:
+             enlazar una cuenta, mirar si trae la maleta y, con la frase, sacar de ella las
+             demás cuentas y abrir. Se llega desde la pantalla principal. -->
+        <activity
+            android:name=".Abrir"
+            android:exported="false"
+            android:label="Abrir volumen" />
+
         <!-- Recibir lo que se comparte desde otra aplicacion.
              Hace falta aparte del proveedor de documentos, porque son dos mecanismos
              distintos. El proveedor sale en el selector de ficheros del sistema (guardar en,
