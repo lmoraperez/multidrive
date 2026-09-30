@@ -21,11 +21,15 @@ private const val ETIQUETA = "multidrive"
 /**
  * Ver lo que hay en el volumen, y borrarlo.
  *
- * # Por que existe, si ya sale en la app de Archivos
+ * # Es el respaldo, no el camino normal
  *
- * Porque no siempre sale. Los gestores de ficheros de cada fabricante enseñan los origenes del
- * Storage Access Framework cuando quieren y donde quieren, y borrar desde ahi depende de que ese
- * gestor ofrezca la opcion. Esto no depende de nadie.
+ * Nacio como pantalla propia porque desde la app de Archivos no se podia borrar. Resulto que la
+ * culpa no era de ella: se la abria como **selector**, y en ese modo no existen las acciones de
+ * borrar ni renombrar. Arreglado eso, el camino normal es la app del sistema, que es donde la
+ * gente ya sabe moverse.
+ *
+ * Esto se queda porque no todos los telefonos traen navegador de documentos. Cuando no lo hay,
+ * [Principal] trae aqui: mejor un listado sencillo que un boton que no lleva a ningun sitio.
  *
  * Y hay algo que solo puede hacer esta pantalla: **decir por que** no se pudo borrar. Un gestor
  * ajeno enseña «no se pudo» y se acabo; aqui se puede explicar que el directorio no esta vacio,

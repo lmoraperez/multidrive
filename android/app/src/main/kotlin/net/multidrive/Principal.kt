@@ -46,7 +46,6 @@ class Principal : Activity() {
     private lateinit var traer: Button
     private lateinit var abrir: Button
     private lateinit var ver: Button
-    private lateinit var ficheros: Button
     private lateinit var cerrar: Button
     private lateinit var tituloVolumen: TextView
     private lateinit var tarjetaVolumen: View
@@ -68,7 +67,6 @@ class Principal : Activity() {
         traer = findViewById(R.id.traer)
         abrir = findViewById(R.id.abrir)
         ver = findViewById(R.id.ver)
-        ficheros = findViewById(R.id.ficheros)
         cerrar = findViewById(R.id.cerrar)
         tituloVolumen = findViewById(R.id.titulo_volumen)
         tarjetaVolumen = findViewById(R.id.tarjeta_volumen)
@@ -91,9 +89,6 @@ class Principal : Activity() {
             Sesion.cerrar()
             avisarAlSistema()
             pintar("Volumen cerrado. Ya no se ve en Archivos.")
-        }
-        ficheros.setOnClickListener {
-            startActivity(Intent(this, Archivos::class.java))
         }
         ver.setOnClickListener { abrirEnArchivos() }
     }
@@ -194,7 +189,6 @@ class Principal : Activity() {
         frase.visibility = if (!abierto) View.VISIBLE else View.GONE
         abrir.visibility = if (!abierto) View.VISIBLE else View.GONE
         ver.visibility = if (abierto) View.VISIBLE else View.GONE
-        ficheros.visibility = if (abierto) View.VISIBLE else View.GONE
         cerrar.visibility = if (abierto) View.VISIBLE else View.GONE
 
         // Conectar mas cuentas con el volumen abierto no vale: el volumen es de las que tiene,

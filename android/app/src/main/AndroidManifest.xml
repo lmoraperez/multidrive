@@ -29,8 +29,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- Ver y borrar lo que hay en el volumen, sin depender del gestor de ficheros del
-             fabricante. Solo se llega desde la pantalla principal. -->
+        <!-- Listado de respaldo, para telefonos sin navegador de documentos del sistema. Solo se
+             llega desde la pantalla principal, y solo cuando no hay quien atienda el intent de
+             navegar. Lo normal es acabar en la app de Archivos. -->
         <activity
             android:name=".Archivos"
             android:exported="false"
