@@ -9,6 +9,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
+import android.widget.Toast
 import net.multidrive.nucleo.Nucleo
 import org.json.JSONArray
 import java.io.File
@@ -94,12 +95,60 @@ class Principal : Activity() {
         ficheros.setOnClickListener {
             startActivity(Intent(this, Archivos::class.java))
         }
-        ver.setOnClickListener {
-            val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "*/*"
-            }
-            startActivity(Intent.createChooser(i, "Busca MultiDrive en la lista"))
+        ver.setOnClickListener { abrirEnArchivos() }
+    }
+
+    /**
+     * Abre el volumen en la app de Archivos, **para navegar**.
+     *
+     * # Por que no vale `ACTION_OPEN_DOCUMENT`
+     *
+     * Es lo que habia aqui antes, y por eso desde este boton no se podia borrar nada. Son dos
+     * modos distintos de la misma aplicacion y desde fuera se parecen mucho:
+     *
+     * - `ACTION_OPEN_DOCUMENT` abre el **selector**. Su trabajo es que elijas un fichero y
+     *   devolverselo a quien pregunto. Mientras esta en ese modo no ofrece borrar, ni renombrar,
+     *   ni mover, **por muchas banderas que declare el proveedor**: no es que no nos crea, es que
+     *   ahi esas acciones no existen.
+     * - `ACTION_VIEW` sobre el `Uri` de la raiz la abre en modo **navegador**, que es la app de
+     *   Archivos de verdad, y ahi si se miran las banderas de cada documento.
+     *
+     * # Por que se elige la aplicacion en vez de preguntar
+     *
+     * Porque no todas las que se ofrecen sirven. En el telefono de pruebas atienden dos: el
+     * navegador de documentos del sistema --`documentsui`, el que implementa esto de verdad y
+     * mira nuestras banderas-- y «Files» de Google, que se apunta al intent y luego enseña sus
+     * propias categorias. Un dialogo donde una opcion funciona y la otra no es peor que no
+     * preguntar: quien elige mal concluye que MultiDrive no deja borrar.
+     *
+     * Si no esta, se deja que Android pregunte, que es mejor que no hacer nada.
+     *
+     * # Si el telefono no sabe navegar por origenes
+     *
+     * No todos los fabricantes traen esto. Si nadie atiende el intent, se lleva a nuestra propia
+     * pantalla y se dice por que, en vez de dejar un boton que no hace nada.
+     */
+    private fun abrirEnArchivos() {
+        val i = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(
+                DocumentsContract.buildRootUri(AUTORIDAD, RAIZ),
+                "vnd.android.document/root",
+            )
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        }
+        packageManager.queryIntentActivities(i, 0)
+            .firstOrNull { it.activityInfo.packageName.endsWith("documentsui") }
+            ?.let { i.setPackage(it.activityInfo.packageName) }
+        try {
+            startActivity(i)
+        } catch (e: android.content.ActivityNotFoundException) {
+            Log.w(ETIQUETA, "este telefono no sabe navegar por origenes", e)
+            Toast.makeText(
+                this,
+                "Este teléfono no trae navegador de archivos del sistema. Se abre el de MultiDrive.",
+                Toast.LENGTH_LONG,
+            ).show()
+            startActivity(Intent(this, Archivos::class.java))
         }
     }
 

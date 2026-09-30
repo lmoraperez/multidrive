@@ -27,12 +27,24 @@ import org.json.JSONObject
  * Para Android un `documentId` es una cadena opaca. Aqui es la ruta dentro del volumen, que ya
  * es unica y estable, en vez de inventar identificadores y mantener una tabla que traduzca.
  *
- * # Solo lectura, y sin disimulo
+ * # Se escribe, y las banderas dicen la verdad
  *
- * v1 es de un solo escritor, y un movil escribiendo en un volumen que el escritorio tambien
- * escribe *es* el problema de concurrencia que esta fuera de alcance. Asi que no se declaran
- * `FLAG_SUPPORTS_WRITE` ni `FLAG_DIR_SUPPORTS_CREATE`, y el selector del sistema **no ofrece**
- * guardar aqui. Es mejor no aparecer como destino que aparecer y fallar.
+ * Esto decia antes «solo lectura, y sin disimulo», porque un movil escribiendo en un volumen que
+ * el escritorio tambien escribe era el problema de concurrencia que estaba fuera de alcance. Lo
+ * resolvio el testigo con reintento: las dos maquinas pueden escribir a la vez y la que llega
+ * segunda rehace su cambio sobre la raiz nueva.
+ *
+ * Lo que se mantiene es la regla: **las banderas dicen lo que de verdad se puede hacer ahora**.
+ * Cuelgan de `Sesion.escribe`, y con el volumen abierto solo para leer no se declara ninguna, asi
+ * que el sistema no ofrece guardar ni borrar. Es mejor no aparecer como destino que aparecer y
+ * fallar.
+ *
+ * # Navegar no es elegir
+ *
+ * Las banderas solo se miran cuando la app de Archivos esta **navegando**. Abierta como selector
+ * --`ACTION_OPEN_DOCUMENT`-- no ofrece borrar ni renombrar aunque se declaren, porque en ese modo
+ * esas acciones no existen. Quien quiera llevar a alguien aqui para que administre sus ficheros
+ * tiene que usar `ACTION_VIEW` sobre `buildRootUri`, como hace [Principal].
  */
 class Proveedor : DocumentsProvider() {
 
@@ -296,7 +308,6 @@ class Proveedor : DocumentsProvider() {
 
     private companion object {
         const val ETIQUETA = "multidrive"
-        const val RAIZ = "multidrive"
 
         val COLUMNAS_RAIZ = arrayOf(
             Root.COLUMN_ROOT_ID,

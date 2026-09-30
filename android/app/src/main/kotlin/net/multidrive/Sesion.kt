@@ -12,6 +12,14 @@ private const val ETIQUETA = "multidrive"
 const val AUTORIDAD = "net.multidrive.documentos"
 
 /**
+ * El identificador de la raiz que publica el proveedor.
+ *
+ * Esta aqui y no dentro de `Proveedor` porque tambien hace falta fuera: es lo que identifica al
+ * volumen en el `Uri` con el que se le pide a la app de Archivos que lo abra.
+ */
+const val RAIZ = "multidrive"
+
+/**
  * El volumen abierto, compartido entre la aplicacion y el proveedor de documentos.
  *
  * Los dos viven en el **mismo proceso**, asi que basta con un objeto. Que sea `object` y no algo
