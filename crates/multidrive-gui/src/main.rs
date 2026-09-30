@@ -286,6 +286,9 @@ struct Montado {
     escritura: bool,
     _montaje: multidrive_mount::Montaje,
     _sincronizador: Option<Sincronizador>,
+    /// Mira si otro equipo publico algo y se pasa a ello. Sin esto, una unidad montada ensena
+    /// el volumen de cuando se monto, y lo que suba otro no aparece nunca.
+    _refrescador: multidrive_core::refrescador::Refrescador,
     /// El testigo de escritura. Se suelta solo al desmontar, porque desmontar suelta esto.
     testigo: Option<multidrive_core::testigo::Guardia>,
 }
@@ -351,6 +354,9 @@ async fn montar(
     // El testigo, **antes de montar**. Montar y descubrir despues que otro esta escribiendo
     // dejaria una unidad puesta que no sirve, y quitarla es mas molesto que no haberla puesto.
     // En solo lectura no se coge: leer no molesta a nadie.
+    // Donde se deja lo que cuente el refrescador, para que el panel lo pueda ensenar.
+    let nuevo = Arc::clone(&estado.ultimo_sync);
+
     let (testigo, otro_escribiendo) = if escritura {
         // No se niega: escribir se reaplica si otro se adelanta, asi que dos equipos en
         // ficheros distintos conviven. Lo que hace falta es saberlo, y se dice en el panel.
@@ -367,11 +373,12 @@ async fn montar(
         .lock()
         .unwrap_or_else(|p| p.into_inner()) = otro_escribiendo.map(|t| t.que);
 
-    let montaje = multidrive_mount::montar(compartido, &punto, !escritura).map_err(|e| {
-        // Es lo primero que ve alguien sin WinFsp instalado, o que apunta a una letra
-        // ocupada: el error merece llegar entero y no resumido.
-        format!("{e:#}")
-    })?;
+    let montaje =
+        multidrive_mount::montar(Arc::clone(&compartido), &punto, !escritura).map_err(|e| {
+            // Es lo primero que ve alguien sin WinFsp instalado, o que apunta a una letra
+            // ocupada: el error merece llegar entero y no resumido.
+            format!("{e:#}")
+        })?;
 
     // En escritura, alguien tiene que subir lo que se escriba. Los avisos no van a ninguna
     // consola —una ventana no tiene— asi que se guardan para ensenarlos en el panel.
@@ -400,11 +407,24 @@ async fn montar(
         )
     });
 
+    // Va **siempre**, no solo en escritura: una unidad en solo lectura es justo la que mas
+    // tiempo pasa abierta, y es la que mas necesita enterarse de lo que sube otro.
+    let refrescador = multidrive_core::refrescador::Refrescador::arrancar(
+        compartido,
+        std::time::Duration::from_secs(SYNC_CADA),
+        Box::new(move |r| {
+            let g = r.generation;
+            *nuevo.lock().unwrap_or_else(|p| p.into_inner()) =
+                Some(format!("otro equipo publico algo (generacion {g})"));
+        }),
+    );
+
     *estado.montado.lock().await = Some(Montado {
         punto: punto.clone(),
         escritura,
         _montaje: montaje,
         _sincronizador: sincronizador,
+        _refrescador: refrescador,
         testigo,
     });
 

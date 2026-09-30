@@ -30,6 +30,7 @@ pub mod header;
 pub mod maleta;
 pub mod pesos;
 pub mod rebalance;
+pub mod refrescador;
 pub mod rescue;
 pub mod retirada;
 pub mod retirar;
