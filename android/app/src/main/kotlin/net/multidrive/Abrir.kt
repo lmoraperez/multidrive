@@ -7,6 +7,7 @@ import android.provider.DocumentsContract
 import android.text.InputType
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -94,6 +95,10 @@ class Abrir : Activity() {
             setOnClickListener { conectar("ONEDRIVE") }
         }
         frase = EditText(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
             hint = "Frase de paso"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setTextColor(getColor(R.color.texto))
