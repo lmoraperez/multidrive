@@ -55,11 +55,14 @@ class Compartir : Activity() {
         if (s == null) {
             // Aparecer en la lista de compartir y no poder recibir es peor que no aparecer, asi
             // que se dice que hacer en vez de fallar a secas.
-            terminar(texto, "El volumen está cerrado.\n\nÁbrelo en MultiDrive, marcando «También quiero escribir en él», y vuelve a compartir.")
+            terminar(texto, "El volumen está cerrado.\n\nÁbrelo en MultiDrive y vuelve a compartir.")
             return
         }
         if (!Sesion.escribe) {
-            terminar(texto, "El volumen está abierto solo para leer.\n\nCiérralo y vuelve a abrirlo marcando «También quiero escribir en él».")
+            // Hoy la aplicación siempre lo abre para escribir, así que esto no debería pasar.
+            // Se deja porque la sesión admite abrirse sin escritura, y un camino que no puede
+            // pasar es justo el que un día pasa.
+            terminar(texto, "El volumen está abierto solo para leer.\n\nCiérralo y vuelve a abrirlo en MultiDrive.")
             return
         }
 

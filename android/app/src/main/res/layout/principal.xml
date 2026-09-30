@@ -159,25 +159,6 @@
                 android:textColor="@color/apagado"
                 android:textSize="13sp" />
 
-            <!-- Sin marcar por defecto: leer no molesta a nadie, y escribir coge el permiso
-                 del volumen y se lo quita a los demás equipos mientras dure. Que sea una
-                 decisión y no lo que pasa por no mirar. -->
-            <CheckBox
-                android:id="@+id/escritura"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="También quiero escribir en él"
-                android:textColor="@color/texto"
-                android:textSize="14sp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Mientras escribas desde aquí, ningún otro equipo podrá hacerlo. Se libera al cerrar el volumen."
-                android:textColor="@color/apagado"
-                android:textSize="13sp" />
-
             <Button
                 android:id="@+id/abrir"
                 style="@style/Boton"
