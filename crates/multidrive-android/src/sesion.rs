@@ -287,6 +287,30 @@ pub fn borrar(id: i64, ruta: &str) -> Result<(), String> {
     })
 }
 
+/// Mueve o renombra. Es la misma operacion: renombrar es mover dentro del mismo directorio.
+///
+/// El arbol lo hace en **una sola raiz**, asi que para cualquiera que este leyendo el fichero
+/// nunca deja de estar en alguno de los dos sitios. Eso importa mas aqui que en el escritorio:
+/// el movil renombra mientras otro equipo puede estar leyendo el mismo volumen.
+///
+/// No se pisa lo que ya exista en el destino. La app de Archivos pregunta antes de renombrar a
+/// un nombre ocupado, pero eso es cosa suya y no de todas; perder un fichero por confiar en que
+/// alguien de fuera pregunte no es algo que se pueda deshacer.
+pub fn mover(id: i64, origen: &str, destino: &str) -> Result<(), String> {
+    let abierto = sesion(id)?;
+    if !abierto.escribe() {
+        return Err("este volumen esta abierto solo para leer".into());
+    }
+    let (origen, destino) = (origen.to_string(), destino.to_string());
+    runtime().block_on(async move {
+        let mut v = abierto.volumen.lock().await;
+        v.rename(&origen, &destino, false)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -286,6 +286,41 @@ class Proveedor : DocumentsProvider() {
         Cache.olvidar(context!!, documentId)
     }
 
+    /**
+     * Renombra, **dentro del mismo directorio**. Es lo unico que ofrece la app de Archivos con
+     * esta accion: mover a otro sitio es `moveDocument`, que es otra cosa.
+     *
+     * # Por que devuelve algo
+     *
+     * Porque aqui el identificador de un documento **es** su ruta, asi que renombrar lo cambia.
+     * Devolver el nuevo es la forma que tiene el contrato de decirlo; quien no lo devuelve esta
+     * afirmando que el identificador sigue valiendo, y el sistema se queda apuntando a una ruta
+     * que ya no existe.
+     */
+    override fun renameDocument(documentId: String, displayName: String): String {
+        val s = Sesion.id ?: throw IllegalStateException("el volumen esta cerrado")
+        if (!Sesion.escribe) {
+            throw UnsupportedOperationException("este volumen esta abierto solo para leer")
+        }
+        if (documentId == "/") throw UnsupportedOperationException("el volumen no se renombra")
+
+        // Una barra en el nombre lo movería de directorio, que no es lo que se pidio. El nucleo
+        // lo rechazaria de todos modos, pero con un error sobre rutas que aqui no explica nada.
+        if (displayName.contains('/') || displayName.contains('\\')) {
+            throw UnsupportedOperationException("un nombre no puede llevar barras")
+        }
+
+        val padre = documentId.substringBeforeLast('/', "")
+        val destino = if (padre.isEmpty()) "/$displayName" else "$padre/$displayName"
+
+        Nucleo.mover(s, documentId, destino)
+        // Los dos listados: de donde salio y a donde fue. Aqui son el mismo directorio, pero
+        // llamarlo dos veces es barato y no depende de que siga siendolo.
+        Cache.olvidar(context!!, documentId)
+        Cache.olvidar(context!!, destino)
+        return destino
+    }
+
     private fun fila(c: MatrixCursor, id: String, nombre: String, dir: Boolean, bytes: Long) {
         c.newRow().apply {
             add(Document.COLUMN_DOCUMENT_ID, id)
@@ -297,9 +332,16 @@ class Proveedor : DocumentsProvider() {
             // destino que aparecer y fallar.
             var banderas = 0
             if (Sesion.escribe) {
-                banderas = banderas or Document.FLAG_SUPPORTS_DELETE
                 if (dir) banderas = banderas or Document.FLAG_DIR_SUPPORTS_CREATE
                 else banderas = banderas or Document.FLAG_SUPPORTS_WRITE
+                // La raiz **no**: borrarla o renombrarla no es una operacion del arbol, es el
+                // volumen entero. Esta funcion tambien la pinta a ella, asi que sin esta linea
+                // la app de Archivos ofreceria la papelera sobre MultiDrive y solo se sabria
+                // que no se podia al pulsarla.
+                if (id != "/") {
+                    banderas = banderas or Document.FLAG_SUPPORTS_DELETE or
+                        Document.FLAG_SUPPORTS_RENAME
+                }
             }
             add(Document.COLUMN_FLAGS, banderas)
             // Sin fecha: el arbol no la guarda todavia, y poner la de ahora seria inventarla.
