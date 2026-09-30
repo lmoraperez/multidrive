@@ -67,6 +67,14 @@ pub async fn pesos_ampliados(actuales: &[u64], nuevos: &[Arc<dyn Backend>]) -> V
 }
 
 /// Lo que cada proveedor declara libre, o nada si no lo dice o no responde.
+///
+/// Publica porque medir una retirada necesita exactamente esto, y tener dos formas de
+/// preguntar el hueco libre seria tener una que se queda vieja.
+pub async fn libres_de(backends: &[Arc<dyn Backend>]) -> Vec<Option<u64>> {
+    libres(backends).await
+}
+
+/// Lo que cada proveedor declara libre, o nada si no lo dice o no responde.
 async fn libres(backends: &[Arc<dyn Backend>]) -> Vec<Option<u64>> {
     join_all(backends.iter().map(|b| b.cuota()))
         .await
