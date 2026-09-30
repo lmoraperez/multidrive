@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.text.InputType
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -44,6 +45,7 @@ class Eliminar : Activity() {
 
     private lateinit var estado: TextView
     private lateinit var detalle: TextView
+    private lateinit var instruccion: TextView
     private lateinit var campo: EditText
     private lateinit var boton: Button
     private lateinit var conf: File
@@ -81,9 +83,24 @@ class Eliminar : Activity() {
             setTextColor(getColor(R.color.apagado))
             setPadding(0, 0, 0, 16)
         }
-        campo = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_TEXT
+        // La instrucción va en una línea propia, no en el `hint` del campo. Un `hint` es de una
+        // sola línea y se corta por la derecha: decía «Escribe el nombre de la cuenta número…»
+        // y el número, que es lo único que hacía falta leer, quedaba fuera de la pantalla.
+        instruccion = TextView(this).apply {
+            textSize = 14f
             setTextColor(getColor(R.color.texto))
+            setPadding(0, 0, 0, 10)
+            visibility = View.GONE
+        }
+        campo = EditText(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+            inputType = InputType.TYPE_CLASS_TEXT
+            hint = "Nombre de la cuenta"
+            setTextColor(getColor(R.color.texto))
+            setHintTextColor(getColor(R.color.apagado))
             visibility = View.GONE
         }
         boton = Button(this).apply {
@@ -93,6 +110,7 @@ class Eliminar : Activity() {
         }
         caja.addView(estado)
         caja.addView(detalle)
+        caja.addView(instruccion)
         caja.addView(campo)
         caja.addView(boton)
         setContentView(ScrollView(this).apply { addView(caja) })
@@ -145,7 +163,9 @@ class Eliminar : Activity() {
                 append("como estaba.")
             }
         }
-        campo.hint = "Escribe el nombre de la cuenta número ${cual + 1}"
+        instruccion.text =
+            "Para confirmar, escribe el nombre de la cuenta número ${cual + 1} de la lista de arriba."
+        instruccion.visibility = View.VISIBLE
         campo.visibility = View.VISIBLE
         boton.visibility = View.VISIBLE
     }
