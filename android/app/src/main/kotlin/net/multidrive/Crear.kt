@@ -53,6 +53,8 @@ class Crear : Activity() {
     private lateinit var onedrive: Button
     private lateinit var seguir: Button
     private lateinit var cancelar: Button
+    private lateinit var flotante: TextView
+    private lateinit var cajaFlotante: LinearLayout
     private lateinit var conf: File
 
     @Volatile
@@ -128,7 +130,6 @@ class Crear : Activity() {
             addView(drive)
             addView(onedrive)
             addView(seguir)
-            addView(cancelar)
         }
         caja.addView(pasoCuentas)
 
@@ -181,7 +182,39 @@ class Crear : Activity() {
         caja.addView(boton)
         avisoFrase = aviso
 
-        setContentView(ScrollView(this).apply { addView(caja) })
+        // El aviso va **fuera** del ScrollView, anclado abajo.
+        //
+        // El texto de estado vive arriba del todo y los botones estan mas abajo, asi que al
+        // pulsar «Crear» el mensaje de «creando, son unos segundos» quedaba fuera de la
+        // pantalla: habia que subir para saber si estaba pasando algo. Igual que en la
+        // pantalla principal, y por lo mismo.
+        flotante = TextView(this).apply {
+            textSize = 14f
+            setTextColor(getColor(R.color.texto))
+        }
+        cajaFlotante = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundResource(R.drawable.aviso_flotante)
+            setPadding(40, 40, 40, 40)
+            elevation = 8f
+            visibility = View.GONE
+            addView(flotante)
+            addView(cancelar)
+            setOnClickListener { avisar(null) }
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                gravity = Gravity.BOTTOM
+                setMargins(40, 40, 40, 40)
+            }
+        }
+        setContentView(
+            android.widget.FrameLayout(this).apply {
+                addView(ScrollView(this@Crear).apply { addView(caja) })
+                addView(cajaFlotante)
+            }
+        )
 
         conf = File(filesDir, "multidrive.conf")
         pintarCuentas(null)
@@ -423,12 +456,24 @@ class Crear : Activity() {
             .show()
     }
 
+    /** Enseña algo donde se lea sin desplazarse. `null` lo quita. */
+    private fun avisar(texto: String?) {
+        if (texto.isNullOrEmpty()) {
+            cajaFlotante.visibility = View.GONE
+            return
+        }
+        flotante.text = texto
+        cajaFlotante.visibility = View.VISIBLE
+    }
+
     private fun crear(spec: String, f: String) {
         boton.isEnabled = false
-        estado.text = "Creando. Son unos segundos: hay que escribir en cada cuenta…"
+        val mientras = "Creando el volumen. Son unos segundos: hay que escribir en cada cuenta…"
+        estado.text = mientras
+        avisar(mientras)
 
         thread {
-            val dicho = try {
+            val resumen = try {
                 val r = JSONObject(Nucleo.crear(conf.absolutePath, f, spec))
                 // Ya hay volumen: la pantalla principal vuelve a ofrecer abrirlo.
                 Sesion.sinVolumen = false
@@ -440,40 +485,28 @@ class Crear : Activity() {
                 }
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo crear el volumen", e)
-                e.message ?: e.toString()
+                runOnUiThread { fallo(e.message ?: e.toString()) }
+                return@thread
             }
-            runOnUiThread { terminar(dicho) }
+            runOnUiThread {
+                // Creado: se vuelve a la pantalla principal y el resumen se cuenta alli.
+                //
+                // Quedarse aqui seria dejar a alguien en una pantalla de «crear volumen» con el
+                // volumen ya creado, teniendo que adivinar que lo siguiente es salir. Y el
+                // resumen no se pierde por el camino: dice donde quedo la configuracion
+                // sellada, que es lo mas util que esta aplicacion llega a decir.
+                Log.i(ETIQUETA, resumen)
+                Sesion.ultimoAviso = resumen
+                finish()
+            }
         }
     }
 
-    /**
-     * Enseña como quedo y **deja salir**.
-     *
-     * Sin el boton, quien lea el mensaje se queda mirandolo: esta pantalla no tiene barra, y
-     * atras despues de crear un volumen no se lee como «volver», se lee como «cancelar».
-     */
-    private fun terminar(dicho: String) {
-        val caja = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(48, 96, 48, 48)
-            setBackgroundColor(getColor(R.color.fondo))
-        }
-        caja.addView(
-            TextView(this).apply {
-                text = dicho
-                textSize = 15f
-                setTextColor(getColor(R.color.texto))
-                setPadding(0, 0, 0, 24)
-            }
-        )
-        caja.addView(
-            Button(this).apply {
-                text = "Volver"
-                setOnClickListener { finish() }
-            }
-        )
-        setContentView(ScrollView(this).apply { addView(caja) })
-        Log.i(ETIQUETA, dicho)
+    /** No se pudo crear: se queda aqui, que es donde se puede volver a intentar. */
+    private fun fallo(dicho: String) {
+        boton.isEnabled = true
+        estado.text = dicho
+        avisar(dicho)
     }
+
 }

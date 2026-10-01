@@ -227,6 +227,17 @@ class Principal : Activity() {
         // estado puede ser otro: una cuenta recien conectada, un volumen recien creado, o un
         // proceso que Android mato por el camino.
         if (!ocupado) pintar(null)
+
+        // Lo que dejó dicho la pantalla de la que venimos. Se recoge **y se borra**: es la
+        // noticia de algo que acaba de pasar, y volver a enseñarla la próxima vez que se abra
+        // la aplicación sería contar como nuevo algo de hace tres días.
+        Sesion.ultimoAviso?.let {
+            Sesion.ultimoAviso = null
+            // Sin desaparecer sola: dice dónde quedó la configuración sellada del volumen
+            // recién creado, que es lo más útil que esta aplicación llega a decir. Se va al
+            // tocarla.
+            avisar(it, esperando = true)
+        }
     }
 
     /**
