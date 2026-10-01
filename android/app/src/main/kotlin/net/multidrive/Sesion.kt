@@ -25,6 +25,28 @@ val AUTORIDAD = "${BuildConfig.APPLICATION_ID}.documentos"
  */
 const val RAIZ = "multidrive"
 
+/**
+ * Lo que se enseña mientras el navegador esta abierto dando permiso.
+ *
+ * # Por que dice que hay que bajar
+ *
+ * Porque es donde se quedaron las primeras personas que lo probaron. La pantalla de permisos de
+ * Google en un movil no cabe entera: se ve el titulo, la cuenta elegida y lo que la aplicacion
+ * va a poder hacer, y el boton de continuar queda **debajo del pliegue**. Quien no lo sabe lee
+ * lo que hay, no ve ningun boton y se queda esperando a que pase algo, que es exactamente lo
+ * que nos contaron: «seleccionó su cuenta y allí se quedó».
+ *
+ * No es un fallo de Google ni se puede arreglar desde aqui: esa pagina es suya. Lo unico que se
+ * puede hacer es decirlo antes, que es barato y funciona.
+ *
+ * Esta aqui y no copiado en las tres pantallas que conectan cuentas porque ya estaba copiado en
+ * las tres, y asi es como una se queda sin arreglar.
+ */
+const val MIENTRAS_NAVEGADOR =
+    "Abriendo el navegador.\n\nElige tu cuenta y, en la pantalla de permisos, " +
+        "baja hasta el final y pulsa «Continuar». El botón queda fuera de la pantalla y hay " +
+        "que desplazarse para verlo."
+
 /** Bytes en algo que se pueda leer de un vistazo. */
 fun legible(bytes: Long): String {
     val u = listOf("B", "KiB", "MiB", "GiB", "TiB")

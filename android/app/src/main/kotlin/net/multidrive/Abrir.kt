@@ -182,7 +182,7 @@ class Abrir : Activity() {
 
     private fun conectar(tipo: String) {
         ocupado = true
-        pintar("Abriendo el navegador. Entra en tu cuenta y da permiso…")
+        pintar(MIENTRAS_NAVEGADOR)
         thread {
             val dicho = try {
                 val nombre = Nucleo.conectar(tipo, conf.absolutePath)
