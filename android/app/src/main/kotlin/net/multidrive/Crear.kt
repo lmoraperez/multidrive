@@ -52,6 +52,7 @@ class Crear : Activity() {
     private lateinit var drive: Button
     private lateinit var onedrive: Button
     private lateinit var seguir: Button
+    private lateinit var cancelar: Button
     private lateinit var conf: File
 
     @Volatile
@@ -113,12 +114,21 @@ class Crear : Activity() {
             text = "Continuar"
             setOnClickListener { alPasoDos() }
         }
+        // La salida mientras se espera al navegador. Sin ella, quien vea que algo se tuerce no
+        // tiene mas recurso que el boton atras del navegador, que reenvia la misma peticion y
+        // la deja inservible para siempre.
+        cancelar = Button(this).apply {
+            text = "Cancelar"
+            visibility = View.GONE
+            setOnClickListener { Nucleo.cancelarConexion() }
+        }
         pasoCuentas = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(cuentas)
             addView(drive)
             addView(onedrive)
             addView(seguir)
+            addView(cancelar)
         }
         caja.addView(pasoCuentas)
 
@@ -221,6 +231,7 @@ class Crear : Activity() {
         // nada. Se deja pasar igualmente --es un volumen valido y cifrado-- pero el sitio de
         // decir lo que cuesta es la lista, donde sale con su aviso al lado.
         seguir.isEnabled = hay.isNotEmpty() && !ocupado
+        cancelar.visibility = if (ocupado) View.VISIBLE else View.GONE
 
         estado.text = dicho ?: if (hay.isEmpty()) {
             "Conecta las cuentas entre las que quieres repartir tus archivos. Cuantas más, más " +

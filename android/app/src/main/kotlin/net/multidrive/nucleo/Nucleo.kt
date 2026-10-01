@@ -120,6 +120,15 @@ object Nucleo {
     external fun retirar(config: String, confirmacion: String): String
 
     /**
+     * Corta la espera del navegador que haya en curso. `true` si habia alguna.
+     *
+     * **No bloquea**: se puede llamar desde el hilo de la interfaz mientras otro hilo esta
+     * dentro de [conectar]. Suelta el puerto local, que es lo que deja limpio el camino para
+     * el intento siguiente.
+     */
+    external fun cancelarConexion(): Boolean
+
+    /**
      * Quita de este telefono todo lo de una cuenta. Devuelve una frase para ensenar.
      *
      * **No la saca del volumen**: solo borra unas claves de aqui. Si esa cuenta formaba parte

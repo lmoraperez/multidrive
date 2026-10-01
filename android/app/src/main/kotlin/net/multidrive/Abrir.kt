@@ -50,6 +50,7 @@ class Abrir : Activity() {
     private lateinit var frase: EditText
     private lateinit var notaFrase: TextView
     private lateinit var boton: Button
+    private lateinit var cancelar: Button
     private lateinit var conf: File
 
     @Volatile
@@ -115,6 +116,13 @@ class Abrir : Activity() {
             visibility = View.GONE
             setOnClickListener { abrir() }
         }
+        // La salida mientras se espera al navegador. Sin ella, el unico recurso es el boton
+        // atras del navegador, que reenvia la misma peticion y la deja inservible.
+        cancelar = Button(this).apply {
+            text = "Cancelar"
+            visibility = View.GONE
+            setOnClickListener { Nucleo.cancelarConexion() }
+        }
 
         caja.addView(estado)
         caja.addView(lista)
@@ -123,6 +131,7 @@ class Abrir : Activity() {
         caja.addView(frase)
         caja.addView(notaFrase)
         caja.addView(boton)
+        caja.addView(cancelar)
         setContentView(ScrollView(this).apply { addView(caja) })
 
         // Si ya hay cuentas --se vuelve aqui, o se enlazaron antes-- se mira la maleta de
@@ -148,6 +157,7 @@ class Abrir : Activity() {
         drive.isEnabled = !ocupado
         onedrive.isEnabled = !ocupado
         boton.isEnabled = !ocupado
+        cancelar.visibility = if (ocupado) View.VISIBLE else View.GONE
 
         val conMaleta = maleta == true
         frase.visibility = if (conMaleta) View.VISIBLE else View.GONE
