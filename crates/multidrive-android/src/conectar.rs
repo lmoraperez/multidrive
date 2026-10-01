@@ -42,6 +42,38 @@ static VM: OnceLock<JavaVM> = OnceLock::new();
 /// nueva, que es la unica que Google va a aceptar.
 static CANCELAR: Mutex<Option<tokio::sync::oneshot::Sender<()>>> = Mutex::new(None);
 
+/// Si hay una conexion en curso ahora mismo.
+///
+/// # Por que no puede haber dos
+///
+/// Porque cada una abre su propio puerto y manda al navegador por su cuenta, y el navegador es
+/// uno: la segunda tapa a la primera y deja un puerto escuchando una respuesta que ya no va a
+/// llegar. Pero lo que lo hizo evidente fue el cancelador. Al armar el de la segunda se
+/// descartaba el de la primera, y **descartar un emisor despierta a su receptor igual que
+/// enviarle algo**: la primera se cancelaba sola, en silencio, en el instante en que alguien
+/// empezaba otra.
+///
+/// Se vio en el telefono de quien la estaba probando: dos «conexion cancelada» con 41 ms de
+/// diferencia, una desde la pantalla de abrir y otra desde la de crear.
+///
+/// Negarse es mejor que hacerlas convivir. Dos autorizaciones a la vez no le sirven a nadie, y
+/// quien tiene una a medias lo que necesita es terminarla o cancelarla, no empezar otra.
+static EN_CURSO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Deja el sitio libre al salir, **por cualquier camino**: bien, mal o cancelada.
+///
+/// Si esto fuera una linea al final en vez de un `Drop`, el primer `?` que saliera por en medio
+/// dejaria la aplicacion creyendo para siempre que hay una conexion en curso, y ningun intento
+/// posterior volveria a arrancar.
+struct Suelta;
+
+impl Drop for Suelta {
+    fn drop(&mut self) {
+        *cancelador() = None;
+        EN_CURSO.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// El candado, recuperandose de uno envenenado: lo que guarda es un emisor, y un panico ajeno
 /// no lo convierte en algo peor que un emisor.
 fn cancelador() -> std::sync::MutexGuard<'static, Option<tokio::sync::oneshot::Sender<()>>> {
@@ -116,8 +148,17 @@ pub fn conectar(tipo: &str, config: &str) -> Result<String, String> {
         .ok_or_else(|| format!("no quedan ranuras libres de tipo {}", t.clave))?;
     let nombre = live::nombre_de_ranura(&ranura);
 
-    // El cancelador se arma **antes** de empezar, y se desarma pase lo que pase: si se quedara
-    // puesto, el boton de cancelar de la vez siguiente cortaria un intento que ya no existe.
+    // Una sola a la vez. Se reserva el sitio **antes** de tocar nada, y el guardia lo libera
+    // salga por donde salga.
+    if EN_CURSO.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return Err(
+            "ya hay una conexión en curso.\n\nTermínala en el navegador, o pulsa «Cancelar» \
+             y vuelve a intentarlo."
+                .into(),
+        );
+    }
+    let _suelta = Suelta;
+
     let (tx, rx) = tokio::sync::oneshot::channel();
     *cancelador() = Some(tx);
 
@@ -132,10 +173,9 @@ pub fn conectar(tipo: &str, config: &str) -> Result<String, String> {
             r = flujo => r.map_err(|e| e.to_string()),
             // Al salir por aqui se suelta `flujo`, y con el el puerto local. Eso es lo que
             // deja el camino limpio para el intento siguiente.
-            _ = rx => Err("conexion cancelada".to_string()),
+            _ = rx => Err("conexión cancelada".to_string()),
         }
     });
-    *cancelador() = None;
     let conectada = conectada?;
 
     let valores = |c: &str| match c {
@@ -205,5 +245,22 @@ mod tests {
         *cancelador() = Some(tx);
         assert!(cancelar(), "lo armado se puede cancelar");
         assert!(!cancelar(), "y no se queda puesto para la vez siguiente");
+    }
+
+    /// El guardia libera el sitio salga por donde salga.
+    ///
+    /// Sin esto, el primer error que saliera por en medio dejaria la aplicacion creyendo para
+    /// siempre que hay una conexion en curso, y ningun intento posterior volveria a arrancar:
+    /// un fallo que solo se arregla cerrando la aplicacion.
+    #[test]
+    fn el_sitio_se_libera_aunque_se_salga_por_un_error() {
+        use std::sync::atomic::Ordering;
+
+        assert!(!EN_CURSO.swap(true, Ordering::SeqCst), "estaba libre");
+        {
+            let _suelta = Suelta;
+            // Aqui dentro se sale como sea: por error, por panico atrapado o por el final.
+        }
+        assert!(!EN_CURSO.load(Ordering::SeqCst), "y vuelve a estarlo");
     }
 }
