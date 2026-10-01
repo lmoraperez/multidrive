@@ -98,6 +98,17 @@ object Sesion {
     var sinVolumen: Boolean = false
 
     /**
+     * Algo que contar en la pantalla principal cuando se vuelva a ella.
+     *
+     * Lo deja una pantalla que termina --crear un volumen-- y lo recoge y lo borra la
+     * principal. Existe porque el resultado de crear un volumen es lo mas importante que dice
+     * esta aplicacion: donde quedo la configuracion sellada, cuantas caidas aguanta. Enseñarlo
+     * en una pantalla que acto seguido se cierra seria perderlo.
+     */
+    @Volatile
+    var ultimoAviso: String? = null
+
+    /**
      * Abre el volumen. **Tarda segundos: nunca desde el hilo de la interfaz.**
      *
      * Con `escritura` coge ademas el testigo del volumen, pero **no falla si lo tiene otro
