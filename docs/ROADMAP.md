@@ -909,6 +909,79 @@ El orden de preferencia es ese mismo. Las cuentas solo se ganan el coste el día
 **compartir** configuración entre varias personas, que es un problema distinto del de llevarse
 la propia de un equipo a otro.
 
+## Carga automática de carpetas desde el móvil — **por analizar**
+
+La función que tiene Nextcloud: se elige una carpeta local —`/DCIM/Camera`— y una remota
+—`/Photos/`—, y lo que aparezca en la primera sube sola a la segunda, con condiciones de red y
+de batería. Anotado el 1 de octubre de 2026 tras ver su diálogo de ajustes, que es un buen
+catálogo de las decisiones que hay que tomar.
+
+### Lo que decide: la frase de paso
+
+Subir sola significa **escribir cuando el usuario no está delante**. Para escribir hace falta la
+clave maestra, y hoy esa vive solo en memoria mientras hay sesión abierta, muere con el proceso
+y no se guarda en ninguna parte. Es una propiedad de la que la aplicación presume.
+
+Android mata el proceso cuando le conviene —medido en esta misma casa, con teléfonos HONOR y
+Xiaomi—, así que «subir mientras la aplicación esté abierta» no es una función, es una
+casualidad. Quedan dos caminos:
+
+1. **No guardar nada**: la carga solo ocurre con la aplicación en primer plano. Honesto y casi
+   inútil.
+2. **Guardar la clave derivada en el Keystore de Android**, respaldado por hardware, atado a este
+   teléfono y exigiendo pantalla desbloqueada (`setUnlockedDeviceRequired`). Es lo que hacen
+   Nextcloud, Signal y cualquier aplicación que trabaje sin su dueño delante.
+
+El segundo cambia el modelo de amenaza y hay que decirlo sin adornos: **quien tenga el teléfono
+desbloqueado tiene el volumen**. A cambio, no es la frase lo que se guarda, así que no sirve
+para abrir el volumen en otro equipo ni se puede teclear en ningún sitio.
+
+Tiene que ser una casilla que se activa a sabiendas, no el camino por defecto.
+
+### Lo que encaja bien, si se hace con cuidado
+
+**Cada escritura publica una raíz nueva.** Subir 500 fotos de una en una serían 500
+publicaciones de raíz: 500 vueltas a la red, 500 ocasiones de chocar con un escritorio que esté
+escribiendo, y una lentitud que no se arregla después.
+
+La pieza para evitarlo **ya existe**: `tree::aplicar_varios` mete varios cambios en una sola
+raíz, con rebase y reintento. Hoy es privada y habría que exponerla. Hecho así, una tanda de
+fotos es una publicación, y el testigo apenas se nota.
+
+Las condiciones del diálogo de Nextcloud —Wi-Fi no tarificada, solo cargando— son exactamente
+las restricciones de `JobScheduler`, que además es parte del sistema: no obliga a meter androidx,
+que esta aplicación no usa. Para la subida en sí hace falta un servicio en primer plano con su
+notificación, porque puede durar minutos.
+
+### Lo que hay que resolver y no es obvio
+
+- **Cuota de los proveedores.** Una foto es un trozo, y un trozo con `rs:4,2` son seis
+  peticiones. 500 fotos son 3000 llamadas a la API de Drive. Hace falta estrangular el ritmo y
+  poder reanudar, no solo reintentar.
+- **Registro local de lo ya subido.** Sin él, cada pasada vuelve a subirlo todo. Nextcloud lleva
+  uno; aquí hace falta igual, y es también lo que responde a «¿qué hacer si el archivo ya
+  existe?».
+- **Espacio temporal.** El escritor de Android junta el fichero entero en la caché antes de
+  subirlo —está documentado y es por cómo se trocea—, así que un vídeo de 4K necesita su tamaño
+  libre en el teléfono. De uno en uno y limpiando detrás.
+- **Trozos huérfanos.** Si una tanda muere después de escribir trozos y antes de publicar la
+  raíz, esos trozos quedan sin referenciar. No rompen nada —son inmutables y por contenido— pero
+  ocupan y hoy nadie los recoge.
+
+### Lo que yo dejaría fuera de la primera versión
+
+- **Borrar el original tras subirlo.** Nextcloud lo ofrece. Borrar las fotos de alguien con un
+  sistema en pre-alfa no se hace.
+- **Sincronización en dos sentidos.** Esto es subida, como la de Nextcloud. Bajar y reconciliar
+  es otro problema.
+
+### El escritorio es otro problema, más fácil
+
+«Sincronizar una carpeta con la unidad montada» en el escritorio no necesita casi nada de lo de
+arriba: la unidad **ya está montada** como una letra, la sesión está abierta con su frase, y
+vigilar una carpeta y copiar es algo que hace cualquier herramienta existente. Si lo que hace
+falta es eso, no comparte casi nada con la carga del móvil y conviene no mezclarlos.
+
 ## Versión web en multidrive.net — **por analizar**
 
 Un explorador de archivos en el navegador, servido desde `multidrive.net`, sin instalar nada.
