@@ -975,6 +975,51 @@ notificación, porque puede durar minutos.
 - **Sincronización en dos sentidos.** Esto es subida, como la de Nextcloud. Bajar y reconciliar
   es otro problema.
 
+### La interfaz, tomando la de Nextcloud como modelo
+
+Decidido el 1 de octubre de 2026: la carga automática va en un menú de **Configuraciones**
+dentro de la aplicación, y el explorador propio pasa a ser la vía principal —no el respaldo que
+es hoy—, con la forma del de Nextcloud: barra con buscador y botón de menú, cajón lateral
+(Todos los archivos, Favoritos, Recientes, Configuraciones, espacio usado al pie), lista con
+icono, tamaño y fecha, botón flotante de añadir y barra inferior.
+
+Eso cambia el rumbo que llevaba la aplicación, que era apoyarse en la app de Archivos del
+sistema y tener el listado propio solo para teléfonos sin navegador de documentos. El proveedor
+SAF **se queda igual**: es lo que permite que otras aplicaciones abran y guarden en el volumen,
+y eso no lo sustituye ninguna pantalla nuestra.
+
+**Lo importante es esto:** la interfaz de Nextcloud es la interfaz de un sistema **con
+servidor**. Varias de sus piezas le salen baratas porque hay una base de datos detrás, y aquí
+no la hay y además todo está cifrado. Por orden de coste:
+
+| Pieza | Qué hace falta |
+|---|---|
+| Cajón, barra inferior, lista, botón flotante, Configuraciones | Solo trabajo de interfaz |
+| «30,2 GB usado» | Ya existe: `espacio::combinar` y `cuota` |
+| Fechas, «Recientes», ordenar por fecha | **Cambio de formato**: `Entry` no guarda ninguna |
+| Favoritos | Decidir dónde viven |
+| Miniaturas y «Multimedia» | Diseño nuevo: generarlas al subir |
+| Buscar | Índice local; hoy sería recorrer el árbol entero |
+
+**Las fechas.** `Entry` guarda `node`, `kind` y `len`, y nada más. Añadir un campo opcional con
+`#[serde(default)]` es compatible hacia atrás —los nodos viejos se leen igual— pero lo que ya
+está escrito no tiene fecha y no la va a tener hasta que se reescriba. Hay que decidir qué
+enseña la lista mientras tanto, y no inventársela.
+
+**Las miniaturas.** Nextcloud las genera en su servidor. Aquí los trozos están cifrados y en la
+nube: hacer una miniatura de una foto es bajarla entera y descifrarla, así que una cuadrícula de
+cincuenta son cincuenta descargas. La única forma sensata es **generarlas al subir y guardarlas
+dentro del volumen**, lo que es espacio de más y una decisión de formato. Sin eso, «Multimedia»
+y «Archivos recomendados» no se pueden hacer con honestidad.
+
+**Los favoritos.** O viven en el árbol —y entonces marcar uno publica una raíz, y te siguen de
+un equipo a otro— o viven solo en el teléfono —gratis, pero no te siguen—. Los de Nextcloud son
+del servidor. Hay que elegir y decirlo.
+
+**Buscar.** Nuestro árbol no tiene índice. Buscar es recorrerlo, y recorrerlo es bajar nodos de
+la nube. Para un volumen pequeño pasa; para uno grande hace falta un índice local, que es otra
+cosa que mantener al día.
+
 ### El escritorio es otro problema, más fácil
 
 «Sincronizar una carpeta con la unidad montada» en el escritorio no necesita casi nada de lo de
