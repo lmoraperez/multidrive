@@ -401,7 +401,7 @@ class Principal : Activity() {
     }
 
     private fun conectar(tipo: String) = enSegundoPlano(
-        "Abriendo el navegador. Entra en tu cuenta y da permiso…"
+        MIENTRAS_NAVEGADOR
     ) {
         val nombre = Nucleo.conectar(tipo, conf.absolutePath)
         "Cuenta conectada como «$nombre»."

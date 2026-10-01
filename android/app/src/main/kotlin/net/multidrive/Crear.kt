@@ -232,7 +232,7 @@ class Crear : Activity() {
 
     private fun conectar(tipo: String) {
         ocupado = true
-        pintarCuentas("Abriendo el navegador. Entra en tu cuenta y da permiso…")
+        pintarCuentas(MIENTRAS_NAVEGADOR)
         thread {
             val dicho = try {
                 "Cuenta conectada como «${Nucleo.conectar(tipo, conf.absolutePath)}»."

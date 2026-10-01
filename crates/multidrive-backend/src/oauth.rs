@@ -121,7 +121,19 @@ pub async fn conectar(
         esperar_codigo(&servidor, servidor6.as_ref(), &estado),
     )
     .await
-    .map_err(|_| fallo("se agoto la espera: nadie termino de dar permiso".into()))??;
+    // Se dice **donde se queda la gente**, no solo que se acabo el tiempo. La primera vez que
+    // esto fallo de verdad, la causa fue que el boton de continuar de la pantalla de permisos
+    // de Google queda debajo del pliegue en un movil: quien no lo sabe lee lo que hay, no ve
+    // ningun boton y se queda esperando. «Se agoto la espera» es cierto y no sirve de nada.
+    .map_err(|_| {
+        fallo(
+            "se agoto la espera: no llego el permiso.\n\n\
+             Si la pantalla del proveedor llego a pedirtelo, hay que bajar hasta el final y \
+             pulsar el boton de continuar: en una pantalla pequena queda fuera de la vista.\n\n\
+             Puedes intentarlo otra vez."
+                .into(),
+        )
+    })??;
 
     // El canje va **antes** de contestarle al navegador, y no es un detalle de orden.
     //
