@@ -83,6 +83,32 @@ fn afinar(b: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
     b
 }
 
+/// Un error de red **con sus causas**.
+///
+/// `reqwest` dice «error sending request for url (...)» y guarda el motivo de verdad --que no
+/// hay DNS, que el certificado no valida, que la conexion se rechazo-- en la cadena de causas,
+/// que `to_string()` no imprime. Sin ellas, el mensaje que llega a quien lo sufre y a quien
+/// tiene que arreglarlo no distingue entre un telefono sin datos y un almacen de confianza mal
+/// armado, que son dos problemas sin nada en comun.
+///
+/// Costo una tarde averiguarlo en un telefono prestado. El mensaje decia exactamente lo mismo
+/// en los dos casos.
+pub fn con_causas(e: &dyn std::error::Error) -> String {
+    let mut dicho = e.to_string();
+    let mut fuente = e.source();
+    while let Some(f) = fuente {
+        let trozo = f.to_string();
+        // Las capas repiten el mensaje de la de abajo mas de lo que parece; repetirlo aqui
+        // convertiria la causa en ruido.
+        if !dicho.contains(&trozo) {
+            dicho.push_str(": ");
+            dicho.push_str(&trozo);
+        }
+        fuente = f.source();
+    }
+    dicho
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,5 +119,49 @@ mod tests {
     fn el_cliente_se_construye() {
         let _ = cliente();
         let _ = construir(Duration::from_secs(1));
+    }
+
+    #[derive(Debug)]
+    struct Capa(&'static str, Option<Box<Capa>>);
+
+    impl std::fmt::Display for Capa {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.0)
+        }
+    }
+
+    impl std::error::Error for Capa {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            self.1
+                .as_deref()
+                .map(|c| c as &(dyn std::error::Error + 'static))
+        }
+    }
+
+    /// La causa de abajo llega arriba. Es lo unico que distingue «sin datos» de «el
+    /// certificado no valida», y las dos capas de arriba dicen lo mismo en los dos casos.
+    #[test]
+    fn se_dicen_las_causas() {
+        let e = Capa(
+            "error sending request",
+            Some(Box::new(Capa(
+                "invalid peer certificate",
+                Some(Box::new(Capa("Revoked", None))),
+            ))),
+        );
+        assert_eq!(
+            con_causas(&e),
+            "error sending request: invalid peer certificate: Revoked"
+        );
+    }
+
+    /// Una capa que ya repite lo de abajo no lo dice dos veces.
+    #[test]
+    fn no_se_repite_lo_que_ya_estaba() {
+        let e = Capa(
+            "fallo de red: sin ruta",
+            Some(Box::new(Capa("sin ruta", None))),
+        );
+        assert_eq!(con_causas(&e), "fallo de red: sin ruta");
     }
 }
