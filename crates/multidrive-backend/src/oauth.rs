@@ -282,7 +282,7 @@ async fn canjear(
         .send()
         .await
         .map_err(|e| BackendError::Oauth {
-            detalle: e.to_string(),
+            detalle: crate::http::con_causas(&e),
         })?;
 
     let estado = respuesta.status();
