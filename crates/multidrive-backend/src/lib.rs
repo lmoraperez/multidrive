@@ -171,6 +171,16 @@ pub enum BackendError {
     Cuota { name: String, detalle: String },
     #[error("no se pudo conectar la cuenta: {detalle}")]
     Oauth { detalle: String },
+    /// No se pudo armar el cliente HTTPS.
+    ///
+    /// Tiene variante propia porque **no se parece a nada de lo de arriba**: no es una cuenta
+    /// mal configurada ni una nube que no responde, es que este binario no puede hablar por
+    /// HTTPS en absoluto. Antes se tapaba cayendo en silencio a un cliente por defecto, que en
+    /// Android usa el verificador de la plataforma; ese declara revocado lo que no lo esta, asi
+    /// que el sintoma acababa siendo «certificado invalido» contra una nube cualquiera y nadie
+    /// podia adivinar que el problema estaba aqui.
+    #[error("no se pudo preparar la conexion segura: {detalle}")]
+    Tls { detalle: String },
     // El error de OpenDAL trae la URL de la peticion, y Google pone las credenciales en la
     // propia URL. Sin redactar, cualquier fallo de renovacion publica el token de refresco.
     #[error("fallo de E/S en el proveedor '{name}' sobre '{key}': {}", sin_secretos(&source.to_string()))]
@@ -399,7 +409,7 @@ impl OpendalBackend {
         // plataforma, que ahi declara revocado lo que no lo esta; el resto del programa
         // funcionaria y solo fallarian las nubes, que es lo unico que importa. Ver `http`.
         let op = op.with_context(
-            opendal::OperationContext::new().with_http_transport(crate::http::transporte()),
+            opendal::OperationContext::new().with_http_transport(crate::http::transporte()?),
         );
 
         Ok(Self { name, op, medidor })

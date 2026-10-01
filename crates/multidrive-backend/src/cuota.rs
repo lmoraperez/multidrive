@@ -146,7 +146,7 @@ async fn pedir(
     cache: &Mutex<Option<(String, Instant)>>,
 ) -> Result<String, BackendError> {
     let token = token_de(nombre, cual, creds, cache).await?;
-    let respuesta = cliente()
+    let respuesta = cliente()?
         .get(url)
         .bearer_auth(&token)
         .send()
@@ -197,7 +197,7 @@ async fn refrescar(
     client_id: &str,
     client_secret: &str,
 ) -> Result<(String, Duration), BackendError> {
-    let respuesta = cliente()
+    let respuesta = cliente()?
         .post(cual.datos().token)
         .form(&[
             ("grant_type", "refresh_token"),
@@ -242,7 +242,7 @@ async fn webdav(
         root.trim_matches('/')
     );
     let metodo = reqwest::Method::from_bytes(b"PROPFIND").expect("PROPFIND es un metodo valido");
-    let mut peticion = cliente()
+    let mut peticion = cliente()?
         .request(metodo, url)
         // Profundidad 0: se pregunta por esta coleccion, no por lo que cuelga de ella. Con
         // `Depth: 1`, un Nextcloud con muchos ficheros devolveria un XML enorme para dar dos

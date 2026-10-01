@@ -35,14 +35,24 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use crate::BackendError;
+
 /// Cliente compartido.
 ///
 /// Uno solo para todo el proceso: reutiliza conexiones y, sobre todo, no rehace el saludo TLS
 /// en cada peticion. Contra una nube con ~6,5 s de latencia por operacion, eso no es una
 /// optimizacion menor.
-pub fn cliente() -> &'static reqwest::Client {
-    static CLIENTE: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENTE.get_or_init(|| construir(Duration::from_secs(20)))
+pub fn cliente() -> Result<&'static reqwest::Client, BackendError> {
+    static CLIENTE: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
+    match CLIENTE.get_or_init(|| construir(Duration::from_secs(20)).map_err(|e| e.to_string())) {
+        Ok(c) => Ok(c),
+        // El motivo se guarda tal cual y se repite cada vez que alguien lo pida: el cliente se
+        // arma una sola vez, asi que sin esto el error se veria una vez y las demas saldria
+        // algo distinto y mas confuso.
+        Err(detalle) => Err(BackendError::Tls {
+            detalle: detalle.clone(),
+        }),
+    }
 }
 
 /// El transporte que se le da a OpenDAL, sobre el mismo cliente.
@@ -50,16 +60,29 @@ pub fn cliente() -> &'static reqwest::Client {
 /// OpenDAL se fabrica uno por su cuenta si no se le da ninguno, y ese no pasaria por lo de
 /// aqui. En el escritorio daria igual; en Android seria la diferencia entre hablar con las
 /// nubes y no.
-pub fn transporte() -> opendal::HttpTransporter {
-    opendal::HttpTransporter::new(opendal_http_transport_reqwest::ReqwestTransport::new(
-        cliente().clone(),
+pub fn transporte() -> Result<opendal::HttpTransporter, BackendError> {
+    Ok(opendal::HttpTransporter::new(
+        opendal_http_transport_reqwest::ReqwestTransport::new(cliente()?.clone()),
     ))
 }
 
 /// Un cliente con el tiempo de espera que se pida, por si algo necesita otro.
-pub fn construir(espera: Duration) -> reqwest::Client {
+///
+/// # Por que esto puede fallar, y por que no se disimula
+///
+/// Aqui habia `.build().unwrap_or_default()`. Parecia prudente y era lo contrario: si armar el
+/// cliente con **nuestro** almacen de confianza fallaba, se devolvia el cliente por defecto,
+/// que en Android usa el verificador de la plataforma. Y ese verificador es justo el que no
+/// sirve ahi: declara revocados los certificados sin OCSP, que son los de Google.
+///
+/// O sea que un fallo de configuracion no daba un error de configuracion: daba «certificado
+/// invalido» al hablar con una nube, tres capas mas arriba y sin ninguna pista que llevara
+/// hasta aqui. Un fallo del que no se puede salir se dice donde esta.
+pub fn construir(espera: Duration) -> Result<reqwest::Client, BackendError> {
     let b = reqwest::Client::builder().timeout(espera);
-    afinar(b).build().unwrap_or_default()
+    afinar(b).build().map_err(|e| BackendError::Tls {
+        detalle: con_causas(&e),
+    })
 }
 
 #[cfg(target_os = "android")]
@@ -115,10 +138,14 @@ mod tests {
 
     /// Que se pueda construir es lo unico comprobable sin red, y no es poco: en Android la
     /// configuracion de TLS se arma a mano, y armarla mal se veria aqui.
+    ///
+    /// Se comprueba que sale **bien**, no solo que no revienta. Mientras esto devolvia un
+    /// cliente pasara lo que pasara, una configuracion rota pasaba por aqui sin pena ni gloria
+    /// y reaparecia como «certificado invalido» al hablar con una nube.
     #[test]
     fn el_cliente_se_construye() {
-        let _ = cliente();
-        let _ = construir(Duration::from_secs(1));
+        assert!(cliente().is_ok(), "{:?}", cliente().err());
+        assert!(construir(Duration::from_secs(1)).is_ok());
     }
 
     #[derive(Debug)]
