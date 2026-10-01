@@ -17,8 +17,14 @@
         </intent>
     </queries>
 
+    <!-- `roundIcon` apunta al mismo sitio a proposito: un icono adaptativo ya se recorta con la
+         mascara que pida cada lanzador, redonda incluida, asi que una segunda version redonda
+         seria el mismo dibujo mantenido dos veces. Se declara igualmente porque hay lanzadores
+         que lo piden por su nombre y, si no esta, se quedan con el icono por defecto. -->
     <application
+        android:icon="@mipmap/ic_launcher"
         android:label="MultiDrive"
+        android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/TemaMultiDrive">
         <activity

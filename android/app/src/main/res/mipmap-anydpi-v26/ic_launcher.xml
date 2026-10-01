@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- El icono de la aplicacion.
+
+     # Por que no hay PNG de respaldo
+
+     Los iconos adaptativos existen desde API 26, que es el `minSdk` de esta aplicacion: no hay
+     ningun telefono donde pueda correr y que no sepa leer esto. La carpeta de PNG por densidad
+     que suelen traer los proyectos de Android seria peso muerto para cubrir versiones en las que
+     MultiDrive ni siquiera instala.
+
+     # Por que el fondo es un color y no un dibujo
+
+     Porque el sistema recorta el icono con la mascara que le de la gana (circulo, cuadrado
+     redondeado, gota) y mueve las dos capas por separado al animarlo. Un fondo con esquinas
+     propias asomaria por dentro de la mascara en unos telefonos y no en otros; uno liso se
+     recorta bien siempre. Las esquinas redondeadas del icono de marca las pone el sistema. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/fondo" />
+    <foreground android:drawable="@drawable/ic_launcher_frente" />
+    <monochrome android:drawable="@drawable/ic_launcher_mono" />
+</adaptive-icon>

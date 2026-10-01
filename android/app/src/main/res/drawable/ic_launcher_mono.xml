@@ -1,0 +1,37 @@
+<!-- El icono en un solo color, para los iconos tematizados de Android 13 en adelante.
+
+     Cuando alguien activa esa opcion, el sistema tiñe esta figura con los colores de su fondo de
+     pantalla y descarta los nuestros. El blanco de aqui no se ve nunca: es solo la silueta.
+
+     Sin esta capa, MultiDrive seria uno de los iconos que se quedan con su color original en una
+     pantalla donde los demas han cambiado, que es exactamente el aspecto de una aplicacion que
+     no se ha actualizado desde hace años.
+
+     Las separaciones entre cunas se mantienen. Son lo que hace que se lea como cuatro piezas y
+     no como un rombo a secas, y en una sola tinta es lo unico que queda de la figura. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:scaleX="1.443"
+        android:scaleY="1.443"
+        android:translateX="19.4"
+        android:translateY="19.4">
+
+        <path
+            android:fillColor="#ffffff"
+            android:pathData="M25.4,4.6 L43.4,22.6 L25.4,22.6 Z" />
+        <path
+            android:fillColor="#ffffff"
+            android:pathData="M43.4,25.4 L25.4,43.4 L25.4,25.4 Z" />
+        <path
+            android:fillColor="#ffffff"
+            android:pathData="M22.6,43.4 L4.6,25.4 L22.6,25.4 Z" />
+        <path
+            android:fillColor="#ffffff"
+            android:pathData="M4.6,22.6 L22.6,4.6 L22.6,22.6 Z" />
+    </group>
+</vector>

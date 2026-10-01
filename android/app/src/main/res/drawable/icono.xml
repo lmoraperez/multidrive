@@ -1,22 +1,52 @@
-<!-- El rombo de la marca, en cuatro triangulos.
+<!-- El icono de marca, completo: el cuadrado redondeado y el rombo encima.
+
      Tiene que ser un recurso **nuestro**: la app de Archivos carga el icono de la raiz por su
      identificador y dentro de nuestro paquete, asi que pasarle uno de `android.R` la deja sin
-     poder resolverlo. -->
+     poder resolverlo.
+
+     # Por que lleva su propio fondo
+
+     Porque se dibuja en sitios que no controlamos. En la cabecera de la aplicacion el fondo es
+     oscuro; en la app de Archivos lo pone el fabricante y puede ser claro. Un rombo suelto solo
+     puede tener un juego de colores, asi que en uno de los dos sitios se perdia: con las cuñas
+     oscuras que tenia antes, tres de las cuatro eran casi invisibles sobre nuestro propio fondo
+     y solo se veia la azul. Con el cuadrado detras, el icono se lee igual lo pongan donde lo
+     pongan.
+
+     Los colores son los de `marca/paleta.json`. Los de antes (#2E6BE6 y #1B2A41) no estaban en
+     ninguna paleta: eran de este fichero y de nadie mas.
+
+     El icono del **lanzador** es otro, `mipmap/ic_launcher`, y no lleva fondo propio: alli lo
+     pone el sistema al aplicar su mascara. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="48"
     android:viewportHeight="48">
+
     <path
-        android:fillColor="#2E6BE6"
-        android:pathData="M25.4,4.6 L43.4,22.6 L25.4,22.6 Z" />
-    <path
-        android:fillColor="#1B2A41"
-        android:pathData="M43.4,25.4 L25.4,43.4 L25.4,25.4 Z" />
-    <path
-        android:fillColor="#1B2A41"
-        android:pathData="M22.6,43.4 L4.6,25.4 L22.6,25.4 Z" />
-    <path
-        android:fillColor="#1B2A41"
-        android:pathData="M4.6,22.6 L22.6,4.6 L22.6,22.6 Z" />
+        android:fillColor="#0d1017"
+        android:pathData="M9,0 L39,0 A9,9 0 0 1 48,9 L48,39 A9,9 0 0 1 39,48 L9,48 A9,9 0 0 1 0,39 L0,9 A9,9 0 0 1 9,0 Z" />
+
+    <group
+        android:scaleX="0.78"
+        android:scaleY="0.78"
+        android:translateX="5.28"
+        android:translateY="5.28">
+
+        <!-- La cuña de paridad, arriba a la derecha: k piezas de datos y m de paridad formando
+             una sola figura. Es lo que significa el logotipo. -->
+        <path
+            android:fillColor="#4c8ff0"
+            android:pathData="M25.4,4.6 L43.4,22.6 L25.4,22.6 Z" />
+        <path
+            android:fillColor="#e8eef6"
+            android:pathData="M43.4,25.4 L25.4,43.4 L25.4,25.4 Z" />
+        <path
+            android:fillColor="#e8eef6"
+            android:pathData="M22.6,43.4 L4.6,25.4 L22.6,25.4 Z" />
+        <path
+            android:fillColor="#e8eef6"
+            android:pathData="M4.6,22.6 L22.6,4.6 L22.6,22.6 Z" />
+    </group>
 </vector>
