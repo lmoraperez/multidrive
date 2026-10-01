@@ -45,7 +45,9 @@ const val RAIZ = "multidrive"
 const val MIENTRAS_NAVEGADOR =
     "Abriendo el navegador.\n\nElige tu cuenta y, en la pantalla de permisos, " +
         "baja hasta el final y pulsa «Continuar». El botón queda fuera de la pantalla y hay " +
-        "que desplazarse para verlo."
+        "que desplazarse para verlo.\n\n" +
+        "Si algo sale mal, vuelve aquí y pulsa «Cancelar»: no uses el botón atrás del " +
+        "navegador, porque reenvía la misma petición y el proveedor la rechaza."
 
 /** Bytes en algo que se pueda leer de un vistazo. */
 fun legible(bytes: Long): String {

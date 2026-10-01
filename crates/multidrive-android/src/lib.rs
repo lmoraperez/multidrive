@@ -343,6 +343,19 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_borrar<'local>(
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Corta la espera del navegador que haya en curso. `true` si habia alguna.
+///
+/// No bloquea: lo llama el hilo de la interfaz mientras otro esta dentro de `conectar`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_cancelarConexion<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+) -> jni::sys::jboolean {
+    entorno
+        .with_env(|_env| -> Result<bool, Fallo> { Ok(conectar::cancelar()) })
+        .resolve::<ThrowRuntimeExAndDefault>() as jni::sys::jboolean
+}
+
 /// Lo que se borraria al retirar el volumen, en JSON. **No borra nada.**
 ///
 /// **Bloquea y tarda**: enumera cada cuenta entera. Nunca desde el hilo de la interfaz.
@@ -727,6 +740,7 @@ mod tests {
             "mirar",
             "leer",
             "conectar",
+            "cancelarConexion",
             "refrescar",
             "recuperar",
             "cuentas",

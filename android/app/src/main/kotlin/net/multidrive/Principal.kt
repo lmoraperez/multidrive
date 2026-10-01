@@ -55,6 +55,8 @@ class Principal : Activity() {
 
     private lateinit var estado: TextView
     private lateinit var aviso: TextView
+    private lateinit var cajaAviso: View
+    private lateinit var cancelar: Button
     private lateinit var frase: EditText
     private lateinit var conf: File
 
@@ -105,8 +107,10 @@ class Principal : Activity() {
         setContentView(R.layout.principal)
 
         estado = findViewById(R.id.estado)
-        aviso = findViewById<TextView>(R.id.aviso).apply {
-            setOnClickListener { avisar(null, esperando = false) }
+        aviso = findViewById(R.id.aviso)
+        cajaAviso = findViewById(R.id.caja_aviso)
+        cancelar = findViewById<Button>(R.id.cancelar).apply {
+            setOnClickListener { cancelarConexion() }
         }
         frase = findViewById(R.id.frase)
 
@@ -369,22 +373,27 @@ class Principal : Activity() {
      * termina, desaparece solo a los pocos segundos, porque una noticia vieja ocupando la
      * pantalla es lo mismo que un aviso que miente. Un toque también lo quita.
      */
-    private fun avisar(texto: String?, esperando: Boolean) {
+    private fun avisar(texto: String?, esperando: Boolean, cancelable: Boolean = false) {
         quitarAviso.removeCallbacksAndMessages(null)
         if (texto.isNullOrEmpty()) {
-            aviso.visibility = View.GONE
+            cajaAviso.visibility = View.GONE
             return
         }
         aviso.text = texto
-        aviso.visibility = View.VISIBLE
-        if (!esperando) quitarAviso.postDelayed({ aviso.visibility = View.GONE }, 6_000)
+        cancelar.visibility = if (cancelable) View.VISIBLE else View.GONE
+        cajaAviso.visibility = View.VISIBLE
+        if (!esperando) quitarAviso.postDelayed({ cajaAviso.visibility = View.GONE }, 6_000)
     }
 
     /** Lanza algo que tarda, sin congelar la pantalla y sin dejar botones a medias. */
-    private fun enSegundoPlano(mientras: String, trabajo: () -> String) {
+    private fun enSegundoPlano(
+        mientras: String,
+        cancelable: Boolean = false,
+        trabajo: () -> String,
+    ) {
         ocupado = true
         pintar(mientras)
-        avisar(mientras, esperando = true)
+        avisar(mientras, esperando = true, cancelable = cancelable)
         thread {
             val dicho = try {
                 trabajo()
@@ -400,11 +409,23 @@ class Principal : Activity() {
         }
     }
 
-    private fun conectar(tipo: String) = enSegundoPlano(
-        MIENTRAS_NAVEGADOR
-    ) {
+    private fun conectar(tipo: String) = enSegundoPlano(MIENTRAS_NAVEGADOR, cancelable = true) {
         val nombre = Nucleo.conectar(tipo, conf.absolutePath)
         "Cuenta conectada como «$nombre»."
+    }
+
+    /**
+     * Corta la espera del navegador.
+     *
+     * No hace falta tocar `ocupado` ni pintar nada: el hilo que estaba esperando sale solo,
+     * con su error, y pasa por el mismo sitio que cualquier otro final. Hacerlo aquí además
+     * dejaría dos caminos que pintan lo mismo, que es como acaban discrepando.
+     */
+    private fun cancelarConexion() {
+        if (!Nucleo.cancelarConexion()) {
+            // No había nada que cancelar: el intento ya había terminado por su cuenta.
+            avisar(null, esperando = false)
+        }
     }
 
     private fun abrirVolumen() {
