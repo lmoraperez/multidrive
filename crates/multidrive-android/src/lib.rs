@@ -167,7 +167,13 @@ pub fn https() -> String {
         // **El del backend**, no uno de aqui. Es el que en Android lleva `webpki-roots` en vez
         // del verificador de la plataforma, y es el que usaran las nubes de verdad: un sondeo
         // con un cliente distinto no probaria lo que hace falta probar.
-        let cliente = multidrive_backend::http::construir(std::time::Duration::from_secs(20));
+        // Si ni siquiera se puede armar, eso **es** el resultado del sondeo y no hace falta
+        // preguntarle a nadie: significa que este binario no puede hablar por HTTPS.
+        let cliente = match multidrive_backend::http::construir(std::time::Duration::from_secs(20))
+        {
+            Ok(c) => c,
+            Err(e) => return format!("no se pudo armar el cliente: {e}"),
+        };
         let mut lineas = Vec::new();
         for (nombre, donde) in SITIOS {
             let t = std::time::Instant::now();
