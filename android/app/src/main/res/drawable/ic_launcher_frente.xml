@@ -1,0 +1,42 @@
+<!-- La capa de delante del icono de la aplicacion: el rombo, sin fondo.
+
+     # Por que el lienzo es de 108 y la figura ocupa la mitad
+
+     Un icono adaptativo mide 108x108, pero cada fabricante le aplica su propia mascara (circulo,
+     cuadrado redondeado, gota) y de lo que hay dentro solo garantiza que se vea el centro, 72x72.
+     Lo que se salga de ahi puede quedar recortado en un telefono y no en otro.
+
+     El rombo va de 26 a 82, asi que entra con holgura en esa zona segura y sigue llenando la
+     mascara sin parecer un sello perdido en medio.
+
+     La geometria es la del logotipo, escalada: las mismas cuatro cunas con la misma separacion y
+     la misma cuna de paridad arriba a la derecha. Redibujarla a ojo para este tamano habria sido
+     tener dos logotipos que se parecen. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:scaleX="1.443"
+        android:scaleY="1.443"
+        android:translateX="19.4"
+        android:translateY="19.4">
+
+        <!-- La cuna de paridad. Es la unica de otro color, y es lo que significa el logotipo:
+             k piezas de datos y m de paridad formando una sola figura. -->
+        <path
+            android:fillColor="#4c8ff0"
+            android:pathData="M25.4,4.6 L43.4,22.6 L25.4,22.6 Z" />
+        <path
+            android:fillColor="#e8eef6"
+            android:pathData="M43.4,25.4 L25.4,43.4 L25.4,25.4 Z" />
+        <path
+            android:fillColor="#e8eef6"
+            android:pathData="M22.6,43.4 L4.6,25.4 L22.6,25.4 Z" />
+        <path
+            android:fillColor="#e8eef6"
+            android:pathData="M4.6,22.6 L22.6,4.6 L22.6,22.6 Z" />
+    </group>
+</vector>
