@@ -9,11 +9,20 @@ plugins {
 }
 
 android {
+    // El paquete del **codigo**: de aqui salen `R`, los nombres de las clases del manifiesto y
+    // los simbolos JNI (`Java_net_multidrive_nucleo_Nucleo_*`). No tiene por que coincidir con
+    // `applicationId`, y aqui no coincide a proposito: cambiarlo obligaria a renombrar tambien
+    // las funciones del lado de Rust, que es mucho movimiento para no ganar nada.
     namespace = "net.multidrive"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "net.multidrive"
+        // La identidad de la aplicacion para Android y para Play. **No se puede cambiar una vez
+        // publicada**: para Play, otro `applicationId` es otra aplicacion distinta.
+        //
+        // Es `com.jlsoltech.multidrive` y no `net.multidrive` porque asi se creo la ficha en
+        // Play Console, y ahi el nombre de paquete se fija al crearla.
+        applicationId = "com.jlsoltech.multidrive"
         // 26 y no menos: es donde aparece `StorageManager.openProxyFileDescriptor`, que es lo
         // unico que permite leer por rangos. Sin eso habria que bajar el fichero entero antes
         // de abrirlo, y entonces esto es un descargador con mas pasos. Ver docs/ANDROID.md.
@@ -28,6 +37,13 @@ android {
     // compila igual para el escritorio y no tiene por que aprender a construirse de dos
     // maneras. Lo que Gradle hace es empaquetar lo que encuentre.
     sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
+
+    // Solo por `BuildConfig.APPLICATION_ID`: es lo que permite que la autoridad del proveedor
+    // de documentos salga del mismo sitio en el manifiesto y en el codigo, en vez de estar
+    // escrita a mano en los dos y poder discrepar.
+    buildFeatures {
+        buildConfig = true
+    }
 
     // La clave con la que se firma lo que se reparte.
     //

@@ -8,8 +8,14 @@ import kotlin.concurrent.thread
 
 private const val ETIQUETA = "multidrive"
 
-/** La autoridad del proveedor de documentos. Una sola, aqui, para que no haya dos que discrepen. */
-const val AUTORIDAD = "net.multidrive.documentos"
+/**
+ * La autoridad del proveedor de documentos.
+ *
+ * Sale del `applicationId`, igual que en el manifiesto, y no escrita a mano en los dos sitios:
+ * una autoridad es **unica por dispositivo**, asi que si estos dos dejaran de coincidir la
+ * aplicacion no instalaria, o peor, instalaria y el proveedor no respondria a nadie.
+ */
+val AUTORIDAD = "${BuildConfig.APPLICATION_ID}.documentos"
 
 /**
  * El identificador de la raiz que publica el proveedor.
