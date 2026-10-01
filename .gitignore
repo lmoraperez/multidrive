@@ -43,3 +43,8 @@
 # poner la siguiente. Copia de seguridad aparte, y no aqui.
 /packaging/android/multidrive.jks
 /packaging/android/firma.conf
+
+# Los simbolos nativos de la version que se subio a Play. Se regeneran al compilar y solo
+# valen para ese `.so` exacto, asi que versionarlos seria guardar algo que caduca en la
+# siguiente compilacion.
+/packaging/android/simbolos-nativos.zip

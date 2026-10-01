@@ -129,11 +129,68 @@ if (-not (Test-Path $origen)) { Write-Error "cargo dijo que si, pero no esta '$o
 
 $destino = Join-Path $raiz "android/app/src/main/jniLibs/$abi"
 New-Item -ItemType Directory -Force $destino | Out-Null
-Copy-Item $origen (Join-Path $destino 'libmultidrive.so') -Force
+$enviado = Join-Path $destino 'libmultidrive.so'
+Copy-Item $origen $enviado -Force
 
-$mib = [math]::Round((Get-Item $origen).Length / 1MB, 2)
+$antesMib = [math]::Round((Get-Item $origen).Length / 1MB, 2)
+
+# Los simbolos salen de la biblioteca que se reparte y se guardan aparte.
+#
+# # Por que se estripa
+#
+# Un `.so` de release de Rust llega con toda su tabla de simbolos: son seis megas de los
+# veinte, y van en la descarga de cada persona que instale la aplicacion sin servirle de
+# nada. Lo que el sistema necesita para encontrar las funciones JNI es la tabla **dinamica**,
+# y esa se queda: por eso se comprueba abajo, sobre el fichero ya estripado, que siguen ahi.
+#
+# # Y por que se guardan en vez de tirarlos
+#
+# Porque son lo que convierte un fallo nativo en algo que se puede leer. Sin ellos, la caida
+# que reporte alguien llega como una lista de direcciones en memoria, y averiguar a que
+# funcion corresponde cada una despues de haber publicado es trabajo perdido. El zip se sube
+# a Play Console junto al bundle --Play lo pide, y tiene razon-- y sirve para **esa** version
+# y no para otra: un `.so` recompilado tiene otras direcciones.
+if (-not $Depuracion) {
+    $simbolosDir = Join-Path $raiz "target/simbolos-nativos/$abi"
+    New-Item -ItemType Directory -Force $simbolosDir | Out-Null
+    Copy-Item $origen (Join-Path $simbolosDir 'libmultidrive.so') -Force
+
+    $strip = Join-Path $bin 'llvm-strip.exe'
+    if (-not (Test-Path $strip)) { $strip = Join-Path $bin 'llvm-strip' }
+    if (Test-Path $strip) {
+        & $strip --strip-all $enviado
+        if ($LASTEXITCODE -ne 0) { Write-Error "llvm-strip fallo con codigo $LASTEXITCODE" }
+
+        $zip = Join-Path $PSScriptRoot 'simbolos-nativos.zip'
+        if (Test-Path $zip) { Remove-Item $zip -Force }
+
+        # La estructura que espera Play es `<abi>/<biblioteca>.so` en la raiz del zip, con
+        # **barras normales**. Se escribe entrada por entrada y no con `Compress-Archive`
+        # porque el de Windows PowerShell pone `\` en los nombres, que la especificacion ZIP
+        # no admite: el fichero se abre igual en el Explorador y luego no lo reconoce quien
+        # espera la ruta exacta. Un zip que parece bueno y no sirve es peor que uno que falla.
+        Add-Type -AssemblyName System.IO.Compression
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $archivo = [System.IO.Compression.ZipFile]::Open($zip, 'Create')
+        try {
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $archivo, (Join-Path $simbolosDir 'libmultidrive.so'), "$abi/libmultidrive.so") | Out-Null
+        } finally {
+            $archivo.Dispose()
+        }
+        Write-Host "simbolos nativos -> packaging/android/simbolos-nativos.zip"
+    } else {
+        Write-Warning "no hay llvm-strip en '$bin': el .so va entero y sin simbolos aparte."
+    }
+}
+
+$mib = [math]::Round((Get-Item $enviado).Length / 1MB, 2)
 Write-Host ''
-Write-Host "libmultidrive.so ($mib MiB) -> android/app/src/main/jniLibs/$abi/"
+if ($mib -lt $antesMib) {
+    Write-Host "libmultidrive.so ($antesMib MiB -> $mib MiB) -> android/app/src/main/jniLibs/$abi/"
+} else {
+    Write-Host "libmultidrive.so ($mib MiB) -> android/app/src/main/jniLibs/$abi/"
+}
 
 # El componente Kotlin del verificador de certificados, que viene dentro del propio crate.
 #
@@ -168,12 +225,16 @@ Write-Host "$($aar.Name) -> android/app/libs/rustls-platform-verifier.aar"
 # Que los simbolos esten es lo unico que de verdad importa de este guion: sin ellos la
 # aplicacion compila, instala, arranca y **falla al llamar**, que es el peor momento para
 # enterarse.
+#
+# Se mira la biblioteca **que se reparte**, no la que saco cargo, y por la tabla dinamica
+# (`--dynamic`): despues de estripar es la unica que queda, y es la que usa el sistema para
+# resolver las llamadas. Comprobar la otra seria comprobar un fichero que no viaja.
 $nm = Join-Path $bin 'llvm-nm.exe'
 if (-not (Test-Path $nm)) { $nm = Join-Path $bin 'llvm-nm' }
 if (Test-Path $nm) {
     $antes = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    $simbolos = & $nm --defined-only --extern-only $origen 2>$null | Select-String 'Java_'
+    $simbolos = & $nm --dynamic --defined-only --extern-only $enviado 2>$null | Select-String 'Java_'
     $ErrorActionPreference = $antes
     if ($simbolos) {
         Write-Host 'simbolos JNI:'

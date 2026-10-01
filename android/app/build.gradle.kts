@@ -28,7 +28,9 @@ android {
         // de abrirlo, y entonces esto es un descargador con mas pasos. Ver docs/ANDROID.md.
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
+        // El contador de Play. Sube en **cada** envio, aunque no cambie nada visible: Play no
+        // acepta dos veces el mismo. No es la version que lee nadie, es la que ordena.
+        versionCode = 2
         versionName = "0.0.1"
     }
 
