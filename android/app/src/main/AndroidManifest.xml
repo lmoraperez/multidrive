@@ -90,7 +90,7 @@
              sistema al llamarlo: solo el propio Android lo tiene. -->
         <provider
             android:name=".Proveedor"
-            android:authorities="net.multidrive.documentos"
+            android:authorities="${applicationId}.documentos"
             android:exported="true"
             android:grantUriPermissions="true"
             android:permission="android.permission.MANAGE_DOCUMENTS">
