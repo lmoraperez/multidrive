@@ -673,11 +673,20 @@ backend entero, y que el volumen siga íntegro y se reconstruya.
 > [ANDROID.md](ANDROID.md). Aquí queda el análisis de por qué Android no es un tercer objetivo
 > de montaje, y el registro de lo que se ha ido comprobando.
 
-> **Al día 29 de septiembre de 2026 ya existe**, en [`android/`](../android), y hace el
-> recorrido entero: conectar una cuenta por el navegador, traerse las demás con la maleta,
-> abrir el volumen, aparecer en la app de Archivos, navegar y leer ficheros por rangos. Es de
-> **solo lectura** y no está publicada en ningún sitio. Lo que sigue debajo es el análisis
-> previo, que se conserva porque explica por qué la forma es la que es.
+> **Al día 1 de octubre de 2026 ya existe**, en [`android/`](../android), y hace el recorrido
+> entero: crear el volumen desde el propio teléfono, conectar cuentas por el navegador, traerse
+> las demás con la maleta, abrir, aparecer en la app de Archivos, navegar, leer ficheros por
+> rangos, **escribir, crear carpetas, renombrar y borrar**, y recibir lo que se comparte desde
+> otra aplicación.
+>
+> Escribir dejó de estar fuera de alcance cuando llegó el testigo renovable: avisa en vez de
+> bloquear, y lo que se publica sobre una raíz que ya cambió se reaplica sobre la nueva. Dos
+> equipos en ficheros distintos conviven.
+>
+> Está publicada en Google Play como `com.jlsoltech.multidrive`, en pruebas internas.
+>
+> Lo que sigue debajo es el análisis previo, que se conserva porque explica por qué la forma es
+> la que es. **Donde diga que el móvil es de solo lectura, ya no lo es.**
 
 Analizado en septiembre de 2026 y verificado contra el código. **No es un tercer objetivo de
 montaje**, sino un modelo de integración distinto: por eso tiene sección propia en vez de una
@@ -900,10 +909,71 @@ El orden de preferencia es ese mismo. Las cuentas solo se ganan el coste el día
 **compartir** configuración entre varias personas, que es un problema distinto del de llevarse
 la propia de un equipo a otro.
 
+## Versión web en multidrive.net — **por analizar**
+
+Un explorador de archivos en el navegador, servido desde `multidrive.net`, sin instalar nada.
+Anotado el 1 de octubre de 2026 para decidirlo más adelante; aquí queda lo que ya se sabe para
+no volver a razonarlo desde cero.
+
+### Lo que decide, y no es técnico
+
+Las aplicaciones instaladas se entregan **una vez** y van firmadas: quien instala decide confiar
+en esa versión, y nadie puede cambiársela sin que el sistema lo note. Una web se vuelve a
+entregar **en cada carga**, desde un servidor nuestro. Quien controle `multidrive.net` —nosotros,
+quien entre en el servidor, o quien pueda obligarnos— puede servir un JavaScript que se quede
+con la frase de paso, y el usuario no tiene con qué compararlo.
+
+Eso choca de frente con lo que la aplicación y el sitio dicen hoy: «ni el proveedor ni nadie más
+ve lo que guardas». Con una versión web, multidrive.net pasa a ser alguien que podría verlo.
+
+Las mitigaciones existen y hay que conocer sus límites: **SRI** fija los recursos secundarios
+pero no el HTML de entrada, que es el que importa; la **compilación reproducible con hashes
+publicados** solo sirve a quien compruebe, y después; una **PWA instalable** se actualiza por
+service worker igual, así que no resuelve nada.
+
+Proton y Bitwarden tienen este mismo problema y lo resuelven de la única forma honesta: diciendo
+que su cliente web es el **menos** confiable de los suyos. Si esto se hace, la página tiene que
+decirlo con todas las letras. Entonces es una opción legítima; callándolo, no.
+
+### Lo técnico, que está más cerca de lo que parece
+
+`multidrive-crypto` y `multidrive-raid` no dependen de nada del sistema: compilan a WASM tal
+cual. `multidrive-core` solo toca el sistema a través del *trait* `Backend` —`put`, `get`,
+`delete`, `exists`, `list`—, que es una costura limpia.
+
+Haría falta:
+
+1. **Separar el trait `Backend` de la implementación con OpenDAL**, para que el núcleo compile
+   sin reqwest. Es el cambio estructural de verdad, y aprovecha igual al resto.
+2. **Un backend sobre `fetch`** para Drive y Graph. Las dos APIs admiten CORS, así que los datos
+   irían del navegador a la nube **directamente**, sin pasar por nuestro servidor. Esa parte de
+   la promesa sí se mantiene.
+3. **Sustituir los hilos** del testigo y el refrescador por `spawn_local` y temporizadores.
+4. **Argon2id en un Web Worker**, o la pestaña se congela mientras deriva la clave.
+5. Los **ficheros grandes**, que es lo espinoso: el escritorio los transmite por trozos y en
+   navegador eso exige la File System Access API —solo Chrome y Edge— o que quepan en memoria.
+   Safari de iPhone sería el punto débil, que es justo donde más falta haría.
+
+### El premio
+
+El OAuth se vuelve trivial: un redirect normal a `multidrive.net/callback` con PKCE, sin puerto
+local, sin `127.0.0.1` y sin navegadores que no llegan a él. Es exactamente el agujero que costó
+una tarde de diagnóstico con dos teléfonos prestados.
+
+### Antes de arrancarlo
+
+Depende de qué se busque, y hay caminos más baratos para algunas respuestas:
+
+- **Acceso desde cualquier sitio sin instalar**: es esto, con el aviso por delante.
+- **Llegar a iPhone**: es la vía más rápida, pero una aplicación nativa daría mejores garantías.
+- **Quitarse de encima el lío del OAuth en Android**: mucho más barato cambiando el redirect a un
+  esquema propio.
+
 ## Fuera de alcance por ahora
 - Escritura concurrente desde varias máquinas (v1 es un solo escritor)
 - Uso como disco de sistema o volumen de base de datos
-- Móvil como volumen **de escritura** — ver [Móvil (Android)](#móvil-android). Leer sí: la
-  aplicación existe y funciona. Escribir desde el móvil es el problema de un solo escritor, y
-  espera al *lease* renovable de v0.5
+- ~~Móvil como volumen de escritura~~ — **hecho**. Esperaba al *lease* renovable, y ese llegó:
+  el testigo avisa en vez de bloquear y lo que se publica sobre una raíz que cambió se reaplica
+  sola. Desde el móvil se escribe, se crea, se renombra y se borra. Ver
+  [Móvil (Android)](#móvil-android)
 - Guardar las llaves de los proveedores en un servidor nuestro sin cifrado de extremo a extremo
