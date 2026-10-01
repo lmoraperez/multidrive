@@ -420,11 +420,47 @@ pub async fn ya_configurada(
     tipo: &catalogo::Tipo,
     nuevo: &dyn Backend,
 ) -> Result<Option<String>, BackendError> {
+    entre(tipo, nuevo, envueltos(configurados()?)).await
+}
+
+/// Los proveedores concretos como objetos de rasgo, para que [`entre`] pueda recibir tambien
+/// dobles en las pruebas. Sin esto, la unica comprobacion que impide prometer una redundancia
+/// inexistente no se podria probar sin una cuenta de verdad.
+fn envueltos(v: Vec<OpendalBackend>) -> Vec<std::sync::Arc<dyn Backend>> {
+    v.into_iter()
+        .map(|b| std::sync::Arc::new(b) as std::sync::Arc<dyn Backend>)
+        .collect()
+}
+
+/// Lo mismo, mirando los proveedores de **un fichero concreto**.
+///
+/// Existe por Android, donde no hay entorno ni ninguno de los sitios donde mira
+/// [`configurados`]: la aplicacion guarda su configuracion en un fichero de su propio
+/// directorio y ese fichero es toda la verdad que hay.
+///
+/// Sin esto, el movil no comprobaba nada y dejaba enlazar **la misma cuenta dos veces**. Paso
+/// de verdad: dos ranuras de Drive sobre la misma cuenta, que luego contarian como dos al
+/// elegir topologia y prometerian aguantar una caida que no aguantan.
+pub async fn ya_configurada_de(
+    tipo: &catalogo::Tipo,
+    nuevo: &dyn Backend,
+    ruta: &std::path::Path,
+) -> Result<Option<String>, BackendError> {
+    entre(tipo, nuevo, envueltos(configurados_de(ruta)?)).await
+}
+
+/// El cuerpo de las dos de arriba. Una sola copia: es la comprobacion que evita prometer una
+/// redundancia que no existe, y dos versiones de eso acabarian discrepando.
+async fn entre(
+    tipo: &catalogo::Tipo,
+    nuevo: &dyn Backend,
+    existentes: Vec<std::sync::Arc<dyn Backend>>,
+) -> Result<Option<String>, BackendError> {
     let Some(mia) = nuevo.identidad().await? else {
         return Ok(None);
     };
 
-    for b in configurados()? {
+    for b in existentes {
         if !es_ranura_de(b.name(), tipo.clave) {
             continue;
         }
@@ -796,5 +832,121 @@ mod tests {
     fn s3_incompleto_dice_que_falta() {
         let err = construir(&entorno(&[("S3_BUCKET", "cubo")])).unwrap_err();
         assert!(err.to_string().contains("S3_ENDPOINT"), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod tests_duplicados {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::{Backend, Objeto};
+
+    /// Un proveedor que dice ser quien se le diga. Lo demas no hace falta para esto.
+    struct ConIdentidad {
+        nombre: String,
+        quien: Option<String>,
+    }
+
+    impl std::fmt::Debug for ConIdentidad {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&self.nombre)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Backend for ConIdentidad {
+        fn name(&self) -> &str {
+            &self.nombre
+        }
+        async fn put(&self, _k: &str, _d: Vec<u8>) -> Result<(), BackendError> {
+            Ok(())
+        }
+        async fn get(&self, _k: &str) -> Result<Vec<u8>, BackendError> {
+            Ok(Vec::new())
+        }
+        async fn delete(&self, _k: &str) -> Result<(), BackendError> {
+            Ok(())
+        }
+        async fn exists(&self, _k: &str) -> Result<bool, BackendError> {
+            Ok(false)
+        }
+        async fn list(&self, _p: &str) -> Result<Vec<Objeto>, BackendError> {
+            Ok(Vec::new())
+        }
+        async fn identidad(&self) -> Result<Option<String>, BackendError> {
+            Ok(self.quien.clone())
+        }
+    }
+
+    fn uno(nombre: &str, quien: Option<&str>) -> Arc<dyn Backend> {
+        Arc::new(ConIdentidad {
+            nombre: nombre.to_string(),
+            quien: quien.map(str::to_string),
+        }) as Arc<dyn Backend>
+    }
+
+    fn gdrive() -> &'static catalogo::Tipo {
+        catalogo::tipo("GDRIVE").expect("el catalogo trae GDRIVE")
+    }
+
+    /// La misma cuenta en otra ranura se detecta y se dice **cual** es la otra.
+    ///
+    /// Es la comprobacion que impide prometer una redundancia que no existe: dos ranuras sobre
+    /// la misma cuenta cuentan como dos al elegir topologia y se anuncian como «aguanta perder
+    /// una», pero el dia que se pierda esa cuenta se pierden las dos copias a la vez.
+    #[tokio::test]
+    async fn la_misma_cuenta_en_otra_ranura_se_detecta() {
+        let nuevo = ConIdentidad {
+            nombre: "gdrive1".into(),
+            quien: Some("usuario-7".into()),
+        };
+        let ya = vec![uno("gdrive", Some("usuario-7"))];
+        assert_eq!(
+            entre(gdrive(), &nuevo, ya).await.unwrap(),
+            Some("gdrive".to_string())
+        );
+    }
+
+    /// Dos cuentas distintas del mismo proveedor conviven: es el caso normal.
+    #[tokio::test]
+    async fn dos_cuentas_distintas_conviven() {
+        let nuevo = ConIdentidad {
+            nombre: "gdrive1".into(),
+            quien: Some("usuario-8".into()),
+        };
+        let ya = vec![uno("gdrive", Some("usuario-7"))];
+        assert_eq!(entre(gdrive(), &nuevo, ya).await.unwrap(), None);
+    }
+
+    /// Solo se mira el mismo tipo. Una cuenta de OneDrive nunca va a ser la de Drive, y
+    /// preguntarselo seria gastar peticiones.
+    #[tokio::test]
+    async fn no_se_compara_con_otros_tipos() {
+        let nuevo = ConIdentidad {
+            nombre: "gdrive".into(),
+            quien: Some("coincidencia".into()),
+        };
+        let ya = vec![uno("onedrive", Some("coincidencia"))];
+        assert_eq!(entre(gdrive(), &nuevo, ya).await.unwrap(), None);
+    }
+
+    /// Quien no sabe decir quien es no bloquea. No es «distinta», es «no se sabe», y negarse a
+    /// anadir un proveedor por eso seria peor que el riesgo que se intenta evitar.
+    #[tokio::test]
+    async fn sin_identidad_no_bloquea() {
+        let nuevo = ConIdentidad {
+            nombre: "gdrive1".into(),
+            quien: None,
+        };
+        let ya = vec![uno("gdrive", Some("usuario-7"))];
+        assert_eq!(entre(gdrive(), &nuevo, ya).await.unwrap(), None);
+
+        let nuevo = ConIdentidad {
+            nombre: "gdrive1".into(),
+            quien: Some("usuario-7".into()),
+        };
+        let ya = vec![uno("gdrive", None)];
+        assert_eq!(entre(gdrive(), &nuevo, ya).await.unwrap(), None);
     }
 }

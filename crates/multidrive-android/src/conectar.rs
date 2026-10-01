@@ -94,11 +94,34 @@ pub fn conectar(tipo: &str, config: &str) -> Result<String, String> {
     // proveedor que no funciona deja al usuario con una configuracion que parece completa y un
     // volumen que no abre, y averiguar cual de las cuentas falla es mucho mas caro despues.
     let backend = live::construir_uno(t, &ranura, &valores).map_err(|e| e.to_string())?;
+    let etiqueta = t.etiqueta;
+    let ruta_dup = ruta.to_path_buf();
     crate::sesion::en_el_runtime(async move {
         conformance::prueba_rapida(&backend)
             .await
-            .map(|_| ())
-            .map_err(|e| format!("no se guarda nada porque el proveedor no responde: {e}"))
+            .map_err(|e| format!("no se guarda nada porque el proveedor no responde: {e}"))?;
+
+        // Y que no sea una cuenta que ya esta. **Es la comprobacion que evita prometer una
+        // redundancia que no existe**: dos ranuras sobre la misma cuenta se ven como dos, se
+        // cuentan como dos al elegir topologia y se anuncian como «aguanta perder una», pero
+        // el dia que se pierda esa cuenta se pierden las dos a la vez.
+        //
+        // Faltaba aqui y estaba en el escritorio. Se vio enlazando dos veces la misma cuenta
+        // de Google desde el movil, que las acepto sin decir nada.
+        match live::ya_configurada_de(t, &backend, &ruta_dup).await {
+            Ok(Some(otro)) => Err(format!(
+                "esa cuenta de {etiqueta} ya está enlazada como «{otro}».\n\n\
+                 Dos cuentas iguales no son dos: se verían como dos al repartir, pero el día \
+                 que se pierda esa cuenta se pierden las dos copias a la vez. No se ha \
+                 guardado nada.\n\n\
+                 Enlaza otra cuenta distinta."
+            )),
+            Ok(None) => Ok(()),
+            // No poder comprobarlo no bloquea: negarse porque otro proveedor esta caido seria
+            // peor que el riesgo que se intenta evitar. Pero se dice, porque la proxima cifra
+            // de «aguanta perder una» se habra calculado sin saberlo.
+            Err(_) => Ok(()),
+        }
     })?;
 
     multidrive_backend::config::guardar(ruta, &live::claves_de(t, &ranura, &valores))
