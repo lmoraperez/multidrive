@@ -83,13 +83,9 @@ class Ajustes : Activity() {
     override fun onCreate(guardado: Bundle?) {
         super.onCreate(guardado)
 
-        val caja = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 72, 48, 48)
-            setBackgroundColor(getColor(R.color.fondo))
-        }
+        val caja = LinearLayout(this).comoPantalla()
+        caja.addView(cabecera("Configuración"))
 
-        caja.addView(titulo("Configuración", 20f))
         estado = TextView(this).apply {
             textSize = 13f
             setTextColor(getColor(R.color.apagado))

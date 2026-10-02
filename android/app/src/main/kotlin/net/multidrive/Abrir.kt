@@ -63,20 +63,9 @@ class Abrir : Activity() {
         super.onCreate(guardado)
         conf = File(filesDir, "multidrive.conf")
 
-        val caja = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 72, 48, 48)
-            setBackgroundColor(getColor(R.color.fondo))
-        }
+        val caja = LinearLayout(this).comoPantalla()
+        caja.addView(cabecera("Abrir un volumen"))
 
-        caja.addView(
-            TextView(this).apply {
-                text = "Abrir un volumen"
-                textSize = 20f
-                setTextColor(getColor(R.color.texto))
-                setPadding(0, 0, 0, 12)
-            }
-        )
         estado = TextView(this).apply {
             textSize = 14f
             setTextColor(getColor(R.color.texto))
