@@ -671,6 +671,10 @@ fn entrada_json(nombre: &str, e: &multidrive_core::tree::Entry) -> serde_json::V
         "nombre": nombre,
         "dir": matches!(e.kind, Kind::Dir),
         "bytes": e.len,
+        // Segundos desde 1970, o `null` si no se sabe: lo escrito antes de que el arbol
+        // guardara fechas no tiene ninguna, y quien lo pinte tiene que enseñar eso en vez de
+        // inventarse una.
+        "modificado": e.modificado,
     })
 }
 

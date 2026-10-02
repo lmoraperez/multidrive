@@ -141,13 +141,13 @@ class Proveedor : DocumentsProvider() {
         val s = Sesion.id ?: return c
 
         if (documentId == "/") {
-            fila(c, "/", "MultiDrive", true, 0)
+            fila(c, "/", "MultiDrive", true, 0, null)
             return c
         }
         val json = Nucleo.mirar(s, documentId)
         if (json == "null") return c
         val o = JSONObject(json)
-        fila(c, documentId, o.getString("nombre"), o.getBoolean("dir"), o.getLong("bytes"))
+        fila(c, documentId, o.getString("nombre"), o.getBoolean("dir"), o.getLong("bytes"), fecha(o))
         return c
     }
 
@@ -194,7 +194,7 @@ class Proveedor : DocumentsProvider() {
             val o = lista.getJSONObject(i)
             val nombre = o.getString("nombre")
             val hijo = if (parentDocumentId == "/") "/$nombre" else "$parentDocumentId/$nombre"
-            fila(c, hijo, nombre, o.getBoolean("dir"), o.getLong("bytes"))
+            fila(c, hijo, nombre, o.getBoolean("dir"), o.getLong("bytes"), fecha(o))
         }
         c.setNotificationUri(context!!.contentResolver, uri)
         return c
@@ -321,7 +321,18 @@ class Proveedor : DocumentsProvider() {
         return destino
     }
 
-    private fun fila(c: MatrixCursor, id: String, nombre: String, dir: Boolean, bytes: Long) {
+    /** La fecha de una entrada, o `null` si ese fichero es de antes de que el arbol las guardara. */
+    private fun fecha(o: JSONObject): Long? =
+        if (o.isNull("modificado")) null else o.getLong("modificado")
+
+    private fun fila(
+        c: MatrixCursor,
+        id: String,
+        nombre: String,
+        dir: Boolean,
+        bytes: Long,
+        modificado: Long?,
+    ) {
         c.newRow().apply {
             add(Document.COLUMN_DOCUMENT_ID, id)
             add(Document.COLUMN_DISPLAY_NAME, nombre)
@@ -344,7 +355,11 @@ class Proveedor : DocumentsProvider() {
                 }
             }
             add(Document.COLUMN_FLAGS, banderas)
-            // Sin fecha: el arbol no la guarda todavia, y poner la de ahora seria inventarla.
+            // La fecha, **si la hay**. El arbol la guarda desde que se añadio al formato, asi
+            // que lo escrito antes no tiene ninguna. Se omite la columna en vez de poner cero,
+            // porque cero es 1970 y eso seria inventarsela: la app de Archivos sabe enseñar una
+            // fila sin fecha, pero no sabe que 1970 significa «no se sabe».
+            modificado?.let { add(Document.COLUMN_LAST_MODIFIED, it * 1000) }
         }
     }
 
@@ -365,6 +380,7 @@ class Proveedor : DocumentsProvider() {
             Document.COLUMN_MIME_TYPE,
             Document.COLUMN_SIZE,
             Document.COLUMN_FLAGS,
+            Document.COLUMN_LAST_MODIFIED,
         )
     }
 }

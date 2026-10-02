@@ -50,6 +50,35 @@ pub struct Entry {
     pub kind: Kind,
     /// Bytes, si es un fichero. Numero de entradas, si es un directorio.
     pub len: u64,
+    /// Cuando se escribio, en segundos desde 1970. `None` si no se sabe.
+    ///
+    /// # Por que es opcional, y por que `None` no es cero
+    ///
+    /// Porque los volumenes que ya existen no la tienen. `serde(default)` deja que sus nodos se
+    /// sigan leyendo tal cual --son inmutables y nadie los va a reescribir-- y lo que se escriba
+    /// a partir de ahora si la lleva. Un fichero de antes seguira sin fecha hasta que se toque.
+    ///
+    /// `None` quiere decir «no se sabe», y quien lo pinte tiene que enseñar eso y no una fecha
+    /// inventada. Poner cero seria decir que es de 1970.
+    ///
+    /// # De los directorios tambien
+    ///
+    /// Un directorio se reescribe cada vez que cambia algo dentro, porque el arbol se rehace
+    /// hasta la raiz, asi que su fecha es la del ultimo cambio que contiene. Es lo mismo que
+    /// hace cualquier sistema de ficheros.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modificado: Option<u64>,
+}
+
+/// La hora de ahora, para sellar lo que se escribe.
+///
+/// Devuelve `None` si el reloj esta antes de 1970, que no deberia pasar nunca pero tampoco vale
+/// la pena tumbar una escritura por ello: sin fecha es peor que con fecha y mejor que nada.
+pub fn ahora() -> Option<u64> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs())
 }
 
 /// Un nodo del arbol. Inmutable, como todo trozo.
@@ -174,6 +203,7 @@ impl Volume {
                     node,
                     kind: Kind::File,
                     len,
+                    modificado: ahora(),
                 }),
             )
             .await?;
@@ -285,6 +315,7 @@ impl Volume {
                     node,
                     kind: Kind::File,
                     len,
+                    modificado: ahora(),
                 }),
             )
             .await?;
@@ -320,6 +351,7 @@ impl Volume {
                     node,
                     kind: Kind::Dir,
                     len: 0,
+                    modificado: ahora(),
                 }),
             )
             .await?;
@@ -559,6 +591,7 @@ impl Volume {
                                 node,
                                 kind: Kind::Dir,
                                 len,
+                                modificado: ahora(),
                             },
                         );
                 }
@@ -1461,5 +1494,99 @@ mod tests_rename {
         // Y no se ha tocado nada.
         assert_eq!(v.read_at("/a.txt", 0, 10).await.unwrap(), b"x");
         assert!(v.lookup("/nuevo").await.unwrap().is_none());
+    }
+}
+
+#[cfg(test)]
+mod tests_fechas {
+    use multidrive_raid::Layout;
+
+    use super::*;
+    use crate::testutil::{backends, store_sobre};
+
+    async fn volumen() -> Volume {
+        let bs = backends(6);
+        Volume::create(store_sobre(&bs, Layout::ReedSolomon { k: 4, m: 2 }))
+            .await
+            .unwrap()
+            .0
+    }
+
+    /// Un nodo escrito **antes** de que existieran las fechas se sigue leyendo, y queda como
+    /// «no se sabe» en vez de como 1970.
+    ///
+    /// Es lo unico que de verdad importa de este cambio de formato: los trozos son inmutables y
+    /// nadie va a reescribir los que ya estan en las nubes de la gente, asi que si esto dejara
+    /// de leerse, el volumen entero dejaria de abrirse.
+    ///
+    /// El JSON «de antes» no se escribe a mano: se obtiene serializando una entrada sin fecha,
+    /// que por `skip_serializing_if` omite el campo y sale **identica** a lo que escribia el
+    /// codigo viejo. Asi la prueba sigue siendo cierta el dia que cambie la forma de `ChunkRef`,
+    /// en vez de comprobar un literal que envejece.
+    #[test]
+    fn una_entrada_de_antes_se_lee_sin_fecha() {
+        let sin_fecha = Entry {
+            node: ChunkRef {
+                id: crate::ChunkId::of(b"da igual"),
+                plain_len: 7,
+                sealed_len: 23,
+            },
+            kind: Kind::File,
+            len: 7,
+            modificado: None,
+        };
+
+        let viejo = serde_json::to_string(&sin_fecha).unwrap();
+        assert!(
+            !viejo.contains("modificado"),
+            "sin fecha no se escribe el campo, que es lo que la hace identica a la de antes: {viejo}"
+        );
+
+        let leida: Entry =
+            serde_json::from_str(&viejo).expect("una entrada de antes tiene que leerse");
+        assert_eq!(leida.modificado, None, "y queda como «no se sabe»");
+        assert_eq!(leida.len, 7);
+    }
+
+    /// Lo que se escribe ahora **si** lleva fecha, y es de ahora.
+    #[tokio::test]
+    async fn lo_que_se_escribe_lleva_fecha() {
+        let antes = ahora().expect("el reloj de la maquina de pruebas va");
+        let mut v = volumen().await;
+        v.write_file("/nuevo.txt", &b"hola"[..]).await.unwrap();
+
+        let e = v.lookup("/nuevo.txt").await.unwrap().expect("esta");
+        let f = e.modificado.expect("y lleva fecha");
+        assert!(
+            f >= antes,
+            "la fecha es de antes de escribirlo: {f} < {antes}"
+        );
+    }
+
+    /// Un directorio tambien, y la suya cambia cuando cambia lo que tiene dentro: el arbol se
+    /// rehace hasta la raiz, asi que su entrada se reescribe. Es lo que hace cualquier sistema
+    /// de ficheros, y es lo que permite ordenar por «lo ultimo que se tocó».
+    #[tokio::test]
+    async fn un_directorio_lleva_la_fecha_de_lo_ultimo_que_cambio() {
+        let mut v = volumen().await;
+        v.mkdir_p("/carpeta").await.unwrap();
+        let primera = v
+            .lookup("/carpeta")
+            .await
+            .unwrap()
+            .expect("esta")
+            .modificado
+            .expect("lleva fecha");
+
+        v.write_file("/carpeta/algo.txt", &b"x"[..]).await.unwrap();
+
+        let segunda = v
+            .lookup("/carpeta")
+            .await
+            .unwrap()
+            .expect("sigue")
+            .modificado
+            .expect("sigue con fecha");
+        assert!(segunda >= primera, "{segunda} < {primera}");
     }
 }
