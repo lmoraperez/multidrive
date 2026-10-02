@@ -72,6 +72,7 @@ object Carga {
 class Ajustes : Activity() {
 
     private lateinit var estado: TextView
+    private lateinit var parte: TextView
     private lateinit var activa: CheckBox
     private lateinit var origen: TextView
     private lateinit var destino: TextView
@@ -92,6 +93,13 @@ class Ajustes : Activity() {
             setPadding(0, 0, 0, 24)
         }
         caja.addView(estado)
+        parte = TextView(this).apply {
+            textSize = 13f
+            setTextColor(getColor(R.color.acento))
+            setPadding(0, 0, 0, 16)
+            visibility = View.GONE
+        }
+        caja.addView(parte)
 
         caja.addView(titulo("Carga automática", 16f))
         caja.addView(
@@ -130,7 +138,12 @@ class Ajustes : Activity() {
         // trabajo, y sin esto seguiria subiendo con las de antes.
         soloWifi = casilla("Solo con Wi-Fi no tarificada") { Carga.soloWifi(this, it); Subidor.programar(this) }
         soloCargando = casilla("Solo con el teléfono cargando") { Carga.soloCargando(this, it); Subidor.programar(this) }
-        existentes = casilla("Subir también lo que ya está en la carpeta") { Carga.tambienExistentes(this, it) }
+        existentes = casilla("Subir también lo que ya está en la carpeta") {
+            Carga.tambienExistentes(this, it)
+            // Marcarlo tiene efecto ahora, no en el proximo ciclo: quien lo marca es porque
+            // quiere que suba lo que ya estaba.
+            Subidor.ahora(this)
+        }
         porFecha = casilla("Guardar en subcarpetas por fecha") { Carga.porFecha(this, it) }
         for (c in listOf(soloWifi, soloCargando, existentes, porFecha)) caja.addView(c)
 
@@ -143,11 +156,32 @@ class Ajustes : Activity() {
 
         setContentView(ScrollView(this).apply { addView(caja) })
         pintar()
+        pintarParte()
     }
 
     override fun onResume() {
         super.onResume()
         pintar()
+        pintarParte()
+    }
+
+    /**
+     * El nombre de la carpeta como lo escribiría una persona.
+     *
+     * Lo que guarda Android es un `content://…/tree/primary%3ADCIM%2FCamera%2Fpruebas`, que
+     * ocupa cuatro renglones y no dice nada. Dentro lleva la ruta de verdad; se saca de ahí.
+     *
+     * Si el formato no es el esperado --otro proveedor de documentos, una tarjeta SD-- se
+     * devuelve lo que haya en vez de inventarse un nombre bonito: un nombre equivocado es peor
+     * que uno feo.
+     */
+    private fun legibleDe(uri: String): String = try {
+        val id = DocumentsContract.getTreeDocumentId(Uri.parse(uri))
+        // `primary:` es el almacenamiento interno; para el resto se deja el prefijo, que ahí
+        // sí distingue de dónde sale.
+        if (id.startsWith("primary:")) "/" + id.removePrefix("primary:") else id
+    } catch (e: Throwable) {
+        uri
     }
 
     private fun titulo(t: String, tam: Float) = TextView(this).apply {
@@ -182,20 +216,33 @@ class Ajustes : Activity() {
         existentes.isChecked = Carga.tambienExistentes(this)
         porFecha.isChecked = Carga.porFecha(this)
 
-        origen.text = Carga.origen(this)?.let { "Carpeta del teléfono: $it" }
+        // El nombre legible, no el `content://` entero: lo que salia era una linea de URI que
+        // no dice nada y ocupa cuatro renglones.
+        origen.text = Carga.origen(this)?.let { "Carpeta del teléfono: ${legibleDe(it)}" }
             ?: "Carpeta del teléfono: sin elegir"
         destino.text = "Carpeta en el volumen: ${Carga.destino(this)}"
 
-        estado.text = if (Carga.activa(this)) {
-            if (Llave.hay(this)) {
-                "Activa. Subirá cuando se cumplan las condiciones."
-            } else {
-                // No se puede subir sin llave guardada, y decir que está activa sería mentir.
-                "Activa, pero sin la llave guardada: vuelve a activarla."
-            }
-        } else {
-            "Apagada. Nada sube solo."
+        estado.text = when {
+            !Carga.activa(this) -> "Apagada. Nada sube solo."
+            // No se puede subir sin llave guardada, y decir que está activa sería mentir.
+            !Llave.hay(this) -> "Activa, pero sin la llave guardada: vuelve a activarla."
+            Carga.origen(this) == null -> "Activa, pero falta elegir la carpeta del teléfono."
+            // Decir «subirá» sin decir **qué** dejó a quien la activó mirando una carpeta donde
+            // no pasaba nada. Con lo de abajo apagado, lo que ya estaba no sube: es lo correcto
+            // --encenderla no debe subir diez años de fotos-- pero hay que decirlo donde se lee.
+            Carga.tambienExistentes(this) ->
+                "Activa. Subirá todo lo que haya en la carpeta, y lo que vaya apareciendo."
+            else ->
+                "Activa. Subirá las fotos nuevas, no las que ya estaban. Para esas, marca " +
+                    "«Subir también lo que ya está en la carpeta»."
         }
+    }
+
+    /** Lo que paso en la ultima pasada, debajo del estado. Vacio mientras no haya habido. */
+    private fun pintarParte() {
+        val p = Subidos.parte(this)
+        parte.visibility = if (p == null) View.GONE else View.VISIBLE
+        parte.text = p?.let { "Última comprobación: $it" } ?: ""
     }
 
     /**
@@ -314,6 +361,8 @@ class Ajustes : Activity() {
         // nadie delante, y sin esto Android lo habría olvidado para entonces.
         contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         Carga.origen(this, uri.toString())
+        // Elegir carpeta tambien dispara una pasada: hasta ahora no habia donde mirar.
+        Subidor.ahora(this)
         pintar()
     }
 

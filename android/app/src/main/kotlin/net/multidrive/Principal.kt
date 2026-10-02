@@ -57,6 +57,7 @@ class Principal : Activity() {
     private lateinit var aviso: TextView
     private lateinit var cajaAviso: View
     private lateinit var cancelar: Button
+    private lateinit var entendido: Button
     private lateinit var frase: EditText
     private lateinit var conf: File
 
@@ -110,7 +111,14 @@ class Principal : Activity() {
 
         estado = findViewById(R.id.estado)
         aviso = findViewById(R.id.aviso)
-        cajaAviso = findViewById(R.id.caja_aviso)
+        cajaAviso = findViewById<View>(R.id.caja_aviso).apply {
+            // Tocar la franja tambien la quita, pero nunca es la unica salida: el boton de
+            // abajo es el que se ve.
+            setOnClickListener { avisar(null, esperando = false) }
+        }
+        entendido = findViewById<Button>(R.id.entendido).apply {
+            setOnClickListener { avisar(null, esperando = false) }
+        }
         cancelar = findViewById<Button>(R.id.cancelar).apply {
             setOnClickListener { cancelarConexion() }
         }
@@ -400,6 +408,10 @@ class Principal : Activity() {
         }
         aviso.text = texto
         cancelar.visibility = if (cancelable) View.VISIBLE else View.GONE
+        // Si no se va solo y no hay nada que cancelar, tiene que haber con que cerrarlo. Es el
+        // caso del resumen de crear un volumen: se queda puesto a proposito porque dice donde
+        // quedo la configuracion sellada, y sin boton se quedaba para siempre.
+        entendido.visibility = if (esperando && !cancelable) View.VISIBLE else View.GONE
         cajaAviso.visibility = View.VISIBLE
         if (!esperando) quitarAviso.postDelayed({ cajaAviso.visibility = View.GONE }, 6_000)
     }

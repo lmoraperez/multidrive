@@ -12,7 +12,9 @@
         <item name="android:letterSpacing">0.13</item>
     </style>
 
-    <style name="Boton">
+    <!-- El de **la** accion de la pantalla. Hereda del boton del sistema por lo mismo que el
+         campo de abajo: un estilo sin padre sustituye al del sistema en vez de añadirse. -->
+    <style name="Boton" parent="@android:style/Widget.Material.Button">
         <item name="android:background">@drawable/boton</item>
         <item name="android:textColor">@color/fondo</item>
         <item name="android:textSize">15sp</item>
@@ -25,7 +27,7 @@
     <!-- El de cualquier accion que no sea **la** accion de la pantalla. Es ademas el que el
          tema da por defecto, asi que un `Button` creado en codigo sale ya con la marca puesta.
          Por eso lleva relleno propio: ahi no hay un XML que se lo ponga. -->
-    <style name="BotonSuave">
+    <style name="BotonSuave" parent="@android:style/Widget.Material.Button">
         <item name="android:background">@drawable/boton_suave</item>
         <item name="android:textColor">@color/texto</item>
         <item name="android:textSize">15sp</item>
@@ -37,8 +39,14 @@
     </style>
 
     <!-- Los campos de texto, por lo mismo que los botones: los de las pantallas hechas en
-         codigo no tienen un XML donde ponerles el fondo y los colores. -->
-    <style name="Campo">
+         codigo no tienen un XML donde ponerles el fondo y los colores.
+
+         **El `parent` no es decorativo.** Un estilo sin padre no añade al del sistema: lo
+         sustituye entero, y con el se van `focusable` y `focusableInTouchMode`, que es de donde
+         un campo de texto saca el poder recibir el cursor. Sin eso, tocar el campo no hacia
+         nada: el foco saltaba al boton de arriba y lo que se escribiera no entraba en ninguna
+         parte. Dejo sin poder escribir la frase de paso en toda la aplicacion. -->
+    <style name="Campo" parent="@android:style/Widget.Material.EditText">
         <item name="android:background">@drawable/campo</item>
         <item name="android:textColor">@color/texto</item>
         <item name="android:textColorHint">@color/apagado</item>

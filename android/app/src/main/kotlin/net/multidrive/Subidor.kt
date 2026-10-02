@@ -72,6 +72,7 @@ class Subidor : JobService() {
     private fun subir(): Boolean {
         val origen = Carga.origen(this)?.let { Uri.parse(it) } ?: return false
         val frase = Llave.abrir(this) ?: run {
+            Subidos.anotarParte(this, "Esperando a que desbloquees el teléfono.")
             // Sin llave no se puede escribir. No es un fallo que haya que gritar: pasa cada vez
             // que el telefono esta bloqueado, y lo correcto es volver a intentarlo luego.
             Log.i(ETIQUETA, "carga automatica: sin llave disponible todavia")
@@ -82,6 +83,9 @@ class Subidor : JobService() {
         val sesion = Nucleo.abrir(conf, frase, true)
         try {
             var quedan = false
+            var subidos = 0
+            var fallados = 0
+            var saltados = 0
             val limite = System.currentTimeMillis() + MINUTOS_POR_PASADA * 60_000
             for (f in deLaCarpeta(origen)) {
                 if (parar || System.currentTimeMillis() > limite) {
@@ -89,14 +93,39 @@ class Subidor : JobService() {
                     break
                 }
                 if (Subidos.ya(this, f.id)) continue
-                if (!f.cabeAhora()) continue
-                if (subirUno(sesion, f)) Subidos.anotar(this, f.id) else quedan = true
+                if (!f.cabeAhora()) { saltados++; continue }
+                if (subirUno(sesion, f)) {
+                    Subidos.anotar(this, f.id)
+                    subidos++
+                } else {
+                    fallados++
+                    quedan = true
+                }
             }
+            Subidos.anotarParte(this, parteDe(subidos, fallados, saltados, quedan))
             return quedan
         } finally {
             Nucleo.cerrar(sesion)
         }
     }
+
+    /**
+     * Lo que paso, en una linea que se pueda leer en Configuracion.
+     *
+     * Los saltados se nombran a proposito. Son los que no suben porque son anteriores a activar
+     * la carga, y es la causa numero uno de «la activé y no pasó nada»: pasa lo correcto, pero
+     * desde fuera se ve igual que no hacer nada.
+     */
+    private fun parteDe(subidos: Int, fallados: Int, saltados: Int, quedan: Boolean): String =
+        buildString {
+            append(if (subidos == 0) "Nada que subir." else "Subido(s) $subidos.")
+            if (fallados > 0) append(" No se pudo con $fallados.")
+            if (saltados > 0) {
+                append(" $saltados ya estaban en la carpeta antes de activarla: para esos, ")
+                append("marca «Subir también lo que ya está».")
+            }
+            if (quedan) append(" Sigue en otra pasada.")
+        }
 
     /** Un fichero de la carpeta elegida, con lo que hace falta para decidir si sube. */
     private inner class Candidato(
@@ -187,6 +216,9 @@ class Subidor : JobService() {
         /** El identificador del trabajo. Uno solo: dos cargas a la vez se pisarían. */
         private const val TRABAJO = 7401
 
+        /** El de la pasada inmediata. Aparte del periodico: uno no puede ser las dos cosas. */
+        private const val AHORA = 7402
+
         /**
          * Cuánto se trabaja por pasada.
          *
@@ -206,22 +238,72 @@ class Subidor : JobService() {
             val js = c.getSystemService(JobScheduler::class.java) ?: return
             if (!Carga.activa(c)) {
                 js.cancel(TRABAJO)
+                js.cancel(AHORA)
                 return
             }
+            // **Se mira lo que devuelve.** Se ignoraba, y por eso una activación que no
+            // programaba nada se veía igual que una que sí: la pantalla decía «activa, subirá
+            // cuando se cumplan las condiciones» y en el sistema no había ningún trabajo.
+            val puesto = try {
+                js.schedule(
+                    comun(c, TRABAJO)
+                        .setPersisted(true)
+                        // Cada cuarto de hora como pronto. Más seguido no sube nada antes --las
+                        // fotos no aparecen más rápido-- y gasta batería mirando.
+                        .setPeriodic(15 * 60_000L)
+                        .build()
+                ) == JobScheduler.RESULT_SUCCESS
+            } catch (e: Throwable) {
+                Log.w(ETIQUETA, "no se pudo programar la carga", e)
+                false
+            }
+            if (!puesto) {
+                Subidos.anotarParte(
+                    c,
+                    "El sistema no aceptó programar la subida automática. Suele ser el ahorro " +
+                        "de batería del fabricante: busca MultiDrive en los ajustes de batería " +
+                        "y quítale las restricciones.",
+                )
+                return
+            }
+            ahora(c)
+        }
+
+        /**
+         * Una pasada **ya**, en cuanto se cumplan las condiciones.
+         *
+         * Hace falta porque un trabajo periódico no corre al crearlo: corre dentro de su primer
+         * cuarto de hora. Quien activa la carga y mira la carpeta esperando ver algo se
+         * encuentra con que no pasa nada, y concluye que no funciona. Pasó.
+         *
+         * Sin `setOverrideDeadline`: ese forzaría la subida **saltándose** las condiciones, y
+         * «solo con Wi-Fi» tiene que seguir significando solo con Wi-Fi aunque haya prisa.
+         */
+        fun ahora(c: Context) {
+            val js = c.getSystemService(JobScheduler::class.java) ?: return
+            if (!Carga.activa(c)) return
+            val puesto = try {
+                js.schedule(comun(c, AHORA).setMinimumLatency(1_000).build()) ==
+                    JobScheduler.RESULT_SUCCESS
+            } catch (e: Throwable) {
+                Log.w(ETIQUETA, "no se pudo programar la pasada inmediata", e)
+                false
+            }
+            if (!puesto) {
+                Subidos.anotarParte(c, "El sistema no aceptó la comprobación. Mira las restricciones de batería de MultiDrive.")
+            }
+        }
+
+        /** Las condiciones, que son las mismas para la pasada de ahora y para las periódicas. */
+        private fun comun(c: Context, id: Int): JobInfo.Builder {
             val red = if (Carga.soloWifi(c)) {
                 JobInfo.NETWORK_TYPE_UNMETERED
             } else {
                 JobInfo.NETWORK_TYPE_ANY
             }
-            val job = JobInfo.Builder(TRABAJO, ComponentName(c, Subidor::class.java))
+            return JobInfo.Builder(id, ComponentName(c, Subidor::class.java))
                 .setRequiredNetworkType(red)
                 .setRequiresCharging(Carga.soloCargando(c))
-                .setPersisted(true)
-                // Cada cuarto de hora como pronto. Más seguido no sube nada antes --las fotos no
-                // aparecen más rápido-- y gasta batería mirando.
-                .setPeriodic(15 * 60_000L)
-                .build()
-            js.schedule(job)
         }
     }
 }
@@ -236,6 +318,7 @@ object Subidos {
     private const val FICHERO = "subidos"
     private const val CLAVE = "ids"
     private const val DESDE = "desde"
+    private const val PARTE = "parte"
 
     private fun p(c: Context) = c.getSharedPreferences(FICHERO, Context.MODE_PRIVATE)
 
@@ -262,6 +345,23 @@ object Subidos {
 
     /** Al apagar la carga se olvida lo anotado: si se vuelve a encender, se empieza limpio. */
     fun olvidar(c: Context) {
-        p(c).edit().remove(CLAVE).remove(DESDE).apply()
+        p(c).edit().remove(CLAVE).remove(DESDE).remove(PARTE).apply()
+    }
+
+    /**
+     * Que paso en la ultima pasada, para poder decirlo en Configuracion.
+     *
+     * Existe porque sin esto la carga automatica es invisible: sube o no sube, y desde fuera se
+     * ve igual. Quien la activo y no vio nada concluyo que no funcionaba, y tenia razon en no
+     * poder saberlo.
+     *
+     * No se usa una notificacion porque en Android 13 hace falta pedir permiso para ellas, y
+     * pedir un permiso para contar algo que cabe en la pantalla donde ya esta mirando quien
+     * pregunta seria cobrar de mas.
+     */
+    fun parte(c: Context): String? = p(c).getString(PARTE, null)
+
+    fun anotarParte(c: Context, dicho: String) {
+        p(c).edit().putString(PARTE, dicho).apply()
     }
 }
