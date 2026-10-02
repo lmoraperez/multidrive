@@ -224,6 +224,18 @@
                     android:layout_marginTop="14dp"
                     android:text="Abrir volumen" />
 
+                <!-- La salida cuando el volumen necesita cuentas que este telefono no tiene.
+                     Traerlas vivia solo en la pantalla de entrada, que deja de salir en cuanto
+                     hay una cuenta enlazada: quien enlazaba una y se quedaba corto no tenia a
+                     donde ir, y el error decia «los proveedores no coinciden» sin mas. -->
+                <Button
+                    android:id="@+id/traer"
+                    style="@style/BotonSuave"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Traer mis cuentas de la nube" />
+
                 <Button
                     android:id="@+id/eliminar"
                     style="@style/BotonSuave"

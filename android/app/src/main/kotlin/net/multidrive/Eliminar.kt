@@ -114,7 +114,7 @@ class Eliminar : Activity() {
                 JSONObject(Nucleo.mirarRetirada(conf.absolutePath)) to null
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo mirar la retirada", e)
-                null to (e.message ?: e.toString())
+                null to (dicho(e))
             }
             runOnUiThread {
                 if (json == null) {
@@ -184,7 +184,7 @@ class Eliminar : Activity() {
                 r
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo retirar el volumen", e)
-                e.message ?: e.toString()
+                dicho(e)
             }
             runOnUiThread {
                 ocupado = false

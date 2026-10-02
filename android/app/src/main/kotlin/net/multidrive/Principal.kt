@@ -81,6 +81,7 @@ class Principal : Activity() {
     private lateinit var abrir: Button
     private lateinit var crear: Button
     private lateinit var eliminar: Button
+    private lateinit var traer: Button
     private lateinit var ver: Button
     private lateinit var explorar: Button
     private lateinit var ajustes: Button
@@ -141,6 +142,7 @@ class Principal : Activity() {
         abrir = findViewById(R.id.abrir)
         crear = findViewById(R.id.crear)
         eliminar = findViewById(R.id.eliminar)
+        traer = findViewById(R.id.traer)
         ver = findViewById(R.id.ver)
         explorar = findViewById(R.id.explorar)
         ajustes = findViewById(R.id.ajustes)
@@ -159,6 +161,7 @@ class Principal : Activity() {
         existente.setOnClickListener { startActivity(Intent(this, Abrir::class.java)) }
         crear.setOnClickListener { startActivity(Intent(this, Crear::class.java)) }
         eliminar.setOnClickListener { startActivity(Intent(this, Eliminar::class.java)) }
+        traer.setOnClickListener { startActivity(Intent(this, Abrir::class.java)) }
 
         drive.setOnClickListener { conectar("GDRIVE") }
         onedrive.setOnClickListener { conectar("ONEDRIVE") }
@@ -301,6 +304,7 @@ class Principal : Activity() {
         notaFrase.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
         abrir.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
         eliminar.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
+        traer.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
         crear.visibility = if (!abierto && sinVolumen) View.VISIBLE else View.GONE
         ver.visibility = if (abierto) View.VISIBLE else View.GONE
         explorar.visibility = if (abierto) View.VISIBLE else View.GONE
@@ -308,6 +312,7 @@ class Principal : Activity() {
         cerrar.visibility = if (abierto) View.VISIBLE else View.GONE
         abrir.isEnabled = !ocupado
         eliminar.isEnabled = !ocupado
+        traer.isEnabled = !ocupado
         crear.isEnabled = !ocupado
 
         estado.text = dicho ?: when {
@@ -430,7 +435,7 @@ class Principal : Activity() {
                 trabajo()
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "fallo", e)
-                e.message ?: e.toString()
+                dicho(e)
             }
             runOnUiThread {
                 ocupado = false
@@ -471,9 +476,18 @@ class Principal : Activity() {
                 // «No hay volumen» no es lo mismo que «no se pudo abrir», y la pantalla tiene
                 // que ofrecer cosas distintas en cada caso: crear uno, o volver a intentarlo.
                 // Se mira el texto del nucleo, que es de donde viene la distincion.
-                val dicho = e.message ?: e.toString()
-                if (dicho.contains("no hay ningun volumen") || dicho.contains("no hay ningún volumen")) {
+                val porque = dicho(e)
+                if (porque.contains("no hay ningun volumen") || porque.contains("no hay ningún volumen")) {
                     sinVolumen = true
+                }
+                // Faltan cuentas: el volumen se hizo con mas de las que hay en este telefono.
+                // Decir solo «los proveedores no coinciden» es cierto y deja a cualquiera
+                // parado; lo que hace falta es el boton de al lado, que las trae.
+                if (porque.contains("no coinciden con los del volumen")) {
+                    throw IllegalStateException(
+                        "$porque.\n\nEstán guardadas en tus propias nubes: pulsa «Traer mis " +
+                            "cuentas de la nube» y escribe ahí la misma frase.",
+                    )
                 }
                 throw e
             }

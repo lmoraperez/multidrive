@@ -180,7 +180,7 @@ class Abrir : Activity() {
                 trabajo()
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "fallo", e)
-                e.message ?: e.toString()
+                dicho(e)
             }
             runOnUiThread {
                 ocupado = false
@@ -199,7 +199,7 @@ class Abrir : Activity() {
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo conectar", e)
                 ocupado = false
-                runOnUiThread { pintar(e.message ?: e.toString()) }
+                runOnUiThread { pintar(dicho(e)) }
                 return@thread
             }
             runOnUiThread { pintar(dicho) }
@@ -222,7 +222,7 @@ class Abrir : Activity() {
             Nucleo.hayMaleta(conf.absolutePath) to null
         } catch (e: Throwable) {
             Log.w(ETIQUETA, "no se pudo mirar la maleta", e)
-            false to (e.message ?: e.toString())
+            false to (dicho(e))
         }
         runOnUiThread {
             ocupado = false

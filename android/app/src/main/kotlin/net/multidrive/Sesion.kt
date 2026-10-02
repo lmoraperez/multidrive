@@ -49,6 +49,16 @@ const val MIENTRAS_NAVEGADOR =
         "Si algo sale mal, vuelve aquí y pulsa «Cancelar»: no uses el botón atrás del " +
         "navegador, porque reenvía la misma petición y el proveedor la rechaza."
 
+/**
+ * El mensaje de un fallo, sin la envoltura del puente con Rust.
+ *
+ * El `jni` envuelve lo nuestro en una excepción cuyo texto empieza por «Rust error:». Eso le
+ * dice algo a quien programa y nada a quien usa la aplicación, que lo único que ve es una
+ * palabra en inglés delante de un mensaje escrito con cuidado en castellano.
+ */
+fun dicho(e: Throwable): String =
+    (dicho(e)).removePrefix("Rust error: ").trim()
+
 /** Bytes en algo que se pueda leer de un vistazo. */
 fun legible(bytes: Long): String {
     val u = listOf("B", "KiB", "MiB", "GiB", "TiB")
