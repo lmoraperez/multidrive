@@ -106,6 +106,20 @@ object Nucleo {
     external fun mover(sesion: Long, origen: String, destino: String)
 
     /**
+     * Busca por nombre en todo el volumen. Devuelve `{incompleto, hallazgos:[...]}`.
+     *
+     * **Cuesta y puede quedarse corta**: el arbol no tiene indice, asi que buscar es recorrerlo,
+     * y recorrerlo es bajar un nodo por directorio. Por eso trae `incompleto`: hay un tope, y
+     * quien pinte la lista tiene que poder decir que puede faltar algo.
+     *
+     * Nunca desde el hilo de la interfaz.
+     */
+    external fun buscar(sesion: Long, texto: String): String
+
+    /** Lo ultimo que se escribio, en el mismo formato. Cuesta lo mismo, por lo mismo. */
+    external fun recientes(sesion: Long, cuantos: Int): String
+
+    /**
      * Lo que se borraria al retirar el volumen, en JSON. **No borra nada.**
      *
      * **Bloquea y tarda**: enumera cada cuenta entera. Nunca desde el hilo de la interfaz.

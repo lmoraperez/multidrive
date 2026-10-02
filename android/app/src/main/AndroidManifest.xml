@@ -6,6 +6,10 @@
          que no necesita permisos porque es el usuario quien elige. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Para que la carga automatica siga programada tras reiniciar el telefono, que es justo
+         cuando mas falta hace: nadie va a abrir la aplicacion para que suban las fotos de ayer. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Desde Android 11 una aplicacion no ve que otras hay instaladas si no dice cuales le
          interesan. Sin esto, preguntar quien sabe navegar por origenes de documentos devuelve
          una lista vacia aunque el navegador del sistema este ahi, y la pantalla principal
@@ -38,6 +42,27 @@
         <!-- Listado de respaldo, para telefonos sin navegador de documentos del sistema. Solo se
              llega desde la pantalla principal, y solo cuando no hay quien atienda el intent de
              navegar. Lo normal es acabar en la app de Archivos. -->
+        <!-- La carga automatica. `BIND_JOB_SERVICE` solo lo tiene el sistema: es lo que impide
+             que otra aplicacion arranque nuestras subidas. -->
+        <service
+            android:name=".Subidor"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- El explorador propio: la via principal para ver y manejar el volumen. Enseña lo
+             que solo nosotros sabemos (que una busqueda quedo incompleta, que un fichero es de
+             antes de que hubiera fechas) y que un gestor ajeno no puede enseñar. -->
+        <activity
+            android:name=".Explorador"
+            android:exported="false"
+            android:label="Archivos" />
+
+        <!-- Configuracion, con la carga automatica. -->
+        <activity
+            android:name=".Ajustes"
+            android:exported="false"
+            android:label="Configuración" />
+
         <activity
             android:name=".Archivos"
             android:exported="false"
