@@ -32,7 +32,15 @@
          mascara que pida cada lanzador, redonda incluida, asi que una segunda version redonda
          seria el mismo dibujo mantenido dos veces. Se declara igualmente porque hay lanzadores
          que lo piden por su nombre y, si no esta, se quedan con el icono por defecto. -->
+    <!-- Sin copia de seguridad. Android la hace por defecto y restaura al reinstalar, y aqui
+         eso copia a Google Drive los tokens de todas las cuentas enlazadas, que es justo lo
+         que esta aplicacion dice que no sale del telefono. Ademas resucita lo borrado: tras
+         reinstalar volvieron todas las cuentas de antes, incluida una quitada a proposito.
+         `allowBackup` cubre las versiones viejas; `dataExtractionRules`, Android 12 en
+         adelante, donde ademas corta el traspaso directo entre telefonos. -->
     <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/sin_copia"
         android:icon="@mipmap/ic_launcher"
         android:label="MultiDrive"
         android:roundIcon="@mipmap/ic_launcher"
