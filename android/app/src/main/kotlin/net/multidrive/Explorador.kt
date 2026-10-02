@@ -279,7 +279,7 @@ class Explorador : Activity() {
                 leer(s) to null
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo leer $vista", e)
-                Hallazgos(emptyList(), false) to (e.message ?: e.toString())
+                Hallazgos(emptyList(), false) to (dicho(e))
             }
             runOnUiThread {
                 ocupado = false
@@ -444,7 +444,7 @@ class Explorador : Activity() {
                 trabajo(); null
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo", e)
-                e.message ?: e.toString()
+                dicho(e)
             }
             runOnUiThread {
                 ocupado = false

@@ -280,7 +280,7 @@ class Crear : Activity() {
                 "Cuenta conectada como «${Nucleo.conectar(tipo, conf.absolutePath)}»."
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo conectar", e)
-                e.message ?: e.toString()
+                dicho(e)
             }
             runOnUiThread {
                 ocupado = false
@@ -303,7 +303,7 @@ class Crear : Activity() {
                 leer() to null
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudieron calcular las topologias", e)
-                emptyList<Opcion>() to (e.message ?: e.toString())
+                emptyList<Opcion>() to (dicho(e))
             }
             runOnUiThread {
                 opciones = leidas
@@ -483,7 +483,7 @@ class Crear : Activity() {
                 }
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo crear el volumen", e)
-                runOnUiThread { fallo(e.message ?: e.toString()) }
+                runOnUiThread { fallo(dicho(e)) }
                 return@thread
             }
             runOnUiThread {

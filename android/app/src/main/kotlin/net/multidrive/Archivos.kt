@@ -115,7 +115,7 @@ class Archivos : Activity() {
                 leer(s) to null
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo listar $ruta", e)
-                emptyList<Entrada>() to (e.message ?: e.toString())
+                emptyList<Entrada>() to (dicho(e))
             }
             runOnUiThread {
                 entradas = leidas
@@ -161,7 +161,7 @@ class Archivos : Activity() {
                         null
                     } catch (ex: Throwable) {
                         Log.w(ETIQUETA, "no se pudo borrar $destino", ex)
-                        ex.message ?: ex.toString()
+                        dicho(ex)
                     }
                     runOnUiThread {
                         if (fallo == null) {

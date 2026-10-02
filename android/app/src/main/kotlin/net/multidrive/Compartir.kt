@@ -81,7 +81,7 @@ class Compartir : Activity() {
                     subidos++
                 } catch (e: Throwable) {
                     Log.w(ETIQUETA, "no se pudo subir $uri", e)
-                    fallos.add(e.message ?: e.toString())
+                    fallos.add(dicho(e))
                 }
             }
             val dicho = buildString {
