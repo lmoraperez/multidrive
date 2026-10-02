@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nada de esta aplicación sale en una copia de seguridad.
+
+  # Por qué
+
+  Android hace copia de seguridad de los ficheros privados de cada aplicación **por defecto** y
+  los restaura al reinstalar. Para casi cualquier aplicación eso es un regalo; aquí es lo
+  contrario, por dos razones.
+
+  La primera es lo que hay dentro. `multidrive.conf` lleva los tokens de todas las cuentas
+  enlazadas: las de Google y las de Microsoft. Que se copien a Google Drive contradice lo que
+  esta aplicación dice de sí misma, que es que las credenciales no salen del dispositivo. La
+  copia va cifrada con una clave derivada del PIN del teléfono, así que Google no puede leerla,
+  pero sigue estando fuera.
+
+  La segunda es que restaurar hace daño. Se vio: tras desinstalar y reinstalar desde Play
+  volvieron todas las cuentas de antes, **incluida una que se había quitado a propósito**. La
+  copia era anterior al borrado, y resucitó. Y la llave del volumen, si estaba guardada, se
+  restaura cifrada con una clave del almacén protegido por hardware que **no** se restaura
+  porque no puede salir del teléfono: queda un bulto que dice estar y no se puede abrir.
+
+  # Lo que cuesta
+
+  Cambiar de teléfono obliga a volver a enlazar. Es aceptable porque para eso está la maleta:
+  con una cuenta enlazada y la frase de paso salen las demás, que es un camino que el usuario
+  controla y entiende, en vez de uno que ocurre a sus espaldas.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+
+    <!-- También en el traspaso directo de un teléfono a otro. Es menos malo que una copia en la
+         nube (no sale a ningún servidor) pero arrastra los mismos tokens y el mismo problema
+         de resucitar lo borrado. -->
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>
