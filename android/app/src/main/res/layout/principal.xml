@@ -243,13 +243,32 @@
                     android:layout_marginTop="8dp"
                     android:text="Crear un volumen" />
 
+                <!-- El explorador propio va primero: es la vía principal. El del sistema se
+                     queda debajo porque sigue siendo útil para llevar ficheros a otras
+                     aplicaciones, que es lo que una pantalla nuestra no puede hacer. -->
                 <Button
-                    android:id="@+id/ver"
+                    android:id="@+id/explorar"
                     style="@style/Boton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="14dp"
-                    android:text="Ver en la app de Archivos" />
+                    android:text="Ver mis archivos" />
+
+                <Button
+                    android:id="@+id/ver"
+                    style="@style/BotonSuave"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Abrir en la app de Archivos" />
+
+                <Button
+                    android:id="@+id/ajustes"
+                    style="@style/BotonSuave"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Configuración" />
 
                 <Button
                     android:id="@+id/cerrar"

@@ -81,6 +81,8 @@ class Principal : Activity() {
     private lateinit var crear: Button
     private lateinit var eliminar: Button
     private lateinit var ver: Button
+    private lateinit var explorar: Button
+    private lateinit var ajustes: Button
     private lateinit var cerrar: Button
 
     /** Quien retira el aviso flotante cuando ya no hay nada que esperar. */
@@ -132,6 +134,8 @@ class Principal : Activity() {
         crear = findViewById(R.id.crear)
         eliminar = findViewById(R.id.eliminar)
         ver = findViewById(R.id.ver)
+        explorar = findViewById(R.id.explorar)
+        ajustes = findViewById(R.id.ajustes)
         cerrar = findViewById(R.id.cerrar)
 
         conf = File(filesDir, "multidrive.conf")
@@ -158,6 +162,8 @@ class Principal : Activity() {
             avisar("Volumen cerrado. Ya no se ve en Archivos.", esperando = false)
         }
         ver.setOnClickListener { abrirEnArchivos() }
+        explorar.setOnClickListener { startActivity(Intent(this, Explorador::class.java)) }
+        ajustes.setOnClickListener { startActivity(Intent(this, Ajustes::class.java)) }
     }
 
     /**
@@ -289,6 +295,8 @@ class Principal : Activity() {
         eliminar.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
         crear.visibility = if (!abierto && sinVolumen) View.VISIBLE else View.GONE
         ver.visibility = if (abierto) View.VISIBLE else View.GONE
+        explorar.visibility = if (abierto) View.VISIBLE else View.GONE
+        ajustes.visibility = if (abierto) View.VISIBLE else View.GONE
         cerrar.visibility = if (abierto) View.VISIBLE else View.GONE
         abrir.isEnabled = !ocupado
         eliminar.isEnabled = !ocupado

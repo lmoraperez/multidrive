@@ -349,6 +349,42 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_borrar<'local>(
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Busca por nombre en todo el volumen, en JSON.
+///
+/// **Cuesta y puede quedarse corta**: recorre el arbol, y el resultado trae `incompleto` para
+/// que la pantalla pueda decir que puede faltar algo. Nunca desde el hilo de la interfaz.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_buscar<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+    texto: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let texto = texto.try_to_string(env)?;
+            let json = sesion::buscar(id, &texto).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(json)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Lo ultimo que se escribio, en JSON. Cuesta lo mismo que buscar, por lo mismo.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_recientes<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+    cuantos: jni::sys::jint,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let json = sesion::recientes(id, cuantos.max(0) as usize).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(json)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 /// Corta la espera del navegador que haya en curso. `true` si habia alguna.
 ///
 /// No bloquea: lo llama el hilo de la interfaz mientras otro esta dentro de `conectar`.
@@ -747,6 +783,8 @@ mod tests {
             "abrir",
             "cerrar",
             "listar",
+            "buscar",
+            "recientes",
             "mirar",
             "leer",
             "conectar",

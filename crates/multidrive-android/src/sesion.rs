@@ -334,6 +334,50 @@ pub fn mover(id: i64, origen: &str, destino: &str) -> Result<(), String> {
     })
 }
 
+/// Busca por nombre en todo el volumen. **Cuesta**: recorre el arbol, y cada directorio es
+/// una peticion por proveedor. Nunca desde el hilo de la interfaz.
+pub fn buscar(id: i64, texto: &str) -> Result<String, String> {
+    let abierto = sesion(id)?;
+    let texto = texto.to_string();
+    runtime().block_on(async move {
+        let v = abierto.volumen.lock().await;
+        let r = multidrive_core::recorrer::buscar(&v, &texto).await?;
+        Ok(a_json(&r))
+    })
+}
+
+/// Lo ultimo que se escribio. Cuesta lo mismo que buscar, por lo mismo.
+pub fn recientes(id: i64, cuantos: usize) -> Result<String, String> {
+    let abierto = sesion(id)?;
+    runtime().block_on(async move {
+        let v = abierto.volumen.lock().await;
+        let r = multidrive_core::recorrer::recientes(&v, cuantos).await?;
+        Ok(a_json(&r))
+    })
+}
+
+/// El resultado de un recorrido, como lo espera la interfaz.
+///
+/// `incompleto` viaja con los hallazgos y no aparte **a proposito**: quien pinte la lista tiene
+/// que poder decir que puede faltar algo. Una lista incompleta presentada como completa hace
+/// creer que un fichero no esta cuando si esta.
+fn a_json(r: &multidrive_core::recorrer::Recorrido) -> String {
+    let lista: Vec<serde_json::Value> = r
+        .hallazgos
+        .iter()
+        .map(|h| {
+            serde_json::json!({
+                "ruta": h.ruta,
+                "nombre": h.nombre,
+                "dir": h.dir,
+                "bytes": h.bytes,
+                "modificado": h.modificado,
+            })
+        })
+        .collect();
+    serde_json::json!({ "incompleto": r.incompleto, "hallazgos": lista }).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
