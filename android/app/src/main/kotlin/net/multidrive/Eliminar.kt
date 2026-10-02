@@ -59,19 +59,8 @@ class Eliminar : Activity() {
         super.onCreate(guardado)
         conf = File(filesDir, "multidrive.conf")
 
-        val caja = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 72, 48, 48)
-            setBackgroundColor(getColor(R.color.fondo))
-        }
-        caja.addView(
-            TextView(this).apply {
-                text = "Eliminar volumen"
-                textSize = 20f
-                setTextColor(getColor(R.color.texto))
-                setPadding(0, 0, 0, 12)
-            }
-        )
+        val caja = LinearLayout(this).comoPantalla()
+        caja.addView(cabecera("Eliminar volumen"))
         estado = TextView(this).apply {
             textSize = 14f
             setTextColor(getColor(R.color.texto))

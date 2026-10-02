@@ -2,13 +2,44 @@
 <resources>
     <!-- Oscuro y punto: la paleta de la marca es oscura, y ofrecer un tema claro a medias
          seria peor que no ofrecerlo. `NoActionBar` porque la cabecera la pinta la propia
-         pantalla, con el logotipo. -->
+         pantalla, con el logotipo.
+
+         # Por que los estilos por defecto estan aqui y no en cada pantalla
+
+         Porque la mitad de las pantallas se construyen en codigo (crear, abrir, eliminar, el
+         explorador, la configuracion) y ahi un `Button(this)` sale con el gris del sistema. Se
+         noto en la de eliminar un volumen, que parecia de otra aplicacion.
+
+         Ponerlo pantalla por pantalla habria funcionado hasta la siguiente pantalla nueva. Aqui
+         lo hereda todo, incluido lo que todavia no existe, que es la unica forma de que esto no
+         se vuelva a desalinear. -->
     <style name="TemaMultiDrive" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:colorBackground">@color/fondo</item>
+        <!-- Para que una pantalla hecha en codigo salga con el fondo de la marca sin tener que
+             acordarse de pintarlo. -->
+        <item name="android:windowBackground">@color/fondo</item>
         <item name="android:textColorPrimary">@color/texto</item>
         <item name="android:textColorSecondary">@color/apagado</item>
+        <item name="android:textColorHint">@color/apagado</item>
         <item name="android:colorAccent">@color/acento</item>
         <item name="android:statusBarColor">@color/fondo</item>
         <item name="android:navigationBarColor">@color/fondo</item>
+
+        <!-- Lo que heredan los widgets creados en codigo. -->
+        <item name="android:buttonStyle">@style/BotonSuave</item>
+        <item name="android:editTextStyle">@style/Campo</item>
+        <item name="android:alertDialogTheme">@style/DialogoMultiDrive</item>
+    </style>
+
+    <!-- Los dialogos de confirmacion, que son donde se dicen las cosas serias: borrar un
+         fichero, eliminar un volumen, guardar la llave. Sin esto salian con el gris del sistema
+         justo cuando mas importa que se vea que es la misma aplicacion que acaba de advertir
+         algo. -->
+    <style name="DialogoMultiDrive" parent="@android:style/Theme.Material.Dialog.Alert">
+        <item name="android:colorBackground">@color/panel</item>
+        <item name="android:textColorPrimary">@color/texto</item>
+        <item name="android:textColorSecondary">@color/apagado</item>
+        <item name="android:colorAccent">@color/acento</item>
+        <item name="android:textColorAlertDialogListItem">@color/texto</item>
     </style>
 </resources>

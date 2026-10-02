@@ -75,20 +75,9 @@ class Crear : Activity() {
     override fun onCreate(guardado: Bundle?) {
         super.onCreate(guardado)
 
-        val caja = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 72, 48, 48)
-            setBackgroundColor(getColor(R.color.fondo))
-        }
+        val caja = LinearLayout(this).comoPantalla()
+        caja.addView(cabecera("Crear volumen"))
 
-        caja.addView(
-            TextView(this).apply {
-                text = "Crear volumen"
-                textSize = 20f
-                setTextColor(getColor(R.color.texto))
-                setPadding(0, 0, 0, 12)
-            }
-        )
         estado = TextView(this).apply {
             textSize = 14f
             setTextColor(getColor(R.color.texto))

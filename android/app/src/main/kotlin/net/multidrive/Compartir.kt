@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.util.Log
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import net.multidrive.nucleo.Nucleo
@@ -38,12 +39,16 @@ class Compartir : Activity() {
         super.onCreate(guardado)
 
         val texto = TextView(this).apply {
-            setPadding(48, 96, 48, 48)
             textSize = 15f
             setBackgroundColor(getColor(R.color.fondo))
             setTextColor(getColor(R.color.texto))
         }
-        setContentView(texto)
+        setContentView(
+            LinearLayout(this).comoPantalla().apply {
+                addView(cabecera("Compartir"))
+                addView(texto)
+            }
+        )
 
         val cuales = recibidas()
         if (cuales.isEmpty()) {

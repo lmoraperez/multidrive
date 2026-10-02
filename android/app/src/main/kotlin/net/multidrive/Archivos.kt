@@ -50,11 +50,8 @@ class Archivos : Activity() {
     override fun onCreate(guardado: Bundle?) {
         super.onCreate(guardado)
 
-        val caja = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(getColor(R.color.fondo))
-            setPadding(32, 64, 32, 24)
-        }
+        val caja = LinearLayout(this).comoPantalla()
+        caja.addView(cabecera("Ficheros"))
         titulo = TextView(this).apply {
             textSize = 17f
             setTextColor(getColor(R.color.texto))
