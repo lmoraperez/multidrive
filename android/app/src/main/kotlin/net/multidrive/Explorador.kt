@@ -522,6 +522,12 @@ class Explorador : Activity() {
                     textSize = 16f
                     background = null
                     minWidth = 0
+                    // **Sin foco.** Un hijo enfocable dentro de una fila de `ListView` anula el
+                    // toque de la fila entera: con esto puesto, tocar una carpeta no hacia
+                    // nada y no habia forma de entrar en ella. Sigue siendo pulsable; lo que
+                    // se le quita es el foco, que es lo que estorbaba.
+                    isFocusable = false
+                    isFocusableInTouchMode = false
                     setTextColor(getColor(R.color.apagado))
                     setPadding(16, 0, 16, 0)
                     setOnClickListener { menuDe(f) }
