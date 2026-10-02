@@ -6,6 +6,13 @@
          que no necesita permisos porque es el usuario quien elige. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Sin esto, `JobScheduler` **rechaza** cualquier trabajo que pida una condicion de red,
+         que son todos los nuestros: «solo con Wi-Fi no tarificada» es una. Lanza un
+         `SecurityException` que, sin mirar lo que devuelve `schedule`, se pierde: la pantalla
+         decia «activa, subira cuando se cumplan las condiciones» y en el sistema no habia
+         ningun trabajo. Costo una tarde encontrarlo. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- Para que la carga automatica siga programada tras reiniciar el telefono, que es justo
          cuando mas falta hace: nadie va a abrir la aplicacion para que suban las fotos de ayer. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />

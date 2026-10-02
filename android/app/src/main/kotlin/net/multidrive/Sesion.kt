@@ -57,7 +57,7 @@ const val MIENTRAS_NAVEGADOR =
  * palabra en inglés delante de un mensaje escrito con cuidado en castellano.
  */
 fun dicho(e: Throwable): String =
-    (dicho(e)).removePrefix("Rust error: ").trim()
+    (e.message ?: e.toString()).removePrefix("Rust error: ").trim()
 
 /** Bytes en algo que se pueda leer de un vistazo. */
 fun legible(bytes: Long): String {
