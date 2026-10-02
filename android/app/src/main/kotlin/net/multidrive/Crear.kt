@@ -109,7 +109,7 @@ class Crear : Activity() {
         // tiene mas recurso que el boton atras del navegador, que reenvia la misma peticion y
         // la deja inservible para siempre.
         cancelar = Button(this).apply {
-            text = "Cancelar"
+            text = "Cancelar y volver"
             visibility = View.GONE
             setOnClickListener { Nucleo.cancelarConexion() }
         }
@@ -247,6 +247,11 @@ class Crear : Activity() {
         } else {
             "${hay.size} enlazada(s): ${hay.joinToString(", ")}"
         }
+        // Mientras se espera al navegador se esconde lo demas, por lo mismo que en la pantalla
+        // de abrir: ofrecer botones que no responden hace creer que la aplicacion esta rota.
+        drive.visibility = if (ocupado) View.GONE else View.VISIBLE
+        onedrive.visibility = if (ocupado) View.GONE else View.VISIBLE
+        seguir.visibility = if (ocupado) View.GONE else View.VISIBLE
         drive.isEnabled = !ocupado
         onedrive.isEnabled = !ocupado
         // Con una sola cuenta lo unico que cabe es `concat`, que no reparte nada ni aguanta
@@ -255,6 +260,10 @@ class Crear : Activity() {
         seguir.isEnabled = hay.isNotEmpty() && !ocupado
         cancelar.visibility = if (ocupado) View.VISIBLE else View.GONE
 
+        if (ocupado) {
+            estado.text = dicho ?: "Esperando a que des permiso en el navegador."
+            return
+        }
         estado.text = dicho ?: if (hay.isEmpty()) {
             "Conecta las cuentas entre las que quieres repartir tus archivos. Cuantas más, más " +
                 "espacio y más caídas aguanta."

@@ -108,7 +108,7 @@ class Abrir : Activity() {
         // La salida mientras se espera al navegador. Sin ella, el unico recurso es el boton
         // atras del navegador, que reenvia la misma peticion y la deja inservible.
         cancelar = Button(this).apply {
-            text = "Cancelar"
+            text = "Cancelar y volver"
             visibility = View.GONE
             setOnClickListener { Nucleo.cancelarConexion() }
         }
@@ -148,14 +148,24 @@ class Abrir : Activity() {
         boton.isEnabled = !ocupado
         cancelar.visibility = if (ocupado) View.VISIBLE else View.GONE
 
-        val conMaleta = maleta == true
+        // Mientras se espera al navegador **no se enseña nada más**.
+        //
+        // Antes salían a la vez «abriendo el navegador», el campo de la frase y «Abrir volumen»,
+        // y el campo no respondía porque había una conexión a medias. Quien lo vio concluyó que
+        // no se podía escribir la frase, y tenía razón: lo que no se podía era estar en dos
+        // cosas a la vez, y la pantalla no lo decía.
+        val conMaleta = maleta == true && !ocupado
         frase.visibility = if (conMaleta) View.VISIBLE else View.GONE
         notaFrase.visibility = if (conMaleta) View.VISIBLE else View.GONE
         boton.visibility = if (conMaleta) View.VISIBLE else View.GONE
+        lista.visibility = if (ocupado) View.GONE else View.VISIBLE
+        drive.visibility = if (ocupado) View.GONE else View.VISIBLE
+        onedrive.visibility = if (ocupado) View.GONE else View.VISIBLE
         notaFrase.text = "Con ella se sacan las demás cuentas y se abre el volumen, de una vez. " +
             "Es la misma frase con la que se creó."
 
         estado.text = dicho ?: when {
+            ocupado -> "Esperando a que des permiso en el navegador."
             hay.isEmpty() -> "Conecta una de las cuentas donde está el volumen. Con una basta."
             conMaleta -> "Encontrada tu configuración. Escribe la frase de paso."
             else -> "Comprobando…"
