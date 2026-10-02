@@ -42,6 +42,14 @@ class Subidor : JobService() {
 
     override fun onStartJob(params: JobParameters?): Boolean {
         if (!Carga.activa(this)) return false
+        // Una sola pasada a la vez. Hay dos trabajos --el periodico y el inmediato-- y pueden
+        // coincidir: se vio subiendo el mismo video dos veces, desde dos hilos, con 1 segundo
+        // de diferencia. Cada pasada abre su sesion y publica su raiz, asi que dos a la vez no
+        // solo duplican el trabajo: compiten por el testigo y se hacen rebase la una a la otra.
+        if (EN_MARCHA.getAndSet(true)) {
+            Log.i(ETIQUETA, "ya hay una pasada en marcha; esta se salta")
+            return false
+        }
         parar = false
         thread {
             val quedan = try {
@@ -52,6 +60,7 @@ class Subidor : JobService() {
             }
             // `true` como segundo argumento vuelve a programarlo: queda trabajo, o fallo algo y
             // merece otro intento con las condiciones de nuevo cumplidas.
+            EN_MARCHA.set(false)
             jobFinished(params, quedan)
         }
         return true
@@ -214,6 +223,9 @@ class Subidor : JobService() {
 
     companion object {
         /** El identificador del trabajo. Uno solo: dos cargas a la vez se pisarían. */
+        /** Si hay una pasada corriendo. Vale para todo el proceso: los dos trabajos la comparten. */
+        private val EN_MARCHA = java.util.concurrent.atomic.AtomicBoolean(false)
+
         private const val TRABAJO = 7401
 
         /** El de la pasada inmediata. Aparte del periodico: uno no puede ser las dos cosas. */
@@ -235,7 +247,15 @@ class Subidor : JobService() {
          * hace: nadie va a abrir la aplicación para que suban las fotos de ayer.
          */
         fun programar(c: Context) {
-            val js = c.getSystemService(JobScheduler::class.java) ?: return
+            val js = c.getSystemService(JobScheduler::class.java)
+            if (js == null) {
+                // Sin planificador no hay carga automatica posible, y callarlo deja la pantalla
+                // diciendo «activa» sobre algo que no va a ocurrir nunca.
+                Log.w(ETIQUETA, "este telefono no tiene JobScheduler")
+                Subidos.anotarParte(c, "Este teléfono no permite programar tareas en segundo plano.")
+                return
+            }
+            Log.i(ETIQUETA, "programando la carga: activa=${Carga.activa(c)}")
             if (!Carga.activa(c)) {
                 js.cancel(TRABAJO)
                 js.cancel(AHORA)
@@ -257,12 +277,12 @@ class Subidor : JobService() {
                 Log.w(ETIQUETA, "no se pudo programar la carga", e)
                 false
             }
+            Log.i(ETIQUETA, "periodico programado: $puesto")
             if (!puesto) {
                 Subidos.anotarParte(
                     c,
-                    "El sistema no aceptó programar la subida automática. Suele ser el ahorro " +
-                        "de batería del fabricante: busca MultiDrive en los ajustes de batería " +
-                        "y quítale las restricciones.",
+                    "El sistema no aceptó programar la subida automática. Mira si MultiDrive " +
+                        "tiene restricciones de batería o de datos en segundo plano.",
                 )
                 return
             }
@@ -289,6 +309,7 @@ class Subidor : JobService() {
                 Log.w(ETIQUETA, "no se pudo programar la pasada inmediata", e)
                 false
             }
+            Log.i(ETIQUETA, "pasada inmediata programada: $puesto")
             if (!puesto) {
                 Subidos.anotarParte(c, "El sistema no aceptó la comprobación. Mira las restricciones de batería de MultiDrive.")
             }

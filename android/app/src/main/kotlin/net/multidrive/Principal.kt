@@ -416,7 +416,11 @@ class Principal : Activity() {
         // Si no se va solo y no hay nada que cancelar, tiene que haber con que cerrarlo. Es el
         // caso del resumen de crear un volumen: se queda puesto a proposito porque dice donde
         // quedo la configuracion sellada, y sin boton se quedaba para siempre.
-        entendido.visibility = if (esperando && !cancelable) View.VISIBLE else View.GONE
+        // Siempre que no haya nada que cancelar. La franja se superpone al contenido, asi que
+        // cualquier cosa que tape algo tiene que traer con que quitarla: esperar seis segundos
+        // mirando un mensaje que cubre el boton que ese mismo mensaje te manda pulsar es
+        // exactamente lo que no puede pasar.
+        entendido.visibility = if (cancelable) View.GONE else View.VISIBLE
         cajaAviso.visibility = View.VISIBLE
         if (!esperando) quitarAviso.postDelayed({ cajaAviso.visibility = View.GONE }, 6_000)
     }
@@ -439,7 +443,9 @@ class Principal : Activity() {
             }
             runOnUiThread {
                 ocupado = false
-                pintar(dicho)
+                // El detalle va **solo** en la franja, y arriba queda el estado que toque. Antes
+                // se escribia el mismo parrafo en los dos sitios: media pantalla repitiendose.
+                pintar(null)
                 avisar(dicho, esperando = false)
             }
         }
