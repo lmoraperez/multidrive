@@ -56,11 +56,14 @@ con huecos. Van aparte del HTML porque no cambian casi nunca: subirlos en cada d
 mover un cuarto de mega para nada.
 
 ```sh
-scp -r site/proveedores soporte@multidrive.net:/tmp/
+scp site/proveedores/*.png soporte@multidrive.net:/tmp/
 ssh soporte@multidrive.net '
   sudo mkdir -p /var/www/multidrive/proveedores
-  sudo install -o www-data -g www-data -m 644 /tmp/proveedores/*.png /var/www/multidrive/proveedores/'
+  sudo install -o www-data -g www-data -m 644 /tmp/*.png /var/www/multidrive/proveedores/'
 ```
+
+Solo los de ese nivel. `site/proveedores/originales/` guarda las imagenes grandes de las que
+salen las pequenas y **no se publica**: son medio mega que nadie descarga.
 
 > **Al anadir un logotipo nuevo hay que acordarse de esto.** Publicar solo el HTML deja la
 > portada pidiendo una imagen que no existe, y eso no se ve hasta que alguien abre la pagina.
