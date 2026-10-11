@@ -3,15 +3,18 @@
 **Una sola unidad. Muchas nubes.**
 
 MultiDrive agrega varios servicios de almacenamiento en la nube (S3/B2/R2/Wasabi/Storj,
-WebDAV/Nextcloud, Google Drive, OneDrive, Dropbox…) en **un único volumen virtual** que se
-monta como una unidad más del sistema en Windows y Linux, con semántica tipo RAID
-(espejo, striping y paridad por *erasure coding*) y **cifrado de conocimiento cero**.
+WebDAV/Nextcloud, Google Drive, OneDrive) en **un único volumen virtual** que se monta como
+una unidad más del sistema en Windows y Linux, y que en Android aparece dentro de la app de
+Archivos, con semántica tipo RAID (espejo, striping y paridad por *erasure coding*) y
+**cifrado de conocimiento cero**.
 
 > Estado: **pre-alfa.** El núcleo funciona y está cubierto por tests: cifrado, RAID,
 > troceado, árbol de metadatos copy-on-write y rescate. Google Drive y OneDrive pasan la
 > suite de conformidad contra cuentas reales. **Se monta como unidad en Windows en lectura
-> y escritura**, con caché en memoria y en disco y subida en segundo plano. Sigue siendo
-> pre-alfa: no es donde poner el único ejemplar de nada.
+> y escritura**, con caché en memoria y en disco y subida en segundo plano. **Hay aplicación
+> de Android**, en pruebas internas de Google Play, que crea volúmenes, lee, escribe y sube
+> solas las carpetas del teléfono que se le digan. Sigue siendo pre-alfa: no es donde poner
+> el único ejemplar de nada.
 
 Sitio del proyecto: https://multidrive.net
 
@@ -159,6 +162,52 @@ montando de verdad.
 > detalle, y lo que queda sin cerrar, en [docs/ROADMAP.md](docs/ROADMAP.md).
 
 
+## Android
+
+Hay **aplicación de Android**, publicada en Google Play como `com.jlsoltech.multidrive`. Está
+en **pruebas internas**: se instala desde el enlace de prueba, no buscándola en la tienda.
+Pide Android 8 o posterior y es solo para `arm64-v8a`, que es lo que llevan los teléfonos
+desde hace años.
+
+No es un visor de lo que hizo el escritorio: desde el móvil se **crea** un volumen —eligiendo
+proveedores y topología igual que en la ventana— o se abre uno que ya existe. Y para abrirlo no
+hay que volver a enlazar las cuentas una por una: con **una** cuenta enlazada y la frase de
+paso, la maleta trae las demás. En un teléfono eso se nota, porque cada cuenta son una vuelta
+al navegador y una pantalla de permisos escribiendo con el teclado del móvil.
+
+Lo que hace, una vez abierto:
+
+- **Aparece en la app de Archivos** del sistema como un almacenamiento más, y en el selector de
+  cualquier aplicación que pida un fichero. Eso lo pone un `DocumentsProvider`, que es el
+  equivalente de Android a la unidad `Z:` de Windows.
+- **Trae su propio explorador**, con buscador, tamaños y fechas, carpetas favoritas y menú
+  lateral. Está para no depender de la app de Archivos del fabricante, que cambia de un
+  teléfono a otro.
+- **Escribe**: crear carpetas, renombrar, borrar y subir, tanto desde el explorador como
+  compartiendo a MultiDrive desde cualquier aplicación.
+- **Lee por rangos**: abrir un vídeo de 2 GiB baja los trozos que el reproductor pide, no el
+  fichero entero. Es lo que separa esto de un descargador.
+- **Sube carpetas del teléfono solo**, como la carga automática de Nextcloud: se eligen las
+  carpetas, y un trabajo del sistema sube lo nuevo cuando hay red —con opción de **solo
+  WiFi**— sin tener la aplicación delante.
+
+Dos cosas que conviene saber antes de activarlas:
+
+> **La subida automática necesita la frase de paso guardada.** Un trabajo que arranca solo no
+> puede pedirla, así que para activarla hay que dejarla sellada en el **llavero de Android**,
+> cifrada por el hardware y exigiendo que el teléfono esté desbloqueado. No es gratis: quien
+> tenga el teléfono desbloqueado tiene el volumen. La aplicación lo dice con esas palabras
+> antes de activarlo, y se puede apagar y borrar la frase cuando se quiera.
+
+> **No hay copia de seguridad de la aplicación**, a propósito. La copia automática de Android
+> habría subido el fichero de configuración —con los tokens de las nubes— a la cuenta de Drive
+> del usuario, y habría devuelto cuentas ya eliminadas al reinstalar. Reinstalar empieza
+> limpio: se vuelven a enlazar las cuentas, o se trae la maleta con una sola.
+
+Todavía no hay miniaturas: las carpetas de fotos se ven como una lista de nombres. Cómo está
+construido, qué se midió en un teléfono de verdad y qué queda abierto está en
+[docs/ANDROID.md](docs/ANDROID.md).
+
 ## Estructura
 
 | Crate | Qué hace |
@@ -169,6 +218,7 @@ montando de verdad.
 | `multidrive-core` | Almacén de trozos: id por BLAKE3, `put`/`get`/`scrub`/`repair` |
 | `multidrive-mount` | Montaje como unidad del sistema: WinFsp en Windows, FUSE en Linux |
 | `multidrive-gui` | Ventana de escritorio (Tauri, sin Node): crear, montar, salud y cola de subida |
+| `multidrive-android` | Biblioteca JNI (`cdylib`) para la aplicación de Android: el mismo núcleo, sin montaje |
 | `multidrive-cli` | Binario `multidrive` |
 
 ---
@@ -209,6 +259,7 @@ sí suma: con esos mismos números da 1,02 TB.
 - [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) — diseño técnico
 - [docs/ROADMAP.md](docs/ROADMAP.md) — hoja de ruta por versiones
 - [docs/PRUEBAS-PROVEEDORES.md](docs/PRUEBAS-PROVEEDORES.md) — probar contra cuentas reales (OneDrive, Google Drive, S3, WebDAV)
+- [docs/ANDROID.md](docs/ANDROID.md) — la aplicación de Android: cómo se construye y qué se midió en un teléfono
 - [docs/SERVICIO.md](docs/SERVICIO.md) — montar como unidad de red sin tener una consola abierta
 - [docs/FIRMA.md](docs/FIRMA.md) — por qué el instalador todavía no va firmado, y qué haría falta
 

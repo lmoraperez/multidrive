@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MultiDrive — una sola unidad, muchas nubes</title>
-<meta name="description" content="MultiDrive agrega varios servicios de almacenamiento en la nube en un unico volumen con semantica RAID y cifrado de conocimiento cero. Pre-alfa: el nucleo funciona y esta verificado contra cuentas reales.">
+<meta name="description" content="MultiDrive agrega varios servicios de almacenamiento en la nube en un unico volumen con semantica RAID y cifrado de conocimiento cero. Se monta como unidad en Windows y Linux, y en Android aparece en la app de Archivos. Pre-alfa: el nucleo funciona y esta verificado contra cuentas reales.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -128,7 +128,9 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
   —S3, Backblaze B2, Cloudflare R2, Storj, Nextcloud/WebDAV, Google Drive, OneDrive—
   en <strong>un único volumen</strong> con semántica tipo RAID y cifrado de conocimiento cero.
   El objetivo es que se monte como una unidad más del sistema en Windows y Linux, y
-  <strong>ya lo hace</strong>: abajo se explica exactamente qué está probado y qué no.</p>
+  <strong>ya lo hace</strong>. En <strong>Android</strong> hay aplicación, y el volumen sale
+  dentro de la app de Archivos del teléfono: abajo se explica exactamente qué está probado y
+  qué no.</p>
   <p>Si RAID convirtió varios discos poco fiables en un volumen fiable, MultiDrive hace lo
   mismo con varias cuentas de nube: <strong>ningún proveedor tiene tus datos completos,
   ninguno puede leerlos, y la caída de uno no te deja sin volumen.</strong></p>
@@ -216,19 +218,38 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
         enumerando y descifrando lo que quede en los proveedores</li>
         <li><b>Google Drive y OneDrive</b> pasan la suite de conformidad contra cuentas reales,
         y hay un volumen real probado de punta a punta sobre las dos</li>
+        <li><b>Aplicación de Android.</b> El mismo núcleo, compilado para el teléfono. Crea
+        volúmenes y los abre, <b>aparece en la app de Archivos</b> del sistema como un
+        almacenamiento más, trae su propio explorador con buscador y favoritos, lee, escribe,
+        renombra y borra, y recibe ficheros desde la hoja de compartir de cualquier aplicación.
+        Está en <b>pruebas internas de Google Play</b>, probada en tres teléfonos distintos</li>
+        <li><b>Subida automática de carpetas del teléfono.</b> Se eligen las carpetas y el
+        sistema sube lo nuevo en segundo plano, con opción de <b>solo WiFi</b>. Para que un
+        trabajo que arranca solo pueda escribir hay que dejar la frase de paso en el llavero de
+        Android; es opcional, lo dice antes de activarlo, y apagarlo la borra</li>
+        <li><b>Leer sin descargar el fichero entero.</b> En el móvil, abrir un vídeo baja los
+        trozos que el reproductor pide y no el fichero completo. Es lo que separa esto de un
+        descargador</li>
       </ul>
     </div>
     <div class="no2">
       <h3>Todavía no</h3>
       <ul>
-        <li><b>No hay versión publicada.</b> El formato en disco puede cambiar sin aviso</li>
-        <li><b>Los instaladores no van firmados.</b> Windows los anuncia como de editor
-        desconocido hasta que haya un certificado</li>
-        <li><b>De un volumen <code>lineal</code> no se puede <i>retirar</i> un proveedor.</b>
-        Añadirlos sí. Retirar obliga a colocar en los que quedan todo lo que tenía el que se
-        va, y antes hay que comprobar que les cabe</li>
+        <li><b>No hay versión estable.</b> El formato en disco puede cambiar sin aviso. Lo que
+        hay en Google Play son <b>pruebas internas</b>, por invitación: no está en la tienda
+        para cualquiera, y en el escritorio no hay ninguna versión publicada todavía</li>
+        <li><b>Los instaladores de Windows no van firmados.</b> Windows los anuncia como de
+        editor desconocido hasta que haya un certificado. La aplicación de Android sí va
+        firmada: es requisito para subirla a Play</li>
+        <li><b>No hay miniaturas en el móvil.</b> Una carpeta de fotos se ve como una lista de
+        nombres. Y la aplicación es solo para <code>arm64</code>, que es lo que llevan los
+        teléfonos desde hace años, pero no todos</li>
         <li><b>No hay índice local.</b> Recorrer el árbol paga una petición por nivel</li>
-        <li><b>Un solo escritor.</b> Varias máquinas escribiendo a la vez está fuera de alcance</li>
+        <li><b>Dos máquinas en el <i>mismo</i> fichero, no.</b> Esto decía «un solo escritor» y
+        ya no es verdad: dos equipos que tocan ficheros distintos conviven, porque el que llega
+        segundo vuelve a aplicar su cambio sobre lo que publicó el primero en vez de pisarlo.
+        Lo que sigue sin resolverse es el choque en la misma ruta: ahí se rechaza y se dice
+        cuál es, en vez de elegir un ganador en silencio y perder el trabajo de alguien</li>
       </ul>
     </div>
   </div>
@@ -289,6 +310,7 @@ un proveedor, que sí se repiten, y se desconfía de las que comparan dos</td>
     <div class="card"><h3>Erasure coding</h3><p>Reed-Solomon <code>k+m</code>. Con <code>rs(4,2)</code> sobre 6 proveedores sobrevives a 2 caídas con 1,5× de sobrecoste.</p></div>
     <div class="card"><h3>Cifrado en cliente</h3><p>XChaCha20-Poly1305 por trozo, clave derivada con Argon2id. El proveedor ve blobs opacos.</p></div>
     <div class="card"><h3>Montaje nativo</h3><p>WinFsp en Windows, FUSE en Linux. En lectura y escritura, con caché y subida en segundo plano.</p></div>
+    <div class="card"><h3>Y en el móvil</h3><p>En Android no hay montaje: un <code>DocumentsProvider</code> hace que el volumen salga en la app de Archivos, con su propio explorador al lado.</p></div>
   </div>
 </section>
 
@@ -317,15 +339,17 @@ rs(k,m)     k de k+m                m caídas      (k+m)/k ×</code></pre>
     <li><b>No es magia contra los Términos de Servicio.</b> Las nubes de consumo
     desaconsejan este patrón de uso; los proveedores de primera clase son los compatibles
     con S3 y los autoalojados.</li>
-    <li><b>No es software terminado.</b> No hay versión publicada, el formato en disco puede
-    cambiar sin aviso, y no debes confiarle todavía el único ejemplar de nada.</li>
+    <li><b>No es software terminado.</b> No hay versión estable —lo que hay en Play son
+    pruebas internas—, el formato en disco puede cambiar sin aviso, y no debes confiarle
+    todavía el único ejemplar de nada.</li>
   </ul>
 </section>
 
 <footer>
   <div class="wrap" style="padding:0">
-    MultiDrive · AGPL-3.0 · pre-alfa: se monta, se usa y está cubierto por pruebas, pero no
-    hay versión publicada y el formato en disco todavía puede cambiar.
+    MultiDrive · AGPL-3.0 · pre-alfa: se monta en el escritorio, hay aplicación de Android y
+    está cubierto por pruebas, pero no hay versión estable y el formato en disco todavía
+    puede cambiar.
     <br><br>
     <a href="/privacidad.html" style="color:var(--accent)">Política de privacidad</a>
     · <a href="https://github.com/lmoraperez/multidrive" style="color:var(--accent)" rel="noopener">Código fuente</a>
