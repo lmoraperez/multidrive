@@ -40,14 +40,53 @@ que no responde. La copia vieja en `/var/www/libredisk` ya no la sirve nadie.
 
 ## Publicar un cambio
 
+El sitio son **cuatro páginas**: la portada y la política de privacidad, cada una en español y
+en inglés. El español vive en la raíz y es el original; el inglés vive en `/en/`.
+
 ```sh
 scp site/index.html site/privacidad.html soporte@multidrive.net:/tmp/
+scp site/en/index.html soporte@multidrive.net:/tmp/en-index.html
+scp site/en/privacidad.html soporte@multidrive.net:/tmp/en-privacidad.html
 ssh soporte@multidrive.net '
   sudo install -o www-data -g www-data -m 644 /tmp/index.html /var/www/multidrive/index.html
-  sudo install -o www-data -g www-data -m 644 /tmp/privacidad.html /var/www/multidrive/privacidad.html'
+  sudo install -o www-data -g www-data -m 644 /tmp/privacidad.html /var/www/multidrive/privacidad.html
+  sudo mkdir -p /var/www/multidrive/en
+  sudo install -o www-data -g www-data -m 644 /tmp/en-index.html /var/www/multidrive/en/index.html
+  sudo install -o www-data -g www-data -m 644 /tmp/en-privacidad.html /var/www/multidrive/en/privacidad.html'
 ```
 
+Los dos ficheros ingleses se copian con otro nombre a `/tmp` a propósito: los cuatro se llaman
+igual de dos en dos, y mandarlos sin renombrar deja el ingles pisando al español en `/tmp`
+--o al revés, según el orden-- y se instala dos veces la misma página sin que nada falle.
+
 Respaldar antes lo que se va a pisar: `sudo cp -p fichero fichero.bak-$(date +%Y%m%d-%H%M%S)`.
+
+Caddy sirve `/en/index.html` en `https://multidrive.net/en/` sin configuración ninguna: su
+`file_server` busca el `index.html` del directorio. No hay que tocar el `Caddyfile` para esto.
+
+### Las dos lenguas van juntas
+
+**El español es el original y el inglés es la traducción**, y las dos páginas lo dicen en el
+pie. Eso no es permiso para dejar el inglés atrás: una traducción vieja que afirma cosas que
+ya no son ciertas es peor que no tener traducción, porque el lector no tiene forma de saber
+que está leyendo algo caducado.
+
+Así que un cambio de contenido en la portada se publica **en los dos idiomas en el mismo
+despliegue**. Si no hay tiempo de traducirlo, no se publica a medias: se espera.
+
+Lo mismo con el estilo. Las cuatro páginas llevan su CSS **dentro**, y el de `en/index.html`
+es copia byte a byte del de `index.html` --se extrajo del fichero, no se escribió dos veces--.
+Al cambiar el estilo de una hay que copiarlo a la otra:
+
+```sh
+perl -0ne 'print $1 if m{(<style>.*?</style>)}s' site/index.html > /tmp/estilo.txt
+perl -0pi -e 'BEGIN{local $/; open my $e, "<", "/tmp/estilo.txt"; our $c = <$e>; chomp $c}
+              s{<style>.*?</style>}{$c}s' site/en/index.html
+```
+
+Va dentro, y no en un `.css` aparte, por lo mismo que los logotipos se publican aparte: un
+fichero más que hace falta para que la página se vea bien es un fichero más que se puede
+olvidar en el despliegue, y una página sin estilo no se nota hasta que alguien la abre.
 
 ### Los logotipos de los proveedores
 
