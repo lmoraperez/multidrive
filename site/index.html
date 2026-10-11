@@ -80,10 +80,17 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
   padding:12px 9px;text-align:center}
 .nube b{display:block;font-size:14px;font-weight:600;line-height:1.25}
 .nube span{display:block;font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35}
+/* Los logos se sirven al doble de resolución y se pintan a 40 px: en una pantalla de móvil,
+   que son casi todas, la mitad son de 2x o más y un PNG justo de tamaño se ve sucio. */
+.nube img{display:block;margin:0 auto 8px;height:40px;width:auto;object-fit:contain}
 .nube.probado{border-color:var(--accent)}
 .nube.probado b{color:var(--accent)}
 .nube.pronto{border-style:dashed;background:none}
 .nube.pronto b{color:var(--muted);font-weight:500}
+/* Los que todavía no funcionan llevan su logo apagado. Un logotipo a todo color dice
+   «esto ya está» más alto que la palabra «en camino» que tiene debajo, y aquí lo que vale
+   es lo que se entiende de un vistazo, no lo que está escrito en letra pequeña. */
+.nube.pronto img{filter:grayscale(1);opacity:.45}
 .leyenda{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:13.5px;color:var(--muted);
   margin:10px 0 0;padding:0;list-style:none}
 .leyenda li{display:flex;align-items:center;gap:8px}
@@ -147,14 +154,14 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
       <em>un volumen</em>
     </div>
 
-    <div class="nube probado" style="left:50%;top:7%"><b>Google Drive</b><span>probado</span></div>
-    <div class="nube probado" style="left:78.3%;top:19.6%"><b>OneDrive</b><span>probado</span></div>
-    <div class="nube" style="left:90%;top:50%"><b>Amazon S3</b><span>B2 · R2 · Wasabi · MinIO · Storj</span></div>
-    <div class="nube" style="left:78.3%;top:80.4%"><b>Nextcloud</b><span>y cualquier WebDAV</span></div>
-    <div class="nube" style="left:50%;top:91%"><b>Carpeta local</b><span>un disco o un NAS</span></div>
-    <div class="nube pronto" style="left:21.7%;top:80.4%"><b>Dropbox</b><span>en camino</span></div>
-    <div class="nube pronto" style="left:10%;top:50%"><b>Box</b><span>en camino</span></div>
-    <div class="nube pronto" style="left:21.7%;top:19.6%"><b>MEGA</b><span>en camino</span></div>
+    <div class="nube probado" style="left:50%;top:7%"><img src="proveedores/drive.png" alt="" width="40" height="40"><b>Google Drive</b><span>probado</span></div>
+    <div class="nube probado" style="left:78.3%;top:19.6%"><img src="proveedores/onedrive.png" alt="" width="54" height="40"><b>OneDrive</b><span>probado</span></div>
+    <div class="nube" style="left:90%;top:50%"><img src="proveedores/s3.png" alt="" width="40" height="40"><b>Amazon S3</b><span>B2 · R2 · Wasabi · MinIO · Storj</span></div>
+    <div class="nube" style="left:78.3%;top:80.4%"><img src="proveedores/nextcloud.png" alt="" width="40" height="40"><b>Nextcloud</b><span>y cualquier WebDAV</span></div>
+    <div class="nube" style="left:50%;top:91%"><img src="proveedores/carpeta.png" alt="" width="40" height="40"><b>Carpeta local</b><span>un disco o un NAS</span></div>
+    <div class="nube pronto" style="left:21.7%;top:80.4%"><img src="proveedores/dropbox.png" alt="" width="39" height="40"><b>Dropbox</b><span>en camino</span></div>
+    <div class="nube pronto" style="left:10%;top:50%"><img src="proveedores/box.png" alt="" width="76" height="40"><b>Box</b><span>en camino</span></div>
+    <div class="nube pronto" style="left:21.7%;top:19.6%"><img src="proveedores/mega.png" alt="" width="40" height="40"><b>MEGA</b><span>en camino</span></div>
   </div>
 
   <ul class="leyenda">
@@ -164,8 +171,9 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
   </ul>
 
   <p class="nota">Mezclar tipos es normal y es la gracia: un volumen puede vivir a la vez sobre
-  un Drive, un OneDrive y un cubo S3. Los nombres son marcas de sus dueños y aparecen aquí
-  solo para decir con qué habla MultiDrive; ninguno de ellos lo patrocina.</p>
+  un Drive, un OneDrive y un cubo S3. Los nombres y los logotipos son marcas de sus dueños y
+  aparecen aquí solo para decir con qué habla MultiDrive; ninguno de ellos lo patrocina ni está
+  asociado con él.</p>
 </section>
 
 <section>

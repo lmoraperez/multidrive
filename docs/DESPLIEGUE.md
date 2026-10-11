@@ -49,6 +49,22 @@ ssh soporte@multidrive.net '
 
 Respaldar antes lo que se va a pisar: `sudo cp -p fichero fichero.bak-$(date +%Y%m%d-%H%M%S)`.
 
+### Los logotipos de los proveedores
+
+`index.html` los pide de `proveedores/`, asi que esa carpeta tiene que estar o la portada sale
+con huecos. Van aparte del HTML porque no cambian casi nunca: subirlos en cada despliegue seria
+mover un cuarto de mega para nada.
+
+```sh
+scp -r site/proveedores soporte@multidrive.net:/tmp/
+ssh soporte@multidrive.net '
+  sudo mkdir -p /var/www/multidrive/proveedores
+  sudo install -o www-data -g www-data -m 644 /tmp/proveedores/*.png /var/www/multidrive/proveedores/'
+```
+
+> **Al anadir un logotipo nuevo hay que acordarse de esto.** Publicar solo el HTML deja la
+> portada pidiendo una imagen que no existe, y eso no se ve hasta que alguien abre la pagina.
+
 No hace falta recargar Caddy para cambios de contenido. Si se toca el `Caddyfile`:
 
 ```sh
