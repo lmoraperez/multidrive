@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MultiDrive — Privacy policy</title>
+<meta name="description" content="MultiDrive collects no data. The program runs on the user's own device, encrypts before uploading and talks directly to the user's own cloud accounts. There are no servers in between.">
+<link rel="canonical" href="https://multidrive.net/en/privacidad.html">
+<link rel="alternate" hreflang="es" href="https://multidrive.net/privacidad.html">
+<link rel="alternate" hreflang="en" href="https://multidrive.net/en/privacidad.html">
+<link rel="alternate" hreflang="x-default" href="https://multidrive.net/privacidad.html">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0d1017">
+<style>
+:root{
+  --bg:#0d1017; --panel:#151a23; --line:#232b38;
+  --fg:#e8eef6; --muted:#8a94a6; --accent:#4c8ff0; --accent-suave:#7ab0f7; --warn:#d8a657;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:820px;margin:0 auto;padding:0 20px}
+header{padding:72px 0 44px;border-bottom:1px solid var(--line)}
+a{color:var(--accent);text-underline-offset:3px}
+a:hover{color:var(--accent-suave)}
+.volver{font-size:14px;color:var(--muted);text-decoration:none}
+.arriba{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  flex-wrap:wrap;margin-bottom:26px}
+.idioma{margin:0;font-size:13px;color:var(--muted);white-space:nowrap}
+.idioma b{color:var(--fg);font-weight:600}
+.volver:hover{color:var(--fg)}
+h1{margin:0 0 6px;font-size:clamp(30px,6vw,44px);letter-spacing:-.02em;line-height:1.08}
+.tag{margin:0;font-size:16px;color:var(--muted)}
+section{padding:44px 0;border-bottom:1px solid var(--line)}
+h2{font-size:13px;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0 0 18px;font-weight:600}
+p{margin:0 0 16px}
+.lead{font-size:18px}
+ul{margin:0 0 16px;padding-left:22px}
+li{margin-bottom:9px}
+strong{font-weight:600}
+.nota{font-size:14px;color:var(--muted);border-left:2px solid var(--line);padding-left:16px;margin:22px 0 0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;
+  background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="arriba">
+  <a class="volver" href="/en/"><svg viewBox="0 0 48 48" width="15" height="15" style="vertical-align:-2px;margin-right:7px" role="img" aria-hidden="true"><polygon points="24,6 42,24 24,24" fill="var(--accent)" transform="translate(1.4,-1.4)"/><polygon points="42,24 24,42 24,24" fill="currentColor" transform="translate(1.4,1.4)"/><polygon points="24,42 6,24 24,24" fill="currentColor" transform="translate(-1.4,1.4)"/><polygon points="6,24 24,6 24,24" fill="currentColor" transform="translate(-1.4,-1.4)"/></svg>MultiDrive</a>
+    <p class="idioma"><a href="/privacidad.html">Español</a> · <b>English</b></p>
+  </div>
+  <h1>Privacy policy</h1>
+  <p class="tag">Last revised: 10 October 2026</p>
+</header>
+
+<section>
+  <h2>In one line</h2>
+  <p class="lead">MultiDrive <strong>collects no data</strong>. There are no servers: the
+  program runs on your own device, encrypts before uploading and talks directly to your own
+  cloud accounts.</p>
+  <p>This is not a statement of intent, it is a consequence of how it is built. There is no
+  MultiDrive infrastructure your data could reach even if we wanted it to. The code is free
+  software (AGPL-3.0) and can be checked.</p>
+</section>
+
+<section>
+  <h2>What it does with your files</h2>
+  <ul>
+    <li>It cuts them into chunks and <strong>encrypts them on your device</strong> with
+    XChaCha20-Poly1305, using a key derived from a passphrase only you know.</li>
+    <li>It spreads those already-encrypted chunks across the cloud accounts you have
+    configured.</li>
+    <li>Filenames are encrypted too: the provider sees neither the structure nor what anything
+    is called.</li>
+    <li>The passphrase <strong>is not stored</strong> and does not leave the process. If you
+    lose it, nobody —us included— can recover the volume.</li>
+    <li><strong>With one exception, on Android and only if you turn it on:</strong> automatic
+    folder upload needs the passphrase, because a job that starts on its own cannot ask you for
+    it. When you turn that on, the passphrase is sealed in the <strong>Android keystore</strong>,
+    encrypted by the phone's hardware and requiring the phone to be unlocked in order to be
+    decrypted. It does not leave the device. The app tells you this before you turn it on, it
+    ships turned off, and turning it off wipes the stored passphrase.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>What it does with your Google account</h2>
+  <p>When you link a Google Drive account, your browser opens on Google's own page. <strong>Your
+  password never passes through MultiDrive</strong>: it goes from your browser to Google, and
+  all that comes back is a single-use code exchanged for an access grant.</p>
+  <ul>
+    <li>One single permission is requested: <code>drive.file</code>, which grants access
+    <strong>only to the files MultiDrive creates</strong>. It cannot see, read or touch the rest
+    of your Drive.</li>
+    <li>That permission is used exclusively to store, read and delete the volume's encrypted
+    blocks. For nothing else.</li>
+    <li>The token that allows it to be refreshed is stored <strong>on your own device</strong>,
+    in your user profile, with permissions that stop other users of the machine from reading it.
+    It is not transmitted anywhere except to Google when refreshing.</li>
+    <li>On Android it lives in the app's private storage, which no other app can reach, and
+    <strong>Android's automatic backup is disabled</strong> on purpose: if it were not, the
+    system would have uploaded that file to your own Drive account by itself. Uninstalling the
+    app deletes it.</li>
+    <li>You can withdraw the permission whenever you want from your Google account settings, or
+    by removing the provider from MultiDrive's configuration.</li>
+  </ul>
+  <p class="nota">MultiDrive's use of information received from Google APIs adheres to the
+  <a href="https://developers.google.com/terms/api-services-user-data-policy"
+  rel="noopener">Google API Services User Data Policy</a>, including the Limited Use
+  requirements. Google data is not transferred to third parties, is not used for advertising and
+  is not read by any human being.</p>
+</section>
+
+<section>
+  <h2>What there isn't</h2>
+  <ul>
+    <li>No telemetry, no usage statistics, no automatic crash reports.</li>
+    <li>No MultiDrive accounts, no sign-up, no licence server.</li>
+    <li>No ads and no profiling, and nothing is sold or handed to third parties, because there
+    is nothing to hand over.</li>
+    <li>This website uses no cookies and no analytics.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Who you talk to</h2>
+  <p>MultiDrive communicates only with the storage providers you have configured and with their
+  authentication services. That list is yours to decide, and the specific addresses are in the
+  code, not hidden.</p>
+  <p>What those providers do with what you upload is governed by <em>their</em> policies, not by
+  this one. What MultiDrive guarantees is that whatever arrives there was encrypted before it
+  left your device.</p>
+</section>
+
+<section>
+  <h2>Contact</h2>
+  <p>Write to <a href="mailto:gerencia@jlsoltech.com">gerencia@jlsoltech.com</a>, or open an
+  issue in the <a href="https://github.com/lmoraperez/multidrive" rel="noopener">project
+  repository</a>.</p>
+</section>
+
+<footer>
+  <div class="wrap" style="padding:0">
+    MultiDrive · AGPL-3.0 · <a href="/en/">Back to the project</a>
+    <br><br>
+    This page is a translation. The <a href="/privacidad.html">Spanish version</a> is the
+    original and the one registered with Google; where the two differ, the Spanish one is the
+    one that counts.
+  </div>
+</footer>
+
+</div>
+</body>
+</html>

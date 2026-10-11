@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MultiDrive — una sola unidad, muchas nubes</title>
 <meta name="description" content="MultiDrive agrega varios servicios de almacenamiento en la nube en un unico volumen con semantica RAID y cifrado de conocimiento cero. Se monta como unidad en Windows y Linux, y en Android aparece en la app de Archivos. Pre-alfa: el nucleo funciona y esta verificado contra cuentas reales.">
+<link rel="canonical" href="https://multidrive.net/">
+<link rel="alternate" hreflang="es" href="https://multidrive.net/">
+<link rel="alternate" hreflang="en" href="https://multidrive.net/en/">
+<link rel="alternate" hreflang="x-default" href="https://multidrive.net/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -22,7 +26,11 @@ body{margin:0;background:var(--bg);color:var(--fg);
 .wrap{max-width:820px;margin:0 auto;padding:0 20px}
 header{padding:80px 0 56px;border-bottom:1px solid var(--line)}
 .badge{display:inline-block;font-size:12px;letter-spacing:.09em;text-transform:uppercase;
-  color:var(--warn);border:1px solid var(--warn);border-radius:99px;padding:3px 11px;margin-bottom:22px}
+  color:var(--warn);border:1px solid var(--warn);border-radius:99px;padding:3px 11px}
+.arriba{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  flex-wrap:wrap;margin-bottom:22px}
+.idioma{margin:0;font-size:13px;color:var(--muted);white-space:nowrap}
+.idioma b{color:var(--fg);font-weight:600}
 h1{margin:0 0 6px;font-size:clamp(38px,8vw,62px);letter-spacing:-.03em;line-height:1.02}
 h1 span{color:var(--accent)}
 .logotipo{display:flex;align-items:center;gap:clamp(12px,2.4vw,20px)}
@@ -110,7 +118,10 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 <div class="wrap">
 
 <header>
-  <div class="badge">Pre-alfa · ya se monta</div>
+  <div class="arriba">
+    <div class="badge">Pre-alfa · ya se monta</div>
+    <p class="idioma"><b>Español</b> · <a href="/en/">English</a></p>
+  </div>
   <div class="logotipo">
     <svg viewBox="0 0 48 48" role="img" aria-label="MultiDrive">
       <polygon points="24,6 42,24 24,24" fill="var(--accent)" transform="translate(1.4,-1.4)"/>

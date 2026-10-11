@@ -1,5 +1,7 @@
 # MultiDrive
 
+**Español** · [English](README.en.md)
+
 **Una sola unidad. Muchas nubes.**
 
 MultiDrive agrega varios servicios de almacenamiento en la nube (S3/B2/R2/Wasabi/Storj,

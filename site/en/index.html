@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MultiDrive — one drive, many clouds</title>
+<meta name="description" content="MultiDrive aggregates several cloud storage services into a single volume with RAID-like semantics and zero-knowledge encryption. It mounts as a drive on Windows and Linux, and on Android it shows up in the Files app. Pre-alpha: the core works and is verified against real accounts.">
+<link rel="canonical" href="https://multidrive.net/en/">
+<link rel="alternate" hreflang="es" href="https://multidrive.net/">
+<link rel="alternate" hreflang="en" href="https://multidrive.net/en/">
+<link rel="alternate" hreflang="x-default" href="https://multidrive.net/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0d1017">
+<style>
+:root{
+  --bg:#0d1017; --panel:#151a23; --line:#232b38;
+  --fg:#e8eef6; --muted:#8a94a6; --accent:#4c8ff0; --accent-suave:#7ab0f7; --warn:#d8a657;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:820px;margin:0 auto;padding:0 20px}
+header{padding:80px 0 56px;border-bottom:1px solid var(--line)}
+.badge{display:inline-block;font-size:12px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--warn);border:1px solid var(--warn);border-radius:99px;padding:3px 11px}
+.arriba{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  flex-wrap:wrap;margin-bottom:22px}
+.idioma{margin:0;font-size:13px;color:var(--muted);white-space:nowrap}
+.idioma b{color:var(--fg);font-weight:600}
+h1{margin:0 0 6px;font-size:clamp(38px,8vw,62px);letter-spacing:-.03em;line-height:1.02}
+h1 span{color:var(--accent)}
+.logotipo{display:flex;align-items:center;gap:clamp(12px,2.4vw,20px)}
+.logotipo svg{flex-shrink:0;width:clamp(38px,7vw,58px);height:clamp(38px,7vw,58px)}
+a{color:var(--accent);text-underline-offset:3px}
+a:hover{color:var(--accent-suave)}
+.tag{margin:0;font-size:clamp(17px,3.4vw,21px);color:var(--muted)}
+section{padding:52px 0;border-bottom:1px solid var(--line)}
+h2{font-size:13px;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0 0 20px;font-weight:600}
+p{margin:0 0 16px}
+.lead{font-size:18px}
+.tbl{width:100%;border-collapse:collapse;font-size:15px}
+.tbl td{padding:13px 0;border-top:1px solid var(--line);vertical-align:top}
+.tbl tr:first-child td{border-top:0}
+.tbl td:first-child{color:var(--muted);padding-right:26px;width:49%}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:15px}
+.card p{margin:0;font-size:14px;color:var(--muted)}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:18px;overflow-x:auto;font-size:13.5px;line-height:1.6;margin:0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.no li{color:var(--muted);margin-bottom:9px}
+.no b{color:var(--fg);font-weight:600}
+.est{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:26px}
+.est h3{font-size:14px;margin:0 0 12px;font-weight:600}
+.est ul{list-style:none;margin:0;padding:0;font-size:15px}
+.est li{padding:7px 0 7px 26px;position:relative;color:var(--muted)}
+.est li b{color:var(--fg);font-weight:600}
+.si li::before{content:"";position:absolute;left:0;top:14px;width:11px;height:11px;
+  border-radius:50%;background:var(--accent)}
+.no2 li::before{content:"";position:absolute;left:0;top:14px;width:11px;height:11px;
+  border-radius:50%;border:1px solid var(--muted)}
+.si h3{color:var(--accent)}
+.no2 h3{color:var(--muted)}
+.nota{font-size:14px;color:var(--muted);border-left:2px solid var(--line);padding-left:16px;margin:22px 0 0}
+footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
+
+/* El corro de proveedores. En pantalla ancha van en circulo alrededor del logotipo; por
+   debajo de 700 px el circulo se deshace en una rejilla, porque un circulo encogido deja el
+   texto ilegible y las placas encimadas. */
+.corro{position:relative;height:456px;margin:8px 0 6px}
+.orbita{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  border:1px dashed var(--line);border-radius:50%}
+.orbita.fuera{width:80%;height:88%}
+.orbita.dentro{width:31%;height:35%}
+.centro{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  background:var(--bg);padding:14px 20px;border-radius:16px}
+.centro svg{width:54px;height:54px}
+.centro b{font-size:18px;letter-spacing:-.02em}
+.centro em{font-style:normal;font-size:12px;color:var(--muted)}
+.nube{position:absolute;transform:translate(-50%,-50%);width:124px;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:12px 9px;text-align:center}
+.nube b{display:block;font-size:14px;font-weight:600;line-height:1.25}
+.nube span{display:block;font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35}
+/* Los logos se sirven al doble de resolución y se pintan a 40 px: en una pantalla de móvil,
+   que son casi todas, la mitad son de 2x o más y un PNG justo de tamaño se ve sucio. */
+.nube img{display:block;margin:0 auto 8px;height:40px;width:auto;object-fit:contain}
+.nube.probado{border-color:var(--accent)}
+.nube.probado b{color:var(--accent)}
+.nube.pronto{border-style:dashed;background:none}
+.nube.pronto b{color:var(--muted);font-weight:500}
+/* Los que todavía no funcionan llevan su logo apagado. Un logotipo a todo color dice
+   «esto ya está» más alto que la palabra «en camino» que tiene debajo, y aquí lo que vale
+   es lo que se entiende de un vistazo, no lo que está escrito en letra pequeña. */
+.nube.pronto img{filter:grayscale(1);opacity:.45}
+.leyenda{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:13.5px;color:var(--muted);
+  margin:10px 0 0;padding:0;list-style:none}
+.leyenda li{display:flex;align-items:center;gap:8px}
+.leyenda i{width:13px;height:13px;border-radius:4px;border:1px solid var(--line);
+  background:var(--panel);flex-shrink:0}
+.leyenda i.probado{border-color:var(--accent)}
+.leyenda i.pronto{border-style:dashed;background:none}
+@media (max-width:700px){
+  .corro{height:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:11px}
+  .orbita{display:none}
+  .centro,.nube{position:static;transform:none;width:auto}
+  .centro{grid-column:1/-1;flex-direction:row;justify-content:center;gap:12px;padding:2px 0 12px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="arriba">
+    <div class="badge">Pre-alpha · it already mounts</div>
+    <p class="idioma"><a href="/">Español</a> · <b>English</b></p>
+  </div>
+  <div class="logotipo">
+    <svg viewBox="0 0 48 48" role="img" aria-label="MultiDrive">
+      <polygon points="24,6 42,24 24,24" fill="var(--accent)" transform="translate(1.4,-1.4)"/>
+      <polygon points="42,24 24,42 24,24" fill="var(--fg)" transform="translate(1.4,1.4)"/>
+      <polygon points="24,42 6,24 24,24" fill="var(--fg)" transform="translate(-1.4,1.4)"/>
+      <polygon points="6,24 24,6 24,24" fill="var(--fg)" transform="translate(-1.4,-1.4)"/>
+    </svg>
+    <h1>Multi<span>Drive</span></h1>
+  </div>
+  <p class="tag">One drive. Many clouds.</p>
+</header>
+
+<section>
+  <p class="lead">MultiDrive aggregates several cloud storage services
+  —S3, Backblaze B2, Cloudflare R2, Storj, Nextcloud/WebDAV, Google Drive, OneDrive—
+  into <strong>a single volume</strong> with RAID-like semantics and zero-knowledge encryption.
+  The goal was for it to mount as just another system drive on Windows and Linux, and
+  <strong>it already does</strong>. On <strong>Android</strong> there is an app, and the volume
+  shows up inside the phone's Files app: below is exactly what has been tested and what
+  hasn't.</p>
+  <p>If RAID turned several unreliable disks into a reliable volume, MultiDrive does the same
+  with several cloud accounts: <strong>no provider holds your complete data, none of them can
+  read it, and one of them going down doesn't leave you without a volume.</strong></p>
+</section>
+
+<section>
+  <h2>What it works with</h2>
+  <p class="lead">Your accounts, the ones you already have. MultiDrive hosts nothing: it talks
+  to them directly and turns them into a volume.</p>
+
+  <div class="corro">
+    <div class="orbita fuera"></div>
+    <div class="orbita dentro"></div>
+
+    <div class="centro">
+      <svg viewBox="0 0 48 48" role="img" aria-label="MultiDrive">
+        <polygon points="24,6 42,24 24,24" fill="var(--accent)" transform="translate(1.4,-1.4)"/>
+        <polygon points="42,24 24,42 24,24" fill="var(--fg)" transform="translate(1.4,1.4)"/>
+        <polygon points="24,42 6,24 24,24" fill="var(--fg)" transform="translate(-1.4,1.4)"/>
+        <polygon points="6,24 24,6 24,24" fill="var(--fg)" transform="translate(-1.4,-1.4)"/>
+      </svg>
+      <b>MultiDrive</b>
+      <em>one volume</em>
+    </div>
+
+    <div class="nube probado" style="left:50%;top:7%"><img src="/proveedores/drive.png" alt="" width="40" height="40"><b>Google Drive</b><span>tested</span></div>
+    <div class="nube probado" style="left:78.3%;top:19.6%"><img src="/proveedores/onedrive.png" alt="" width="54" height="40"><b>OneDrive</b><span>tested</span></div>
+    <div class="nube" style="left:90%;top:50%"><img src="/proveedores/s3.png" alt="" width="40" height="40"><b>Amazon S3</b><span>B2 · R2 · Wasabi · MinIO · Storj</span></div>
+    <div class="nube" style="left:78.3%;top:80.4%"><img src="/proveedores/nextcloud.png" alt="" width="40" height="40"><b>Nextcloud</b><span>and any WebDAV</span></div>
+    <div class="nube" style="left:50%;top:91%"><img src="/proveedores/carpeta.png" alt="" width="40" height="40"><b>Local folder</b><span>a disk or a NAS</span></div>
+    <div class="nube pronto" style="left:21.7%;top:80.4%"><img src="/proveedores/dropbox.png" alt="" width="39" height="40"><b>Dropbox</b><span>on the way</span></div>
+    <div class="nube pronto" style="left:10%;top:50%"><img src="/proveedores/box.png" alt="" width="76" height="40"><b>Box</b><span>on the way</span></div>
+    <div class="nube pronto" style="left:21.7%;top:19.6%"><img src="/proveedores/mega.png" alt="" width="40" height="40"><b>MEGA</b><span>on the way</span></div>
+  </div>
+
+  <ul class="leyenda">
+    <li><i class="probado"></i> Tested end to end against real accounts</li>
+    <li><i></i> Works today</li>
+    <li><i class="pronto"></i> In upcoming versions</li>
+  </ul>
+
+  <p class="nota">Mixing types is normal, and it is the whole point: one volume can live on a
+  Drive, a OneDrive and an S3 bucket at the same time. The names and logos are trademarks of
+  their owners and appear here only to say what MultiDrive talks to; none of them sponsors it
+  or is affiliated with it.</p>
+</section>
+
+<section>
+  <h2>Status</h2>
+  <div class="est">
+    <div class="si">
+      <h3>Works and is tested</h3>
+      <ul>
+        <li><b>Per-chunk encryption.</b> XChaCha20-Poly1305 with an Argon2id key, filenames included</li>
+        <li><b>Five topologies.</b> Reed-Solomon <code>k+m</code>, mirror, union, concatenation
+        and <b>linear</b>, the only one that adds up uneven capacities</li>
+        <li><b>It mounts as a drive.</b> WinFsp on Windows and FUSE on Linux, read-write:
+        Explorer lists folders and any program opens files</li>
+        <li><b>Desktop interface.</b> Add providers, create the volume, mount it, check its
+        health, see how much room is left in each account, grow it with one more account and
+        remove one</li>
+        <li><b>It lives in the system tray.</b> Closing the window with the drive mounted hides
+        it there instead of unmounting; with nothing mounted, closing closes</li>
+        <li><b>Linking a cloud account is one button.</b> The browser opens, you sign in to your
+        account and grant permission; your credentials never pass through MultiDrive. Google is
+        asked for <b>access only to the files MultiDrive creates</b>, not the rest of your
+        Drive</li>
+        <li><b>Switching machines without linking account by account.</b> The configuration is
+        stored <b>encrypted with your passphrase in your own clouds</b>, next to the volume. On
+        the new machine you link one account and the rest come from there. No servers of ours
+        in the middle</li>
+        <li><b>Rebalancing.</b> Add or remove providers choosing what to prioritise, without
+        losing the ability to read the volume meanwhile. Removal works <b>even if the account
+        no longer answers</b></li>
+        <li><b>Growing a <code>lineal</code> volume costs what the new account contributes.</b>
+        Adding a 15 GB account to a 1 TB volume moves about 15 GB, not the terabyte: only the
+        newcomer's share changes place, and the volume stays readable throughout</li>
+        <li><b>Deferred writes with a journal.</b> Writing returns immediately and a background
+        thread uploads; a root pointing at chunks that are not up yet is never published</li>
+        <li><b>In-memory and on-disk caches.</b> The disk one stores chunks <b>encrypted</b> and
+        survives reboots. Re-reading 7.6 MiB goes from 2,718 ms to 23 ms</li>
+        <li><b>Windows installer</b> that brings WinFsp, plus a service: the drive connects from
+        Explorer and <b>Windows asks for the passphrase</b>, which is not stored</li>
+        <li><b>Rescue.</b> If the root pointer is lost, the volume is rebuilt by enumerating and
+        decrypting whatever is left at the providers</li>
+        <li><b>Google Drive and OneDrive</b> pass the conformance suite against real accounts,
+        and there is a real volume tested end to end across both</li>
+        <li><b>Android app.</b> The same core, compiled for the phone. It creates volumes and
+        opens them, <b>shows up in the system Files app</b> as one more storage location, brings
+        its own file browser with search and favourites, reads, writes, renames and deletes, and
+        receives files from any app's share sheet. It is in <b>internal testing on Google
+        Play</b>, tried on three different phones</li>
+        <li><b>Automatic upload of phone folders.</b> You pick the folders and the system
+        uploads whatever is new in the background, with a <b>WiFi-only</b> option. For a job
+        that starts on its own to be able to write, the passphrase has to be left in the Android
+        keystore; that is optional, the app says so before you turn it on, and turning it off
+        wipes it</li>
+        <li><b>Reading without downloading the whole file.</b> On the phone, opening a video
+        pulls the chunks the player asks for and not the complete file. That is what separates
+        this from a downloader</li>
+      </ul>
+    </div>
+    <div class="no2">
+      <h3>Not yet</h3>
+      <ul>
+        <li><b>There is no stable release.</b> The on-disk format may change without notice.
+        What is on Google Play is <b>internal testing</b>, by invitation: it is not in the store
+        for everyone, and on the desktop there is no published release at all yet</li>
+        <li><b>The Windows installers are unsigned.</b> Windows announces them as coming from an
+        unknown publisher until there is a certificate. The Android app is signed: that is a
+        requirement for uploading it to Play</li>
+        <li><b>No thumbnails on the phone.</b> A photo folder looks like a list of names. And
+        the app is <code>arm64</code> only, which is what phones have carried for years, but not
+        all of them</li>
+        <li><b>No local index.</b> Walking the tree pays one request per level</li>
+        <li><b>Two machines on the <i>same</i> file, no.</b> This used to say «a single writer»
+        and that is no longer true: two machines touching different files coexist, because
+        whichever arrives second re-applies its change on top of what the first published
+        instead of overwriting it. What remains unsolved is the clash on the same path: there it
+        is rejected and the path is named, rather than picking a winner in silence and losing
+        somebody's work</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Measured, not promised</h2>
+  <p>This project leans on measurements against real accounts, not estimates. And also on what
+<em>did not</em> reproduce when the measurements were repeated:</p>
+<table class="tbl">
+<tr>
+<td>On Google Drive, asking for an object that does not exist costs <strong>2.6 times</strong>
+a normal operation</td>
+<td>That is its worst case, and it is exactly what checking a volume does. Which is why the
+check <em>enumerates</em> instead of asking, and goes from weeks to minutes</td>
+</tr>
+<tr>
+<td>Enumerating costs one request <strong>per directory</strong>, not one in total</td>
+<td>Drive and OneDrive are hierarchical. How chunks are spread across folders has a price
+that has to be measured before it is fixed</td>
+</tr>
+<tr>
+<td>No ratio <strong>between</strong> the two clouds has survived three rounds of
+measurements</td>
+<td>One came out 4.7×, 1.6× and 2.5×; another changed direction. We measure ratios within
+a single provider, which do reproduce, and distrust the ones comparing two</td>
+</tr>
+</table>
+  <p class="nota">The test that matters, run against real accounts: an <code>rs(2,1)</code>
+  volume spread across Google Drive, OneDrive and a local disk. A file is uploaded, <strong>an
+  entire provider is destroyed</strong>, the file still reads back byte-for-byte identical, and
+  <code>rebuild</code> regenerates the missing shards in 34 seconds. With one honest caveat: it
+  was 1 MB, not 10 GB.</p>
+</section>
+
+<section>
+  <h2>What it solves</h2>
+  <table class="tbl">
+    <tr><td>My accounts are scattered across several services</td><td>A single volume over all of them, encrypted and with RAID</td></tr>
+    <tr><td>If a provider suspends my account, I lose everything</td><td><em>k of n</em> parity: survives losing <em>m</em> providers</td></tr>
+    <tr><td>The provider can read my files</td><td>Client-side encryption, filenames included</td></tr>
+    <tr><td>Vendor lock-in</td><td>Add or remove providers and the volume rebalances</td></tr>
+  </table>
+  <p class="nota"><strong>About space, choose your topology knowing this.</strong> The ones that
+  spread every chunk across all providers —mirror, parity, union— are limited by the provider
+  with the least room: the shards are equal in size, so once the smallest fills up nothing more
+  fits even if the others have room to spare. With 15 GB, 5 GB and 1 TB you get
+  <strong>5 GB</strong> mirrored and <strong>15 GB</strong> in union. <strong>Only
+  <code>lineal</code> adds up</strong>: it puts each whole chunk on one provider, chosen in
+  proportion to what each one contributes, and with those same numbers gives
+  <strong>1.02 TB</strong>. In exchange it adds no margin for failure at all, same as union.</p>
+</section>
+
+<section>
+  <h2>How it works</h2>
+  <div class="grid">
+    <div class="card"><h3>Immutable chunks</h3><p>Every file is cut into 16 MiB chunks addressed by their BLAKE3 hash. Copy-on-write: nothing is ever overwritten.</p></div>
+    <div class="card"><h3>Erasure coding</h3><p>Reed-Solomon <code>k+m</code>. With <code>rs(4,2)</code> over 6 providers you survive 2 failures at 1.5× overhead.</p></div>
+    <div class="card"><h3>Client-side encryption</h3><p>XChaCha20-Poly1305 per chunk, key derived with Argon2id. The provider sees opaque blobs.</p></div>
+    <div class="card"><h3>Native mounting</h3><p>WinFsp on Windows, FUSE on Linux. Read-write, with caching and background upload.</p></div>
+    <div class="card"><h3>And on the phone</h3><p>On Android there is no mounting: a <code>DocumentsProvider</code> makes the volume appear in the Files app, with its own browser alongside.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Topologies</h2>
+  <pre><code>mode        formula                  survives       overhead
+concat      1 of 1                   nothing        1.0×
+union:n     n of n                   nothing        1.0×
+lineal:n    1 of 1, wherever it goes nothing        1.0×
+espejo:n    1 of n                   n−1 failures   n×
+rs(k,m)     k of k+m                 m failures     (k+m)/k ×</code></pre>
+  <p class="nota"><code>lineal</code> is the only one that <strong>adds up uneven
+  capacities</strong>: it puts each whole chunk on one provider, chosen in proportion to what it
+  contributes. The others cut every chunk into equal parts, so the smallest one decides. Reading
+  costs one request instead of <em>n</em>, and adding a provider moves only its own share rather
+  than the whole volume. It adds no margin for failure.</p>
+  <p class="nota">Those mode names are the ones the program itself takes, and the program is in
+  Spanish: <code>espejo</code> is mirror and <code>lineal</code> is linear.</p>
+</section>
+
+<section>
+  <h2>What it is NOT</h2>
+  <ul class="no">
+    <li><b>Not a backup system.</b> restic, kopia or borg are for that.</li>
+    <li><b>Not a system disk, nor a volume for databases.</b> Random 4 KB writes over the
+    Internet have no physical fix. It is for media, archives and warm data.</li>
+    <li><b>Not magic against Terms of Service.</b> Consumer clouds discourage this usage
+    pattern; the first-class providers are the S3-compatible and self-hosted ones.</li>
+    <li><b>Not finished software.</b> There is no stable release —what is on Play is internal
+    testing—, the on-disk format may change without notice, and you should not trust it yet
+    with the only copy of anything.</li>
+  </ul>
+</section>
+
+<footer>
+  <div class="wrap" style="padding:0">
+    MultiDrive · AGPL-3.0 · pre-alpha: it mounts on the desktop, there is an Android app and it
+    is covered by tests, but there is no stable release and the on-disk format can still change.
+    <br><br>
+    <a href="/en/privacidad.html" style="color:var(--accent)">Privacy policy</a>
+    · <a href="https://github.com/lmoraperez/multidrive" style="color:var(--accent)" rel="noopener">Source code</a>
+    · <a href="/">Español</a>
+    <br><br>
+    This page is a translation. The Spanish version at <a href="/">multidrive.net</a> is the
+    original, and the one that gets updated first.
+  </div>
+</footer>
+
+</div>
+</body>
+</html>

@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MultiDrive — Política de privacidad</title>
 <meta name="description" content="MultiDrive no recoge ningun dato. El programa se ejecuta en el equipo del usuario, cifra antes de subir y habla directamente con las cuentas de nube del propio usuario. No hay servidores intermedios.">
+<link rel="canonical" href="https://multidrive.net/privacidad.html">
+<link rel="alternate" hreflang="es" href="https://multidrive.net/privacidad.html">
+<link rel="alternate" hreflang="en" href="https://multidrive.net/en/privacidad.html">
+<link rel="alternate" hreflang="x-default" href="https://multidrive.net/privacidad.html">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -23,7 +27,11 @@ body{margin:0;background:var(--bg);color:var(--fg);
 header{padding:72px 0 44px;border-bottom:1px solid var(--line)}
 a{color:var(--accent);text-underline-offset:3px}
 a:hover{color:var(--accent-suave)}
-.volver{display:inline-block;font-size:14px;color:var(--muted);text-decoration:none;margin-bottom:26px}
+.volver{font-size:14px;color:var(--muted);text-decoration:none}
+.arriba{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  flex-wrap:wrap;margin-bottom:26px}
+.idioma{margin:0;font-size:13px;color:var(--muted);white-space:nowrap}
+.idioma b{color:var(--fg);font-weight:600}
 .volver:hover{color:var(--fg)}
 h1{margin:0 0 6px;font-size:clamp(30px,6vw,44px);letter-spacing:-.02em;line-height:1.08}
 .tag{margin:0;font-size:16px;color:var(--muted)}
@@ -44,9 +52,12 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 <div class="wrap">
 
 <header>
+  <div class="arriba">
   <a class="volver" href="/"><svg viewBox="0 0 48 48" width="15" height="15" style="vertical-align:-2px;margin-right:7px" role="img" aria-hidden="true"><polygon points="24,6 42,24 24,24" fill="var(--accent)" transform="translate(1.4,-1.4)"/><polygon points="42,24 24,42 24,24" fill="currentColor" transform="translate(1.4,1.4)"/><polygon points="24,42 6,24 24,24" fill="currentColor" transform="translate(-1.4,1.4)"/><polygon points="6,24 24,6 24,24" fill="currentColor" transform="translate(-1.4,-1.4)"/></svg>MultiDrive</a>
+    <p class="idioma"><b>Español</b> · <a href="/en/privacidad.html">English</a></p>
+  </div>
   <h1>Política de privacidad</h1>
-  <p class="tag">Última revisión: 22 de septiembre de 2026</p>
+  <p class="tag">Última revisión: 10 de octubre de 2026</p>
 </header>
 
 <section>
@@ -68,8 +79,14 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
     configurado.</li>
     <li>Los nombres de los ficheros también van cifrados: el proveedor no ve ni la estructura
     ni cómo se llaman las cosas.</li>
-    <li>La frase de paso <strong>no se guarda en ninguna parte</strong> ni sale del proceso.
-    Si la pierdes, nadie —tampoco nosotros— puede recuperar el volumen.</li>
+    <li>La frase de paso <strong>no se guarda</strong> ni sale del proceso. Si la pierdes,
+    nadie —tampoco nosotros— puede recuperar el volumen.</li>
+    <li><strong>Con una excepción, en Android y solo si tú la activas:</strong> la subida
+    automática de carpetas la necesita, porque un trabajo que arranca solo no puede pedírtela.
+    Al activarla, la frase queda sellada en el <strong>llavero de Android</strong>, cifrada por
+    el hardware del teléfono y exigiendo que el teléfono esté desbloqueado para descifrarse.
+    No sale del dispositivo. La aplicación te avisa de esto antes de activarlo, viene
+    desactivada, y al apagarla se borra la frase guardada.</li>
   </ul>
 </section>
 
@@ -86,6 +103,10 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
     <li>El testigo que permite renovarlo se guarda <strong>en tu equipo</strong>, en tu perfil
     de usuario, con permisos que impiden que lo lean otros usuarios de la máquina. No se
     transmite a ningún sitio salvo a Google al renovar.</li>
+    <li>En Android vive en el almacenamiento privado de la aplicación, al que no llega ninguna
+    otra aplicación, y <strong>la copia de seguridad automática de Android está desactivada</strong>
+    a propósito: si no lo estuviera, el sistema habría subido ese fichero a tu cuenta de Drive
+    por su cuenta. Desinstalar la aplicación lo borra.</li>
     <li>Puedes retirar el permiso cuando quieras desde los ajustes de tu cuenta de Google, o
     borrando el proveedor de la configuración de MultiDrive.</li>
   </ul>
