@@ -90,23 +90,32 @@ olvidar en el despliegue, y una página sin estilo no se nota hasta que alguien 
 
 ### El spot
 
-El video de la portada. Vive en `/var/www/multidrive/video/multidrive-spot.mp4` y lo piden las
-dos portadas, mas los dos README del repositorio **desde GitHub**: ahi el `<video>` apunta a
-esta URL y no pasa por ningun intermediario, asi que esta ruta la ve tambien quien nunca entra
-al sitio. Cambiarla o quitarla rompe el reproductor de la pagina principal del repositorio.
+El video de la portada, en `/var/www/multidrive/video/`. Lo reproducen las dos portadas. En los
+README del repositorio **no se reproduce**: github.com no permite video de dominios ajenos
+--ver [site/video/LEEME.md](../site/video/LEEME.md#por-que-el-readme-no-lleva-reproductor)--,
+asi que ahi va el cartel, que es una imagen, enlazado a la portada.
+
+Son **dos** ficheros: el video y su cartel. El cartel es lo que el `<video>` pone en `poster`
+--lo que se ve antes de pulsar-- y ademas es lo que sale en los dos README, enlazado aqui.
+Publicar el video sin el cartel deja la portada con un hueco negro y los README con la imagen
+rota.
 
 ```sh
-scp site/video/multidrive-spot.mp4 soporte@multidrive.net:/tmp/
+scp site/video/multidrive-spot.mp4 site/video/cartel.png soporte@multidrive.net:/tmp/
 ssh soporte@multidrive.net '
   sudo mkdir -p /var/www/multidrive/video
-  sudo install -o www-data -g www-data -m 644 /tmp/multidrive-spot.mp4 /var/www/multidrive/video/
-  rm -f /tmp/multidrive-spot.mp4'
+  sudo install -o www-data -g www-data -m 644 /tmp/multidrive-spot.mp4 /tmp/cartel.png /var/www/multidrive/video/
+  rm -f /tmp/multidrive-spot.mp4 /tmp/cartel.png'
 ```
 
-Va aparte del HTML por lo mismo que los logotipos, solo que aqui pesa 1,75 MB: subirlo en cada
-despliegue de texto seria mover dos megas para nada.
+Van aparte del HTML por lo mismo que los logotipos, solo que aqui el video pesa 1,75 MB:
+subirlo en cada despliegue de texto seria mover dos megas para nada.
 
-`site/video/LEEME.md` **no se publica**. Lo que hay que saber del fichero esta ahi.
+`site/video/LEEME.md` y `site/video/cartel.svg` **no se publican**: el primero es la
+documentacion y el segundo la fuente del cartel.
+
+> **`cartel.png` lo pide tambien GitHub**, desde los dos README. Si se borra del servidor, la
+> portada del repositorio se queda con una imagen rota, y eso no se ve desde aqui.
 
 Dos cosas que comprobar despues de publicarlo, porque las dos fallan en silencio:
 
