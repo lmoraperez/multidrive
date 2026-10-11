@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080"
+     role="img" aria-label="MultiDrive — el spot, treinta segundos">
+  <title>MultiDrive — el spot</title>
+
+  <!-- Fondo y paleta son los de la portada: marca/paleta.css. -->
+  <rect width="1920" height="1080" fill="#0d1017"/>
+
+  <!-- Las dos orbitas de la portada, apagadas. Dan el aire de la pagina sin robarle
+       atencion al boton: son el mismo motivo que rodea al logotipo en «Con que funciona». -->
+  <circle cx="960" cy="540" r="430" fill="none" stroke="#232b38" stroke-width="2"
+          stroke-dasharray="10 12"/>
+  <circle cx="960" cy="540" r="640" fill="none" stroke="#232b38" stroke-width="2"
+          stroke-dasharray="10 12"/>
+
+  <!-- Todo en vertical y centrado en 960. Apilado y no en linea a proposito: el ancho de
+       «MultiDrive» depende de la fuente que tenga delante quien rasterice esto, y con el
+       logotipo al lado una fuente distinta descoloca el conjunto o lo encima. Apilado, no. -->
+
+  <!-- El rombo, a escala 6 desde los 48 de marca/logo.svg: 288 px, centrado. -->
+  <g transform="translate(816,142) scale(6)">
+    <polygon points="24,6 42,24 24,24" fill="#4c8ff0" transform="translate(1.4,-1.4)"/>
+    <polygon points="42,24 24,42 24,24" fill="#e8eef6" transform="translate(1.4,1.4)"/>
+    <polygon points="24,42 6,24 24,24" fill="#e8eef6" transform="translate(-1.4,1.4)"/>
+    <polygon points="6,24 24,6 24,24" fill="#e8eef6" transform="translate(-1.4,-1.4)"/>
+  </g>
+
+  <text x="960" y="562" text-anchor="middle" font-size="128" font-weight="600"
+        letter-spacing="-3" fill="#e8eef6"
+        font-family="Segoe UI, ui-sans-serif, system-ui, sans-serif"
+        >Multi<tspan fill="#4c8ff0">Drive</tspan></text>
+
+  <text x="960" y="662" text-anchor="middle" font-size="46" fill="#8a94a6"
+        font-family="Segoe UI, ui-sans-serif, system-ui, sans-serif"
+        >Una sola unidad. Muchas nubes.</text>
+
+  <!-- El boton de play no hace nada: esto es un cartel. Esta porque un rectangulo quieto sin
+       nada que lo senale no se lee como «hay un video detras». -->
+  <circle cx="960" cy="792" r="62" fill="none" stroke="#4c8ff0" stroke-width="4"/>
+  <polygon points="942,760 998,792 942,824" fill="#4c8ff0"/>
+
+  <text x="960" y="922" text-anchor="middle" font-size="34" fill="#8a94a6" letter-spacing="2"
+        font-family="Segoe UI, ui-sans-serif, system-ui, sans-serif"
+        >30 SEGUNDOS &#183; SIN SONIDO</text>
+</svg>

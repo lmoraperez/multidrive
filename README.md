@@ -22,13 +22,11 @@ Sitio del proyecto: https://multidrive.net
 
 ## En treinta segundos
 
-<video src="https://multidrive.net/video/multidrive-spot.mp4" width="100%" controls muted>
-Treinta segundos explicando qué es MultiDrive, en
-<a href="https://multidrive.net/video/multidrive-spot.mp4">MP4 de 1,8 MB</a>.
-</video>
+[![MultiDrive en treinta segundos](https://multidrive.net/video/cartel.png)](https://multidrive.net/#spot)
 
-No lleva sonido: lo cuenta con texto en pantalla. Si el reproductor sale en negro, es porque
-GitHub borra el atributo `poster`: dale al play.
+No lleva sonido: lo cuenta con texto en pantalla. **El reproductor está en
+[multidrive.net](https://multidrive.net/#spot)**, no aquí: GitHub solo reproduce vídeo alojado
+en sus propios dominios, así que esto es el cartel y el enlace.
 
 ## Instalar en Windows
 
