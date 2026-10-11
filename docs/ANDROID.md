@@ -45,7 +45,9 @@ esperamos y no lo que haya en esa URL ese día.
 
 ## Lo que la aplicación ya hace
 
-Probado de punta a punta en un TECNO POVA 5 (Android 14) el 29 de septiembre de 2026:
+La primera lista se probó de punta a punta en un TECNO POVA 5 (Android 14) el 29 de septiembre
+de 2026. Lo de abajo del todo se añadió después y está probado en tres teléfonos distintos,
+instalado desde Google Play como se instala cualquier aplicación.
 
 - **Conectar una cuenta de nube** por el navegador, desde el propio móvil.
 - **Traerse las demás con la maleta**: una cuenta enlazada y la frase de paso bastan. En el
@@ -56,14 +58,22 @@ Probado de punta a punta en un TECNO POVA 5 (Android 14) el 29 de septiembre de 
   trajo las otras tres. El bulto lo había escrito Windows y lo abrió Android —otra máquina,
   otra arquitectura y otro sistema operativo— con el mismo formato y el mismo sellado. Eso no
   estaba visto: lo de ayer solo demostraba que viajaba entre dos PC.
-- **Abrir el volumen** con la frase, que no se guarda en ninguna parte.
+- **Abrir el volumen** con la frase.
 - **Aparecer en la app de Archivos** y en el selector del sistema, y navegar por las carpetas.
 - **Leer ficheros por rangos**, bajando solo los trozos que el rango toca.
 - **Enterarse de lo que sube otro equipo**, deslizando para actualizar.
+- **Crear un volumen desde el teléfono**, eligiendo proveedores y topología, sin pasar por el
+  escritorio. Antes el móvil solo podía abrir lo que otro había creado.
+- **Escribir**: crear carpetas, renombrar, borrar y subir, desde su explorador y desde la hoja
+  de compartir de cualquier aplicación. Ver [«Escribir desde el móvil»](#escribir-desde-el-móvil).
+- **Su propio explorador**, con buscador, fechas, tamaños, favoritos y menú lateral, en vez de
+  depender de la app de Archivos del fabricante.
+- **Subir carpetas del teléfono sola**, con `JobScheduler` y opción de solo WiFi.
 
-Lo que falta para que sea una aplicación y no una prueba es de otra naturaleza, y ninguna parte
-es investigación: una interfaz que no sean botones apilados, recordar en qué carpeta ibas,
-miniaturas, y decidir qué hacer cuando Android mata el proceso a mitad de una lectura.
+Lo que falta ya no es «que sea una aplicación y no una prueba»: es **miniaturas** —las carpetas
+de fotos se ven como una lista de nombres— y decidir qué hacer cuando Android mata el proceso a
+mitad de una lectura.
+
 
 ### Dos cosas que se corrigieron usándola
 
@@ -284,31 +294,54 @@ correcto por lo mismo que en los hilos del kernel de FUSE: **no son hilos del ru
 
 ## La frase de paso
 
-No se guarda, igual que en el escritorio. Vive en la sesión, en memoria, y muere con el
-proceso. Android puede matar el proceso de un `DocumentsProvider` cuando le convenga, así que
-hay que aceptar que **volver a Archivos puede pedirla otra vez**, y decirlo en vez de fingir
+No se guarda **por defecto**, igual que en el escritorio: vive en la sesión, en memoria, y muere
+con el proceso. Android puede matar el proceso de un `DocumentsProvider` cuando le convenga, así
+que hay que aceptar que **volver a Archivos puede pedirla otra vez**, y decirlo en vez de fingir
 que la sesión es eterna.
 
-Guardarla en el llavero de Android para no volver a pedirla es exactamente la clase de decisión
-que se toma a sabiendas o no se toma. De momento, no.
+Guardarla en el llavero para no volver a pedirla era «exactamente la clase de decisión que se
+toma a sabiendas o no se toma», y decía aquí que de momento no. Ahora sí, **y solo para una
+cosa**: la subida automática de carpetas. Un trabajo que el sistema arranca a las tres de la
+mañana no puede pedir una frase a nadie; sin guardarla, esa función no existe.
 
-## Solo lectura
+Las condiciones de que sí:
 
-v1 es de **un solo escritor**. Un móvil escribiendo en un volumen que el escritorio también
-escribe *es* el problema de escritura concurrente que está fuera de alcance, y no se arregla
-con cuidado: se arregla con el *lease* renovable de v0.5.
+- **Opt-in.** No se activa con la aplicación, se activa al encender la subida automática, y la
+  pantalla dice con esas palabras qué se gana y qué se cede.
+- **En el llavero de Android** (`AndroidKeyStore`), cifrada por el hardware cuando el teléfono
+  lo tiene, nunca en el fichero de configuración ni en `SharedPreferences` en claro.
+- **`setUnlockedDeviceRequired`**: con el teléfono bloqueado la clave no descifra, así que un
+  teléfono apagado o bloqueado no entrega el volumen. Un teléfono desbloqueado en manos ajenas
+  sí: eso es el precio y está dicho.
+- **Se puede apagar**, y apagarlo borra la entrada del llavero.
 
-Así que `createDocument`, `deleteDocument` y compañía no se implementan, y las banderas del
-`Cursor` lo dicen: sin `FLAG_SUPPORTS_WRITE` ni `FLAG_DIR_SUPPORTS_CREATE`, el selector del
-sistema **no ofrece** guardar ahí. Es mejor no aparecer como destino que aparecer y fallar.
+Ver [`Llave.kt`](../android/app/src/main/kotlin/net/multidrive/Llave.kt).
+
+## Escribir desde el móvil
+
+Esto decía «solo lectura», y que un móvil escribiendo en un volumen que el escritorio también
+escribe *era* el problema de escritura concurrente que estaba fuera de alcance. Dejó de serlo
+cuando llegó el *rebase y reintento* del árbol: dos máquinas que tocan ficheros distintos ya no
+se pisan, porque la que pierde la carrera por el puntero de raíz vuelve a aplicar su cambio
+sobre la raíz nueva en vez de rendirse. El *lease* sigue ahí, pero ya no bloquea.
+
+Así que se implementan: `createDocument`, `deleteDocument`, `renameDocument` y la escritura por
+`openProxyFileDescriptor`. Las banderas del `Cursor` lo dicen —`FLAG_SUPPORTS_WRITE` en los
+ficheros, `FLAG_DIR_SUPPORTS_CREATE` en las carpetas, `FLAG_SUPPORTS_DELETE` y
+`FLAG_SUPPORTS_RENAME` en todo lo que no sea la raíz—, y con eso el selector del sistema **sí**
+ofrece guardar ahí.
+
+La raíz se queda fuera a propósito: `fila()` pinta también la raíz, y sin ese `if` el sistema
+ofrecía renombrar y borrar el volumen entero como si fuera una carpeta.
 
 ## Lo que el móvil impone
 
 | Problema | Qué obliga a hacer |
 |---|---|
-| Doze y límites de segundo plano | nada que subir de momento, pero el día que lo haya: `WorkManager` y servicio en primer plano |
-| Datos móviles | `rs(4,2)` sube 1,5× y leer exige *k* fragmentos de *k* cuentas distintas. Política de solo-WiFi, y que se pueda cambiar |
+| Doze y límites de segundo plano | `JobScheduler` con restricción de red, no un hilo propio. **No `WorkManager`**: arrastraría androidx a un proyecto que no lo usa, y `JobScheduler` da lo mismo desde API 21. Y hace falta `ACCESS_NETWORK_STATE`, o `schedule()` lanza `SecurityException` |
+| Datos móviles | `rs(4,2)` sube 1,5× y leer exige *k* fragmentos de *k* cuentas distintas. Hay política de **solo WiFi** (`NETWORK_TYPE_UNMETERED`), y se puede cambiar |
 | Batería | Argon2id una vez por sesión ya se midió: 95 ms. Reed-Solomon y XChaCha20 son por trozo, y eso sí escala con lo que se lea |
+
 
 Con los ~6,5 s por operación medidos contra Drive
 ([VIABILIDAD.md](VIABILIDAD.md#5-medidas-reales-contra-google-drive)), sobre red móvil la
