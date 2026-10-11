@@ -88,6 +88,41 @@ Va dentro, y no en un `.css` aparte, por lo mismo que los logotipos se publican 
 fichero más que hace falta para que la página se vea bien es un fichero más que se puede
 olvidar en el despliegue, y una página sin estilo no se nota hasta que alguien la abre.
 
+### El spot
+
+El video de la portada. Vive en `/var/www/multidrive/video/multidrive-spot.mp4` y lo piden las
+dos portadas, mas los dos README del repositorio **desde GitHub**: ahi el `<video>` apunta a
+esta URL y no pasa por ningun intermediario, asi que esta ruta la ve tambien quien nunca entra
+al sitio. Cambiarla o quitarla rompe el reproductor de la pagina principal del repositorio.
+
+```sh
+scp site/video/multidrive-spot.mp4 soporte@multidrive.net:/tmp/
+ssh soporte@multidrive.net '
+  sudo mkdir -p /var/www/multidrive/video
+  sudo install -o www-data -g www-data -m 644 /tmp/multidrive-spot.mp4 /var/www/multidrive/video/
+  rm -f /tmp/multidrive-spot.mp4'
+```
+
+Va aparte del HTML por lo mismo que los logotipos, solo que aqui pesa 1,75 MB: subirlo en cada
+despliegue de texto seria mover dos megas para nada.
+
+`site/video/LEEME.md` **no se publica**. Lo que hay que saber del fichero esta ahi.
+
+Dos cosas que comprobar despues de publicarlo, porque las dos fallan en silencio:
+
+```sh
+curl -sI https://multidrive.net/video/multidrive-spot.mp4 | grep -i "content-type\|accept-ranges"
+```
+
+- **`Content-Type: video/mp4`.** Si sale `application/octet-stream`, el navegador no lo
+  reproduce: lo descarga. Caddy lo deduce de la extension y acierta solo, pero conviene verlo.
+- **`Accept-Ranges: bytes`.** Es lo que permite mover la barra del reproductor sin bajar el
+  fichero entero. El `file_server` de Caddy lo hace; un proxy mal puesto delante, no.
+
+> **Al cambiar el video hay que acordarse de esto**, igual que con los logotipos. Y aqui el
+> olvido se nota mas: un `index.html` nuevo que pide un video que no esta deja un hueco negro
+> arriba de la portada, que es lo primero que se ve.
+
 ### Los logotipos de los proveedores
 
 `index.html` los pide de `proveedores/`, asi que esa carpeta tiene que estar o la portada sale

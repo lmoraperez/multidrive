@@ -20,6 +20,16 @@ Archivos, con semántica tipo RAID (espejo, striping y paridad por *erasure codi
 
 Sitio del proyecto: https://multidrive.net
 
+## En treinta segundos
+
+<video src="https://multidrive.net/video/multidrive-spot.mp4" width="100%" controls muted>
+Treinta segundos explicando qué es MultiDrive, en
+<a href="https://multidrive.net/video/multidrive-spot.mp4">MP4 de 1,8 MB</a>.
+</video>
+
+No lleva sonido: lo cuenta con texto en pantalla. Si el reproductor sale en negro, es porque
+GitHub borra el atributo `poster`: dale al play.
+
 ## Instalar en Windows
 
 Hay dos descargas en la página de publicaciones, y la que quieres casi seguro es la primera:

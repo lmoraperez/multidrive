@@ -19,6 +19,16 @@ encryption**.
 
 Project site: https://multidrive.net
 
+## In thirty seconds
+
+<video src="https://multidrive.net/video/multidrive-spot.mp4" width="100%" controls muted>
+Thirty seconds on what MultiDrive is, as an
+<a href="https://multidrive.net/video/multidrive-spot.mp4">MP4 of 1.8 MB</a>.
+</video>
+
+It has no sound: it tells the story with on-screen text. If the player shows up black, that's
+because GitHub strips the `poster` attribute — just hit play.
+
 > **A note on language.** This project is written in Spanish: the command names and flags, the
 > code, the commit messages and every document under [`docs/`](docs) are Spanish. That is why
 > you will read `multidrive mount Z: --escritura` below and not `--write`. This file and

@@ -67,6 +67,9 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .si h3{color:var(--accent)}
 .no2 h3{color:var(--muted)}
 .nota{font-size:14px;color:var(--muted);border-left:2px solid var(--line);padding-left:16px;margin:22px 0 0}
+.spot{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  overflow:hidden;line-height:0}
+.spot video{display:block;width:100%;height:auto;aspect-ratio:16/9;background:#000}
 footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 /* El corro de proveedores. En pantalla ancha van en circulo alrededor del logotipo; por
@@ -145,6 +148,22 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
   <p>If RAID turned several unreliable disks into a reliable volume, MultiDrive does the same
   with several cloud accounts: <strong>no provider holds your complete data, none of them can
   read it, and one of them going down doesn't leave you without a volume.</strong></p>
+</section>
+
+<section>
+  <h2>In thirty seconds</h2>
+  <div class="spot">
+    <video controls preload="metadata" playsinline width="1920" height="1080"
+           src="/video/multidrive-spot.mp4">
+      Your browser can't play this video.
+      <a href="/video/multidrive-spot.mp4">Download it</a> (MP4, 1.8 MB).
+    </video>
+  </div>
+  <p class="nota"><strong>It has no sound</strong>: it tells the story with on-screen text, so
+  you miss nothing watching it in silence and no captions are needed. It doesn't play by
+  itself either: until you hit play, only the file's header travels, not the video. And if
+  you'd rather read, everything below is written out in more detail than fits in half a
+  minute.</p>
 </section>
 
 <section>

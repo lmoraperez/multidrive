@@ -67,6 +67,9 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .si h3{color:var(--accent)}
 .no2 h3{color:var(--muted)}
 .nota{font-size:14px;color:var(--muted);border-left:2px solid var(--line);padding-left:16px;margin:22px 0 0}
+.spot{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  overflow:hidden;line-height:0}
+.spot video{display:block;width:100%;height:auto;aspect-ratio:16/9;background:#000}
 footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 /* El corro de proveedores. En pantalla ancha van en circulo alrededor del logotipo; por
@@ -145,6 +148,21 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
   <p>Si RAID convirtió varios discos poco fiables en un volumen fiable, MultiDrive hace lo
   mismo con varias cuentas de nube: <strong>ningún proveedor tiene tus datos completos,
   ninguno puede leerlos, y la caída de uno no te deja sin volumen.</strong></p>
+</section>
+
+<section>
+  <h2>En treinta segundos</h2>
+  <div class="spot">
+    <video controls preload="metadata" playsinline width="1920" height="1080"
+           src="/video/multidrive-spot.mp4">
+      Tu navegador no puede reproducir este vídeo.
+      <a href="/video/multidrive-spot.mp4">Descárgalo</a> (MP4, 1,8 MB).
+    </video>
+  </div>
+  <p class="nota"><strong>No lleva sonido</strong>: lo cuenta con texto en pantalla, así que no
+  te pierdes nada viéndolo en silencio y no hacen falta subtítulos. Tampoco se reproduce solo:
+  hasta que le das al play solo viaja la cabecera del fichero, no el vídeo. Y si prefieres
+  leerlo, todo lo de abajo está escrito con más detalle que lo que cabe en medio minuto.</p>
 </section>
 
 <section>
