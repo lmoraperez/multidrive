@@ -1415,6 +1415,8 @@ async fn conectar_nube(
         &client_id,
         &client_secret,
         &multidrive_backend::oauth::abrir_en_navegador,
+        // En el escritorio no hace falta volver a ningun sitio: la ventana sigue detras.
+        None,
     )
     .await
     .map_err(|e| e.to_string())?;

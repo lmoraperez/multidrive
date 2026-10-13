@@ -102,12 +102,15 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_conectar<'local>(
     _clase: JObject<'local>,
     tipo: JString<'local>,
     config: JString<'local>,
+    volver_a: JString<'local>,
 ) -> JString<'local> {
     entorno
         .with_env(|env| -> Result<JString<'local>, Fallo> {
             let tipo = tipo.try_to_string(env)?;
             let config = config.try_to_string(env)?;
-            let nombre = conectar::conectar(&tipo, &config).map_err(Fallo::Dicho)?;
+            let volver_a = volver_a.try_to_string(env)?;
+            let nombre =
+                conectar::conectar(&tipo, &config, &volver_a).map_err(Fallo::Dicho)?;
             Ok(env.new_string(nombre)?)
         })
         .resolve::<ThrowRuntimeExAndDefault>()

@@ -66,6 +66,7 @@ pub async fn conectar(
     client_id: &str,
     client_secret: &str,
     abrir: &(dyn Fn(&str) -> Result<(), String> + Sync),
+    volver_a: Option<&str>,
 ) -> Result<Conectada, BackendError> {
     let fallo = |detalle: String| BackendError::Oauth { detalle };
 
@@ -155,16 +156,17 @@ pub async fn conectar(
     .await
     {
         Ok(c) => {
-            responder_pagina(
-                &mut socket,
-                "Cuenta conectada",
-                "Ya puedes cerrar esta pestaña y volver a MultiDrive.",
-            )
-            .await;
+            let detalle = match volver_a {
+                Some(_) => "Ya está. Volviendo a MultiDrive…",
+                None => "Ya puedes cerrar esta pestaña y volver a MultiDrive.",
+            };
+            responder_pagina(&mut socket, "Cuenta conectada", detalle, volver_a).await;
             Ok(c)
         }
         Err(e) => {
-            responder_pagina(&mut socket, "No se pudo conectar", &e.to_string()).await;
+            // Al fallar **no** se vuelve solo: el motivo está en esta página y hay que poder
+            // leerlo. Saltar a la aplicación lo dejaría atrás sin que nadie lo viera.
+            responder_pagina(&mut socket, "No se pudo conectar", &e.to_string(), None).await;
             Err(e)
         }
     }
@@ -222,7 +224,7 @@ async fn esperar_codigo(
 
         if let Some(error) = buscar("error") {
             let detalle = buscar("error_description").unwrap_or_else(|| error.clone());
-            responder_pagina(&mut socket, "No se pudo conectar", &detalle).await;
+            responder_pagina(&mut socket, "No se pudo conectar", &detalle, None).await;
             return Err(BackendError::Oauth {
                 detalle: format!("el proveedor rechazo la peticion: {error}: {detalle}"),
             });
@@ -243,6 +245,7 @@ async fn esperar_codigo(
                 &mut socket,
                 "No se pudo conectar",
                 "la respuesta no corresponde a esta peticion",
+                None,
             )
             .await;
             return Err(BackendError::Oauth {
@@ -508,17 +511,34 @@ async fn responder(socket: &mut tokio::net::TcpStream, codigo: u16, texto: &str)
 /// Se sirve desde aqui y no se redirige a ningun sitio: **esta pestana ya lleva el codigo en
 /// la direccion**, y mandarla a una pagina externa se lo entregaria a ese servidor en la
 /// cabecera de procedencia.
-async fn responder_pagina(socket: &mut tokio::net::TcpStream, titulo: &str, detalle: &str) {
-    let cuerpo = format!(
-        "<!doctype html><html lang=\"es\"><meta charset=\"utf-8\">\
-         <title>MultiDrive</title>\
-         <body style=\"font:16px/1.6 system-ui,sans-serif;background:#0e1116;color:#e6edf3;\
-         display:flex;align-items:center;justify-content:center;height:100vh;margin:0\">\
-         <div style=\"text-align:center;max-width:32rem;padding:0 1rem\">\
-         <h1 style=\"font-weight:600\">{}</h1><p style=\"color:#8b949e\">{}</p></div>",
-        escapar(titulo),
-        escapar(detalle)
-    );
+/// La pagina que ve el navegador al terminar.
+///
+/// # `volver_a`: devolver al usuario a la aplicacion
+///
+/// En el escritorio no hace falta --la ventana sigue ahi detras-- y se pasa `None`. En un
+/// movil si: sin esto hay que cerrar la pestana, buscar la aplicacion y abrirla, para algo
+/// que el navegador podria hacer solo.
+///
+/// Se intenta de **dos** maneras a proposito, y no por redundancia:
+///
+/// - Un `iframe` oculto apuntando al enlace. Es lo que hace el salto automatico.
+/// - Un boton bien visible con el mismo enlace.
+///
+/// Chrome bloquea a veces el salto a otra aplicacion si no hubo un gesto del usuario, y no
+/// avisa de que lo ha bloqueado. Por eso el intento va en un `iframe` y no en un
+/// `location.replace`: si lo bloquean, un iframe falla **sin tocar la pagina** y el boton
+/// sigue ahi. Con `location.replace`, el fallo se lleva por delante la pagina y el boton con
+/// ella, y entonces el usuario esta peor que antes de intentarlo.
+///
+/// El guion no lleva la URL escrita: la lee del `href` del boton. Asi solo hay que escaparla
+/// para un atributo HTML, y no ademas para una cadena de JavaScript.
+async fn responder_pagina(
+    socket: &mut tokio::net::TcpStream,
+    titulo: &str,
+    detalle: &str,
+    volver_a: Option<&str>,
+) {
+    let cuerpo = pagina(titulo, detalle, volver_a);
     let bytes = cuerpo.as_bytes();
     let cabecera = format!(
         "HTTP/1.1 200 .\r\nContent-Type: text/html; charset=utf-8\r\n\
@@ -530,11 +550,46 @@ async fn responder_pagina(socket: &mut tokio::net::TcpStream, titulo: &str, deta
     socket.shutdown().await.ok();
 }
 
+/// El HTML de la pagina, aparte de mandarlo, para poder comprobarlo sin levantar un socket.
+fn pagina(titulo: &str, detalle: &str, volver_a: Option<&str>) -> String {
+    let vuelta = match volver_a {
+        None => String::new(),
+        Some(url) => format!(
+            "<p><a id=\"v\" href=\"{}\" style=\"display:inline-block;margin-top:1rem;\
+             padding:.75rem 1.5rem;background:#4c8ff0;color:#fff;text-decoration:none;\
+             border-radius:.5rem;font-weight:600\">Volver a MultiDrive</a></p>\
+             <iframe id=\"f\" style=\"display:none\" title=\"\"></iframe>\
+             <script>document.getElementById('f').src=document.getElementById('v').href\
+             </script>",
+            escapar_atributo(url)
+        ),
+    };
+
+    format!(
+        "<!doctype html><html lang=\"es\"><meta charset=\"utf-8\">\
+         <title>MultiDrive</title>\
+         <body style=\"font:16px/1.6 system-ui,sans-serif;background:#0e1116;color:#e6edf3;\
+         display:flex;align-items:center;justify-content:center;height:100vh;margin:0\">\
+         <div style=\"text-align:center;max-width:32rem;padding:0 1rem\">\
+         <h1 style=\"font-weight:600\">{}</h1><p style=\"color:#8b949e\">{}</p>{vuelta}</div>",
+        escapar(titulo),
+        escapar(detalle)
+    )
+}
+
 /// Parte del detalle viene del proveedor, asi que no se mete en HTML tal cual.
 fn escapar(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+/// Lo mismo, para dentro de un atributo entre comillas dobles.
+///
+/// Una comilla de mas ahi no estropea el texto: cierra el atributo y lo que venga detras pasa
+/// a ser marcado. La URL de vuelta la ponemos nosotros, pero el escape no depende de eso.
+fn escapar_atributo(s: &str) -> String {
+    escapar(s).replace('"', "&quot;")
 }
 
 impl std::fmt::Debug for Conectada {
@@ -692,7 +747,7 @@ mod tests {
                 .await;
         let oauth = oauth_falso(&url);
 
-        let c = conectar(&oauth, "id-de-la-app", "secreto", &navegador_que_acepta)
+        let c = conectar(&oauth, "id-de-la-app", "secreto", &navegador_que_acepta, None)
             .await
             .unwrap();
         assert_eq!(c.refresh_token, "el-bueno");
@@ -729,7 +784,7 @@ mod tests {
             .await;
             let oauth = con_anfitrion(&url, anfitrion);
 
-            let c = conectar(&oauth, "id-de-la-app", "secreto", &navegador_que_acepta)
+            let c = conectar(&oauth, "id-de-la-app", "secreto", &navegador_que_acepta, None)
                 .await
                 .unwrap_or_else(|e| panic!("con {anfitrion}: {e}"));
             assert_eq!(c.refresh_token, "el-bueno");
@@ -795,7 +850,7 @@ mod tests {
             r
         };
 
-        let e = conectar(&oauth, "id", "secreto", &abrir).await.unwrap_err();
+        let e = conectar(&oauth, "id", "secreto", &abrir, None).await.unwrap_err();
         // El cerrojo se suelta antes de esperar: sostenerlo a traves de un `await` es lo
         // que convierte un test en un bloqueo intermitente.
         let canal = pagina.lock().unwrap().take().unwrap();
@@ -824,7 +879,7 @@ mod tests {
             r
         };
 
-        let c = conectar(&oauth, "id", "secreto", &abrir).await.unwrap();
+        let c = conectar(&oauth, "id", "secreto", &abrir, None).await.unwrap();
         assert_eq!(c.refresh_token, "el-bueno");
 
         let canal = pagina.lock().unwrap().take().unwrap();
@@ -860,7 +915,7 @@ mod tests {
             Ok(())
         };
 
-        let e = conectar(&oauth, "id", "secreto", &impostor)
+        let e = conectar(&oauth, "id", "secreto", &impostor, None)
             .await
             .unwrap_err();
         assert!(e.to_string().contains("state"), "{e}");
@@ -873,7 +928,7 @@ mod tests {
         let (url, _recibido) = proveedor_falso(r#"{"access_token":"solo-este"}"#).await;
         let oauth = oauth_falso(&url);
 
-        let e = conectar(&oauth, "id", "secreto", &navegador_que_acepta)
+        let e = conectar(&oauth, "id", "secreto", &navegador_que_acepta, None)
             .await
             .unwrap_err()
             .to_string();
@@ -916,7 +971,58 @@ mod tests {
             Ok(())
         };
 
-        let c = conectar(&oauth, "id", "secreto", &con_ruido).await.unwrap();
+        let c = conectar(&oauth, "id", "secreto", &con_ruido, None).await.unwrap();
         assert_eq!(c.refresh_token, "el-bueno");
+    }
+}
+
+#[cfg(test)]
+mod tests_pagina_de_vuelta {
+    use super::*;
+
+    /// En el escritorio no hay a donde volver, y la pagina no debe ofrecerlo: un boton
+    /// «Volver a MultiDrive» que no lleva a ningun sitio es peor que no tenerlo.
+    #[test]
+    fn sin_destino_no_hay_boton_ni_guion() {
+        let p = pagina("Cuenta conectada", "Ya puedes cerrar esta pestana.", None);
+        assert!(!p.contains("Volver a MultiDrive"), "{p}");
+        assert!(!p.contains("<script"), "{p}");
+        assert!(!p.contains("<iframe"), "{p}");
+    }
+
+    /// Con destino van **las dos** cosas: el salto automatico y el boton. Si solo fuera el
+    /// salto, el dia que el navegador lo bloquee el usuario se queda sin salida.
+    #[test]
+    fn con_destino_van_el_salto_y_el_boton() {
+        let p = pagina("Cuenta conectada", "Volviendo…", Some("multidrive://conectado"));
+        assert!(p.contains("href=\"multidrive://conectado\""), "{p}");
+        assert!(p.contains("Volver a MultiDrive"), "{p}");
+        assert!(p.contains("<iframe"), "{p}");
+    }
+
+    /// El salto va por `iframe` y **no** por `location.replace`, y eso es la decision, no un
+    /// detalle: un `replace` que el navegador rechaza se lleva por delante la pagina, y con
+    /// ella el boton. Un iframe que falla no toca nada.
+    #[test]
+    fn el_salto_no_navega_la_pagina() {
+        let p = pagina("x", "y", Some("multidrive://conectado"));
+        assert!(!p.contains("location.replace"), "{p}");
+        assert!(!p.contains("location.href"), "{p}");
+    }
+
+    /// Una comilla en la URL cerraria el atributo y lo de detras pasaria a ser marcado.
+    #[test]
+    fn una_comilla_en_la_url_no_rompe_el_atributo() {
+        let p = pagina("x", "y", Some("multidrive://a\"onload=alert(1)"));
+        assert!(!p.contains("\"onload="), "{p}");
+        assert!(p.contains("&quot;onload="), "{p}");
+    }
+
+    /// Lo que cuenta el proveedor cuando falla tampoco se mete en HTML tal cual.
+    #[test]
+    fn el_motivo_del_proveedor_va_escapado() {
+        let p = pagina("No se pudo conectar", "<script>malo</script>", None);
+        assert!(!p.contains("<script>malo"), "{p}");
+        assert!(p.contains("&lt;script&gt;malo"), "{p}");
     }
 }

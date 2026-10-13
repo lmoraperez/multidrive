@@ -19,6 +19,15 @@ private const val ETIQUETA = "multidrive"
 val AUTORIDAD = "${BuildConfig.APPLICATION_ID}.documentos"
 
 /**
+ * A donde manda el navegador para devolver a la aplicación al terminar de enlazar.
+ *
+ * El esquema está declarado en el manifiesto sobre [Volver]. Si se cambia aquí hay que
+ * cambiarlo allí: son las dos mitades de la misma puerta, y la que se quede sin la otra
+ * no falla al compilar, falla el día que alguien enlaza una cuenta.
+ */
+const val VOLVER_A = "multidrive://conectado"
+
+/**
  * El identificador de la raiz que publica el proveedor.
  *
  * Esta aqui y no dentro de `Proveedor` porque tambien hace falta fuera: es lo que identifica al

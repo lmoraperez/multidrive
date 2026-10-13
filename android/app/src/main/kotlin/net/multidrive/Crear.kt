@@ -319,7 +319,7 @@ class Crear : Activity() {
         pintarCuentas(MIENTRAS_NAVEGADOR)
         thread {
             val dicho = try {
-                "Cuenta conectada como «${Nucleo.conectar(tipo, conf.absolutePath)}»."
+                "Cuenta conectada como «${Nucleo.conectar(tipo, conf.absolutePath, VOLVER_A)}»."
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo conectar", e)
                 dicho(e)
