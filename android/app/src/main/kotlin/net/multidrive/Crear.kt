@@ -3,6 +3,7 @@ package net.multidrive
 import android.app.Activity
 import android.app.AlertDialog
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.text.InputType
 import android.util.Log
 import android.view.Gravity
@@ -20,6 +21,15 @@ import java.io.File
 import kotlin.concurrent.thread
 
 private const val ETIQUETA = "multidrive"
+
+/**
+ * Cuentas que hacen falta para poder crear un volumen.
+ *
+ * Dos, y no una, porque con una no hay reparto posible: la unica topologia que cabe es
+ * `concat`, que ni reparte ni aguanta ninguna caida. Eso es un fichero cifrado en una nube,
+ * que es util, pero no es lo que esta aplicacion dice que hace.
+ */
+private const val MINIMO = 2
 
 /**
  * Crear el volumen desde el telefono.
@@ -254,21 +264,30 @@ class Crear : Activity() {
         seguir.visibility = if (ocupado) View.GONE else View.VISIBLE
         drive.isEnabled = !ocupado
         onedrive.isEnabled = !ocupado
-        // Con una sola cuenta lo unico que cabe es `concat`, que no reparte nada ni aguanta
-        // nada. Se deja pasar igualmente --es un volumen valido y cifrado-- pero el sitio de
-        // decir lo que cuesta es la lista, donde sale con su aviso al lado.
-        seguir.isEnabled = hay.isNotEmpty() && !ocupado
+        // **Dos cuentas como minimo.** Con una sola lo unico que cabe es `concat`, que no
+        // reparte nada ni aguanta nada: seria un fichero cifrado en una nube, que es util pero
+        // no es esto. Antes se dejaba pasar y se avisaba en la lista de topologias; avisar ahi
+        // llega tarde, porque a esas alturas ya se eligio un camino.
+        //
+        // El numero no es estetico: por debajo de dos no existe ninguna topologia que reparta,
+        // asi que la pantalla siguiente no tendria nada que ofrecer.
+        seguir.isEnabled = hay.size >= MINIMO && !ocupado
         cancelar.visibility = if (ocupado) View.VISIBLE else View.GONE
 
         if (ocupado) {
             estado.text = dicho ?: "Esperando a que des permiso en el navegador."
             return
         }
-        estado.text = dicho ?: if (hay.isEmpty()) {
-            "Conecta las cuentas entre las que quieres repartir tus archivos. Cuantas más, más " +
-                "espacio y más caídas aguanta."
-        } else {
-            "Conecta las que falten y continúa. Después no se pueden añadir desde el móvil."
+        estado.text = dicho ?: when {
+            hay.isEmpty() ->
+                "Conecta las cuentas entre las que quieres repartir tus archivos. Hacen falta " +
+                    "al menos $MINIMO: cuantas más, más espacio y más caídas aguanta."
+            // Decir **por qué** no se puede seguir. Un botón apagado sin motivo se lee como que
+            // la aplicación está rota, no como que falta algo.
+            hay.size < MINIMO ->
+                "Con una sola cuenta no hay nada que repartir. Conecta otra para continuar."
+            else ->
+                "Conecta las que falten y continúa."
         }
     }
 
@@ -473,12 +492,38 @@ class Crear : Activity() {
         thread {
             val resumen = try {
                 val r = JSONObject(Nucleo.crear(conf.absolutePath, f, spec))
-                // Ya hay volumen: la pantalla principal vuelve a ofrecer abrirlo.
                 Sesion.sinVolumen = false
+
+                // **Se deja abierto.** Antes se volvia con el volumen cerrado y habia que
+                // escribir la frase otra vez, en la pantalla de al lado, para usar lo que
+                // acababas de crear. Pedir dos veces la misma frase con un minuto de
+                // diferencia no protege de nada: quien la acaba de escribir es quien la
+                // escribio.
+                //
+                // Si abrir fallara --no deberia, el volumen acaba de escribirse con esa misma
+                // frase-- no se tira la creacion por eso: el volumen **existe**. Se vuelve
+                // cerrado, que es lo que pasaba siempre antes, y se dice.
+                val abierto = try {
+                    Sesion.abrir(conf.absolutePath, f, true)
+                    contentResolver.notifyChange(
+                        DocumentsContract.buildRootsUri(AUTORIDAD),
+                        null,
+                    )
+                    true
+                } catch (e: Throwable) {
+                    Log.w(ETIQUETA, "creado pero no se pudo abrir", e)
+                    false
+                }
+
                 buildString {
                     append("Volumen creado con «${r.getString("topologia")}» en ")
                     append(r.getString("proveedores"))
                     append(".\n\nAguanta perder ${r.getInt("tolera")} cuenta(s).\n\n")
+                    append(
+                        if (abierto) "Queda abierto: ya sale en la app de Archivos.\n\n"
+                        else "El volumen está creado, pero no se pudo abrir ahora. " +
+                            "Ábrelo con tu frase de paso.\n\n"
+                    )
                     append(r.getString("maleta"))
                 }
             } catch (e: Throwable) {

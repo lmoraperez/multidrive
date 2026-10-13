@@ -20,6 +20,7 @@
 //! recoge tanto los `Err` como los panicos y los convierte en una excepcion de Java, que es lo
 //! que Kotlin sabe manejar.
 
+pub mod ampliar;
 pub mod conectar;
 pub mod crear;
 pub mod cuentas;
@@ -380,6 +381,64 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_recientes<'local>(
     entorno
         .with_env(|env| -> Result<JString<'local>, Fallo> {
             let json = sesion::recientes(id, cuantos.max(0) as usize).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(json)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Cuanto cabe en el volumen abierto y cuanto queda, en JSON.
+///
+/// Una peticion por proveedor, no una enumeracion. Ver `sesion::espacio` para lo que significa
+/// que `total` o `libre` vengan vacios.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_espacio<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let json = sesion::espacio(id).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(json)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Que pasaria si se metieran en el volumen las cuentas que no lo forman. No toca nada.
+///
+/// Devuelve JSON. Puede traer `problema` en vez de un plan, y entonces no se puede ampliar:
+/// el motivo esta ahi escrito para ensenarlo tal cual.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_mirarAmpliacion<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+    config: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let config: String = env.get_string(&config)?.into();
+            let json = ampliar::mirar(id, &config).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(json)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Amplia el volumen de verdad. **Tarda**: recorre el arbol y escribe en las cuentas.
+///
+/// Al volver, la sesion abierta se queda con la cabecera vieja: hay que cerrar y volver a
+/// abrir el volumen.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_ampliar<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    id: jni::sys::jlong,
+    config: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let config: String = env.get_string(&config)?.into();
+            let json = ampliar::hacer(id, &config).map_err(Fallo::Dicho)?;
             Ok(env.new_string(json)?)
         })
         .resolve::<ThrowRuntimeExAndDefault>()

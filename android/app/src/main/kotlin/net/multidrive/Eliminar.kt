@@ -143,6 +143,13 @@ class Eliminar : Activity() {
             append("\n${r.getInt("fragmentos")} fragmento(s), ")
             append(legible(r.getLong("bytes")))
             append(".")
+            // Las cuentas se desenlazan también, y eso hay que decirlo **antes**: quien lea
+            // «se borra el volumen» no se espera quedarse además sin las cuentas puestas.
+            append(
+                "\n\nAdemás se quitan de este teléfono las ${nombres.size} cuenta(s) de arriba. " +
+                    "Las cuentas no se tocan en la nube: solo dejan de estar enlazadas aquí, y " +
+                    "el teléfono queda como recién instalado."
+            )
             if (conMaleta.isNotEmpty()) {
                 // Se nombra antes de confirmar: es lo único de la lista que sigue sirviendo
                 // para algo después, y quien borra tiene que saber que también se va.
@@ -181,7 +188,20 @@ class Eliminar : Activity() {
                 // La pantalla principal ofrecera crear en vez de abrir: no hay nada que abrir,
                 // y acabamos de comprobarlo de la unica forma que vale.
                 Sesion.sinVolumen = true
-                r
+
+                // **Y se desenlazan las cuentas.** Sin esto quedaban enlazadas apuntando a un
+                // volumen que ya no existe: la pantalla principal seguia ensenando la tarjeta
+                // de cuentas, y quien quisiera empezar de cero tenia que quitarlas una por una
+                // sin que nada le dijera que hacia falta.
+                //
+                // Se quitan **despues** de retirar y no antes, porque retirar necesita hablar
+                // con cada cuenta para borrar sus fragmentos. Quitarlas primero dejaria la
+                // basura arriba y la cuenta fuera, que es el peor de los dos mundos.
+                //
+                // El fallo de una no para a las demas: lo que se busca es dejar el telefono
+                // limpio, y pararse a la mitad lo deja peor que seguir.
+                val sueltas = desenlazarTodas()
+                if (sueltas.isEmpty()) r else "$r\n\n$sueltas"
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo retirar el volumen", e)
                 dicho(e)
@@ -190,6 +210,38 @@ class Eliminar : Activity() {
                 ocupado = false
                 terminar(dicho)
             }
+        }
+    }
+
+    /**
+     * Quita del teléfono todas las cuentas enlazadas. Devuelve lo que haya que contar, o `""`
+     * si salió todo bien, porque entonces no hay nada que contar que no se dé por supuesto.
+     *
+     * Corre en el hilo de fondo, como todo lo que habla con el núcleo.
+     */
+    private fun desenlazarTodas(): String {
+        val nombres = try {
+            val lista = JSONArray(Nucleo.cuentas(conf.absolutePath))
+            (0 until lista.length()).map { lista.getString(it) }
+        } catch (e: Throwable) {
+            Log.w(ETIQUETA, "no se pudieron leer las cuentas para quitarlas", e)
+            return "Las cuentas no se pudieron leer para quitarlas; siguen enlazadas."
+        }
+
+        val fallaron = mutableListOf<String>()
+        for (n in nombres) {
+            try {
+                Nucleo.olvidar(conf.absolutePath, n)
+            } catch (e: Throwable) {
+                Log.w(ETIQUETA, "no se pudo quitar la cuenta $n", e)
+                fallaron += n
+            }
+        }
+
+        return when {
+            fallaron.isEmpty() -> ""
+            else -> "Estas cuentas no se pudieron quitar y siguen enlazadas: " +
+                "${fallaron.joinToString(", ")}. Quítalas desde la pantalla principal."
         }
     }
 

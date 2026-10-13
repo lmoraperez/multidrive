@@ -193,6 +193,19 @@
                 android:orientation="vertical"
                 android:padding="16dp">
 
+                <!-- El tamano del volumen y lo que le queda. Solo sale con el volumen abierto:
+                     cerrado no hay a quien preguntarle, y una cifra de la ultima vez seria
+                     peor que ninguna. Se rellena desde el hilo de fondo, porque es una
+                     peticion por proveedor. -->
+                <TextView
+                    android:id="@+id/espacio"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="14dp"
+                    android:textColor="@color/texto"
+                    android:textSize="15sp"
+                    android:visibility="gone" />
+
                 <EditText
                     android:id="@+id/frase"
                     android:layout_width="match_parent"
@@ -265,6 +278,17 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="14dp"
                     android:text="Ver mis archivos" />
+
+                <!-- Meter en el volumen las cuentas enlazadas que no lo forman. Solo sale con
+                     el volumen abierto: hay que saber su topologia para decir lo que se gana, y
+                     eso vive en su cabecera. -->
+                <Button
+                    android:id="@+id/ampliar"
+                    style="@style/BotonSuave"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="Ampliar con más cuentas" />
 
                 <Button
                     android:id="@+id/ver"
