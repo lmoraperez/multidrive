@@ -182,8 +182,8 @@ There is an **Android app**, published on Google Play as `com.jlsoltech.multidri
 needs Android 8 or later and is `arm64-v8a` only, which is what phones have carried for years.
 
 It is not a viewer for what the desktop did: from the phone you can **create** a volume
-—picking providers and topology just like in the desktop window— or open one that already
-exists. And to open it you don't have to link every account again one by one: with **one**
+—picking providers and topology just like in the desktop window—, **grow** it with new
+accounts, and **delete** it. And to open it you don't have to link every account again one by one: with **one**
 linked account and the passphrase, the sealed configuration brings in the rest. On a phone that
 matters, because each account means another trip to the browser and another permission screen
 typed on a phone keyboard.
@@ -203,6 +203,15 @@ What it does, once open:
 - **Uploads phone folders on its own**, like Nextcloud's auto upload: you pick the folders, and
   a system job uploads whatever is new when there's a network —with a **WiFi-only** option—
   without the app being in front of you.
+- **Says how much is left**: the volume's size with its free space, and a bar per account. What
+  the bar shows as used is the whole account, not just MultiDrive, and the screen says so:
+  your photos and your mail count there too.
+- **Grows by taking in new accounts**, with a warning it gives before starting: only a `lineal`
+  volume gains space when you add one. In mirror, parity or union every chunk is split across
+  all of them, so one more buys **fault tolerance** and not a single byte of room; gaining room
+  there means rewriting the whole volume, which is done from the desktop.
+- **Comes back from the browser on its own** after linking an account, instead of leaving you
+  to close the tab and find the app.
 
 Two things worth knowing before turning those on:
 

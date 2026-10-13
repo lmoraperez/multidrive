@@ -69,18 +69,15 @@ instalado desde Google Play como se instala cualquier aplicación.
 - **Su propio explorador**, con buscador, fechas, tamaños, favoritos y menú lateral, en vez de
   depender de la app de Archivos del fabricante.
 - **Subir carpetas del teléfono sola**, con `JobScheduler` y opción de solo WiFi.
-- **Ampliar el volumen** metiéndole cuentas enlazadas que no lo formaban *(escrito, sin
-  publicar todavía)*. Con una advertencia que la pantalla da antes de empezar: **solo un volumen `lineal` crece** al añadir una cuenta.
+- **Decir cuánto le queda a cada cuenta**, con una barra por cuenta en la pantalla inicial.
+- **Volver sola del navegador** al terminar de enlazar una cuenta, sin tener que cerrar la
+  pestaña y buscar la aplicación.
+- **Ampliar el volumen** metiéndole cuentas enlazadas que no lo formaban. Con una advertencia que la pantalla da antes de empezar: **solo un volumen `lineal` crece** al añadir una cuenta.
   En espejo, paridad o unión cada trozo se parte entre todas, así que una más no agranda nada
   y lo que se gana es aguantar una caída más. Ganar sitio ahí es reescribir el volumen entero,
   que tarda horas y se hace desde el escritorio.
 - **Decir cuánto cabe y cuánto queda**, preguntándoselo a cada cuenta: una petición por
-  proveedor, no una enumeración del árbol. *(escrito, sin publicar todavía)*.
-
-> **Las dos últimas, y los cambios en crear y eliminar, están en el código y no en Google
-> Play.** La versión que se instala hoy es la `versionCode` 12, de antes de esto. Hasta que se
-> suba una nueva, el README y la portada no los cuentan a propósito: describen lo que alguien
-> puede instalar, no lo que hay en la rama.
+  proveedor, no una enumeración del árbol.
 
 Lo que falta ya no es «que sea una aplicación y no una prueba»: es **miniaturas** —las carpetas
 de fotos se ven como una lista de nombres— y decidir qué hacer cuando Android mata el proceso a
