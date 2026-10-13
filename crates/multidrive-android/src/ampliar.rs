@@ -41,7 +41,7 @@ fn bandos(
     for nombre in &cabecera.backends {
         let Some(b) = configurados.iter().find(|b| b.name() == nombre) else {
             return Err(format!(
-                "falta «{nombre}», que forma parte del volumen. Enlazala antes de anadir otras."
+                "Falta «{nombre}», que forma parte del volumen. Enlázala antes de añadir otras."
             ));
         };
         del_volumen.push(Arc::clone(b));
@@ -70,9 +70,9 @@ fn plan(antes: Layout, cuantos: usize) -> Result<(Layout, &'static str), String>
         Ok((destino, "margen"))
     } else {
         Err(format!(
-            "pasar de {antes} a {destino} mueve todos los fragmentos de todos los trozos: es \
+            "Pasar de {antes} a {destino} mueve todos los fragmentos de todos los trozos: es \
              reescribir el volumen entero, que puede tardar horas. Eso no se hace desde el \
-             telefono; se hace desde el escritorio, que puede ir informando."
+             teléfono; se hace desde el escritorio, que puede ir informando."
         ))
     }
 }
@@ -105,8 +105,8 @@ pub fn mirar(id: i64, config: &str) -> Result<String, String> {
         return Ok(serde_json::json!({
             "nuevos": nombres,
             "antes": antes.to_string(),
-            "problema": "no hay ninguna cuenta enlazada que el volumen no use ya. Enlaza otra \
-                         y vuelve aqui.",
+            "problema": "No hay ninguna cuenta enlazada que el volumen no use ya. Enlaza otra \
+                         y vuelve aquí.",
         })
         .to_string());
     }
@@ -150,13 +150,13 @@ pub fn mirar(id: i64, config: &str) -> Result<String, String> {
 pub fn hacer(id: i64, config: &str) -> Result<String, String> {
     let abierto = sesion::sesion(id)?;
     if !abierto.escribe() {
-        return Err("el volumen esta abierto solo para leer".into());
+        return Err("El volumen está abierto solo para leer.".into());
     }
     let configurados = configurados(config)?;
     let antes: Layout = abierto.cabecera.layout().map_err(|e| e.to_string())?;
     let (del_volumen, nuevos) = bandos(&abierto.cabecera, &configurados)?;
     if nuevos.is_empty() {
-        return Err("no hay ninguna cuenta enlazada que el volumen no use ya".into());
+        return Err("No hay ninguna cuenta enlazada que el volumen no use ya.".into());
     }
     let (destino, gana) = plan(antes, nuevos.len())?;
 
@@ -172,7 +172,7 @@ pub fn hacer(id: i64, config: &str) -> Result<String, String> {
             // Un trozo que no se puede leer tampoco se puede mudar, y lo que no se muda se
             // queda donde la cabecera nueva ya no lo busca.
             return Err(format!(
-                "hay {} ruta(s) que no se pueden leer, empezando por «{}». Revisa la salud del \
+                "Hay {} ruta(s) que no se pueden leer, empezando por «{}». Revisa la salud del \
                  volumen antes de ampliarlo.",
                 ilegibles.len(),
                 ilegibles[0].0
@@ -202,8 +202,8 @@ pub fn hacer(id: i64, config: &str) -> Result<String, String> {
             // La cabecera es la que promete donde esta cada cosa. Publicarla con trozos a
             // medias prometeria algo que no esta, que es peor que no haber ampliado.
             return Err(format!(
-                "{} trozo(s) no se pudieron escribir, asi que no se cambia nada: el volumen \
-                 sigue como estaba. Vuelve a intentarlo, que lo que si se subio no se repite.",
+                "{} trozo(s) no se pudieron escribir, así que no se cambia nada: el volumen \
+                 sigue como estaba. Vuelve a intentarlo, que lo que sí se subió no se repite.",
                 fallidos.len()
             ));
         }
@@ -234,7 +234,7 @@ pub fn hacer(id: i64, config: &str) -> Result<String, String> {
 /// Los proveedores enlazados en este telefono.
 fn configurados(config: &str) -> Result<Vec<Arc<dyn Backend>>, String> {
     let v = multidrive_backend::live::configurados_de(Path::new(config))
-        .map_err(|e| format!("configuracion invalida: {e}"))?;
+        .map_err(|e| format!("Configuración inválida: {e}"))?;
     Ok(v.into_iter()
         .map(|b| Arc::new(b) as Arc<dyn Backend>)
         .collect())

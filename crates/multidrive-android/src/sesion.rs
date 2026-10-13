@@ -134,15 +134,43 @@ pub fn abrir(config: &str, frase: &str, escritura: bool) -> Result<i64, String> 
             .map_err(|e| format!("no se pudo leer la cabecera: {e}"))?
             .ok_or("no hay ningun volumen en esas cuentas")?;
 
-        // El testigo **antes de abrir**, no despues. Abrir cuesta segundos; descubrir al final
-        // que otro esta escribiendo seria haber hecho esperar para nada.
+        // **Solo las del volumen, y en su orden.** `almacen` exige que la lista sea exactamente
+        // la de la cabecera, en numero y en orden; pasarle todas las configuradas hace que una
+        // cuenta de sobra impida abrir, con un «los proveedores no coinciden» que no explica
+        // que sobra en vez de faltar.
+        //
+        // Y una de sobra es lo normal, no un caso raro: es el paso previo obligado para
+        // ampliar el volumen. Sin esto, enlazar la cuenta que vas a meter te deja sin poder
+        // abrir el volumen donde la ibas a meter.
+        //
+        // Lo que falta si que es un problema, y se dice nombrandolo.
+        let suyos: Vec<Arc<dyn Backend>> = {
+            let mut v = Vec::with_capacity(cabecera.backends.len());
+            for nombre in &cabecera.backends {
+                let Some(b) = backends.iter().find(|b| b.name() == nombre) else {
+                    return Err(format!(
+                        "falta «{nombre}», que forma parte de este volumen. Enlázala y vuelve \
+                         a intentarlo."
+                    ));
+                };
+                v.push(Arc::clone(b));
+            }
+            v
+        };
+
+        // El testigo **antes de abrir**, no despues: abrir cuesta segundos, y descubrir al
+        // final que otro esta escribiendo seria haber hecho esperar para nada.
+        //
+        // Y **solo sobre las del volumen**: ponerlo en una cuenta que no forma parte deja un
+        // fichero suelto en una cuenta ajena al volumen.
+        //
         // No se niega si otro lo tiene: escribir se reaplica si alguien se adelanta, asi que
-        // dos equipos en ficheros distintos conviven. Negarse ademas seria caro de verdad aqui:
-        // con el volumen montado como servicio en el escritorio, el movil no podria escribir
-        // nunca.
+        // dos equipos en ficheros distintos conviven. Negarse ademas seria caro de verdad
+        // aqui: con el volumen montado como servicio en el escritorio, el movil no podria
+        // escribir nunca.
         let (testigo, _otro) = if escritura {
             multidrive_core::testigo::Guardia::coger_o_compartir(
-                backends.clone(),
+                suyos.clone(),
                 "la aplicacion de Android",
             )
             .await
@@ -151,7 +179,7 @@ pub fn abrir(config: &str, frase: &str, escritura: bool) -> Result<i64, String> 
         };
 
         let almacen = cabecera
-            .almacen(backends, frase, CACHE)
+            .almacen(suyos, frase, CACHE)
             .map_err(|e| format!("no se pudo derivar la clave: {e}"))?;
         // Una frase equivocada no da error de descifrado: da un puntero de raiz que no se abre,
         // o sea «no hay raiz». Sin decirlo, parece corrupcion.
