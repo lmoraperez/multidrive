@@ -165,6 +165,11 @@ pub fn hacer(id: i64, config: &str) -> Result<String, String> {
     let llegan: Vec<String> = nuevos.iter().map(|b| b.name().to_string()).collect();
 
     sesion::en_el_runtime(async move {
+        // Lo que suman las que llegan, **antes** de moverlas: es lo que se va a anadir, y
+        // decirlo al terminar es lo unico que convierte «ahora es lineal:3» en una cifra.
+        // En margen es cero y se dice cero: una copia mas no anade ni un byte.
+        let suma = if gana == "espacio" { suma_libre(&nuevos).await } else { Some(0) };
+
         let v = abierto.volumen.lock().await;
 
         let (trozos, ilegibles) = v.walk().await;
@@ -226,6 +231,7 @@ pub fn hacer(id: i64, config: &str) -> Result<String, String> {
             "despues": destino.to_string(),
             "gana": gana,
             "anadidas": llegan,
+            "suma": suma,
         })
         .to_string())
     })

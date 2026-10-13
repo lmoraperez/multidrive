@@ -2,6 +2,7 @@ package net.multidrive
 
 import android.util.Log
 import net.multidrive.nucleo.Nucleo
+import org.json.JSONArray
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.concurrent.thread
@@ -223,5 +224,36 @@ object Cargador {
                 avisar()
             }
         }
+    }
+}
+
+/**
+ * Lo que una cuenta declara sobre su espacio.
+ *
+ * `fallo` y «no lo dice» son cosas distintas: lo primero es que no se pudo preguntar, lo
+ * segundo que ese proveedor **no tiene cupo que declarar** --un bucket S3 se factura por lo
+ * que ocupa y no se llena--. Las dos dan `total` nulo y ninguna de las dos es cero.
+ *
+ * **`usado` es de la cuenta entera, no de MultiDrive.** Es lo que responden las APIs de cupo
+ * de Drive y OneDrive. Quien lo pinte tiene que decirlo, o se lee como lo que ocupa esta
+ * aplicación, que es falso y por mucho.
+ */
+data class Cuota(val total: Long?, val usado: Long?, val fallo: String?)
+
+/**
+ * Pregunta a cada cuenta enlazada cuánto espacio tiene, y las devuelve por nombre.
+ *
+ * Cuesta una petición por cuenta, todas a la vez. **Nunca en el hilo de la interfaz.**
+ * No hace falta el volumen abierto: se le pregunta a las cuentas, no al volumen.
+ */
+fun leerCuotas(config: String): Map<String, Cuota> {
+    val a = JSONArray(Nucleo.cuotas(config))
+    return (0 until a.length()).associate { i ->
+        val o = a.getJSONObject(i)
+        o.getString("nombre") to Cuota(
+            total = if (o.isNull("total")) null else o.getLong("total"),
+            usado = if (o.isNull("usado")) null else o.getLong("usado"),
+            fallo = if (o.isNull("fallo")) null else o.getString("fallo"),
+        )
     }
 }

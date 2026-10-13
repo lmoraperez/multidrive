@@ -387,76 +387,11 @@ class Principal : Activity() {
                 )
             }
             bloque.addView(fila)
-            bloque.addView(barraDe(n))
+            bloque.addView(barraDeEspacio(cuotas[n], cuotasPedidas))
             listaCuentas.addView(bloque)
         }
     }
 
-    /**
-     * La barra de espacio de una cuenta, con lo que se sepa de ella en este momento.
-     *
-     * Mientras no haya respuesta sale el texto de que se está preguntando y **no** una barra
-     * vacía: una barra al 0 % es una afirmación, y aquí todavía no se sabe nada.
-     */
-    private fun barraDe(nombre: String): View {
-        val caja = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, 8, 0, 0)
-        }
-        val q = cuotas[nombre]
-
-        if (q == null) {
-            caja.addView(pie(if (cuotasPedidas) "Preguntando…" else ""))
-            return caja
-        }
-        if (q.fallo != null || q.total == null || q.usado == null) {
-            // Un proveedor sin cupo que declarar no es un proveedor lleno ni uno vacío: no hay
-            // barra que pintar, y dibujar uno al 0 % sería inventarse un total.
-            caja.addView(pie(q.fallo ?: "No dice cuánto espacio tiene."))
-            return caja
-        }
-
-        val total = q.total
-        val usado = q.usado.coerceAtMost(total)
-        val fraccion = if (total == 0L) 0f else usado.toFloat() / total.toFloat()
-
-        caja.addView(
-            LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    (resources.displayMetrics.density * 6).toInt(),
-                )
-                addView(View(this@Principal).apply {
-                    setBackgroundColor(getColor(R.color.acento))
-                    layoutParams = LinearLayout.LayoutParams(
-                        0, ViewGroup.LayoutParams.MATCH_PARENT, fraccion
-                    )
-                })
-                addView(View(this@Principal).apply {
-                    setBackgroundColor(getColor(R.color.linea))
-                    layoutParams = LinearLayout.LayoutParams(
-                        0, ViewGroup.LayoutParams.MATCH_PARENT, 1f - fraccion
-                    )
-                })
-            }
-        )
-        caja.addView(
-            pie("${legible(usado)} usados · ${legible(total - usado)} libres de ${legible(total)}")
-        )
-        return caja
-    }
-
-    private fun pie(texto: String): TextView = TextView(this).apply {
-        text = texto
-        textSize = 12.5f
-        setTextColor(getColor(R.color.apagado))
-        setPadding(0, 6, 0, 0)
-        visibility = if (texto.isEmpty()) View.GONE else View.VISIBLE
-    }
-
-    /** Lo que declara una cuenta sobre su espacio. `fallo` y «no lo dice» son cosas distintas. */
-    private data class Cuota(val total: Long?, val usado: Long?, val fallo: String?)
 
     /**
      * Lo último que contestó cada cuenta, por nombre.
@@ -475,15 +410,7 @@ class Principal : Activity() {
 
         thread {
             val leidas = try {
-                val a = JSONArray(Nucleo.cuotas(conf.absolutePath))
-                (0 until a.length()).associate { i ->
-                    val o = a.getJSONObject(i)
-                    o.getString("nombre") to Cuota(
-                        total = if (o.isNull("total")) null else o.getLong("total"),
-                        usado = if (o.isNull("usado")) null else o.getLong("usado"),
-                        fallo = if (o.isNull("fallo")) null else o.getString("fallo"),
-                    )
-                }
+                leerCuotas(conf.absolutePath)
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudieron leer las cuotas", e)
                 nombres.associateWith { Cuota(null, null, "No se pudo preguntar.") }

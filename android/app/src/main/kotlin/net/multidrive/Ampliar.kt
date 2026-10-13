@@ -50,6 +50,8 @@ class Ampliar : Activity() {
     private lateinit var onedrive: Button
     private lateinit var cancelar: Button
     /** El titulo y la nota de la seccion de enlazar: se esconden con sus botones. */
+    private lateinit var tituloSinUsar: View
+    private lateinit var lista: LinearLayout
     private lateinit var tituloEnlazar: View
     private lateinit var notaEnlazar: View
     private lateinit var boton: Button
@@ -60,6 +62,9 @@ class Ampliar : Activity() {
 
     /** Esperando al navegador. Mientras tanto no se ofrece nada mas. */
     private var ocupado = false
+
+    /** Lo que declara cada cuenta sobre su espacio. Vacio hasta que contesten. */
+    private var cuotas: Map<String, Cuota> = emptyMap()
 
     override fun onCreate(guardado: Bundle?) {
         super.onCreate(guardado)
@@ -89,6 +94,8 @@ class Ampliar : Activity() {
             setOnClickListener { Nucleo.cancelarConexion() }
         }
 
+        tituloSinUsar = tituloDeSeccion("Cuentas que el volumen no usa")
+        lista = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         tituloEnlazar = tituloDeSeccion("Enlazar otra cuenta")
         notaEnlazar = nota(
             "Enlazarla aquí no la mete en el volumen: eso lo hace el botón de abajo, y antes " +
@@ -104,8 +111,9 @@ class Ampliar : Activity() {
 
         val caja = LinearLayout(this).comoPantalla().apply {
             addView(cabecera("Ampliar"))
-            addView(tituloDeSeccion("Cuentas que el volumen no usa"))
+            addView(tituloSinUsar)
             addView(estado)
+            addView(lista)
             addView(detalle)
             addView(tituloEnlazar)
             addView(notaEnlazar)
@@ -193,6 +201,10 @@ class Ampliar : Activity() {
             estado.text = problema
             detalle.visibility = View.GONE
             boton.visibility = View.GONE
+            // Sin lista no hay encabezado: uno solo, sobre un mensaje, hace buscar una lista
+            // que no está. Los botones de enlazar sí se quedan: son la salida de aquí.
+            tituloSinUsar.visibility = View.GONE
+            lista.removeAllViews()
             return
         }
 
@@ -201,7 +213,8 @@ class Ampliar : Activity() {
         val despues = r.getString("despues")
         val suma = if (r.isNull("suma")) null else r.getLong("suma")
 
-        estado.text = "Sin usar: ${nuevos.joinToString(", ")}"
+        estado.text = if (nuevos.size == 1) "Sin usar: una cuenta." else "Sin usar: ${nuevos.size} cuentas."
+        pintarLista(nuevos)
         detalle.visibility = View.VISIBLE
         boton.visibility = View.VISIBLE
 
@@ -222,6 +235,58 @@ class Ampliar : Activity() {
                     "una caída más.\n\nPara ganar sitio habría que repartir otra vez todos los " +
                     "trozos entre más cuentas, que es reescribir el volumen entero. Eso puede " +
                     "tardar horas y se hace desde el escritorio.")
+            }
+        }
+    }
+
+    /**
+     * Las cuentas que el volumen no usa, cada una con su barra de espacio.
+     *
+     * Las cifras se piden aparte y llegan después: la lista sale enseguida con los nombres y
+     * las barras aparecen cuando contesten. Esperar a tenerlas para enseñar los nombres haría
+     * mirar una pantalla vacía durante segundos.
+     */
+    private fun pintarLista(nombres: List<String>) {
+        lista.removeAllViews()
+        tituloSinUsar.visibility = View.VISIBLE
+
+        for (n in nombres) {
+            lista.addView(
+                LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(0, 12, 0, 4)
+                    addView(
+                        TextView(this@Ampliar).apply {
+                            text = n
+                            textSize = 15f
+                            setTextColor(getColor(R.color.texto))
+                        }
+                    )
+                    addView(barraDeEspacio(cuotas[n], cuotas.isEmpty()))
+                }
+            )
+        }
+        lista.addView(
+            nota("Lo ocupado es de la cuenta entera, no solo lo de MultiDrive.")
+        )
+
+        if (cuotas.isEmpty()) pedirCuotas(nombres)
+    }
+
+    /** Pregunta a cada cuenta cuánto le queda, y repinta la lista cuando contesten. */
+    private fun pedirCuotas(nombres: List<String>) {
+        thread {
+            val leidas = try {
+                leerCuotas(conf.absolutePath)
+            } catch (e: Throwable) {
+                Log.w(ETIQUETA, "no se pudieron leer las cuotas", e)
+                nombres.associateWith { Cuota(null, null, "No se pudo preguntar.") }
+            }
+            runOnUiThread {
+                cuotas = leidas
+                // Solo si la lista sigue en pantalla: entre la pregunta y la respuesta se pudo
+                // ampliar ya, y entonces esta lista no describe nada.
+                if (tituloSinUsar.visibility == View.VISIBLE) pintarLista(nombres)
             }
         }
     }
@@ -262,10 +327,26 @@ class Ampliar : Activity() {
                 Sesion.cerrar()
                 contentResolver.notifyChange(DocumentsContract.buildRootsUri(AUTORIDAD), null)
 
-                "Volumen ampliado con ${anadidas.joinToString(", ")}.\n\n" +
-                    "Ahora es «${r.getString("despues")}».\n\n" +
-                    "Se cerró el volumen para que vuelva a leerse con la cabecera nueva. " +
-                    "Ábrelo otra vez con tu frase de paso."
+                val suma = if (r.isNull("suma")) null else r.getLong("suma")
+                val creció = r.getString("gana") == "espacio"
+
+                buildString {
+                    append("Volumen ampliado con ${anadidas.joinToString(", ")}.\n\n")
+                    append("Ahora es «${r.getString("despues")}»")
+                    // La cifra es lo que convierte «ahora es lineal:3» en algo que dice qué
+                    // ganaste. Y en margen se dice que no creció, que es lo que pasó.
+                    append(
+                        when {
+                            !creció -> ", y aguanta una caída más. El tamaño no cambia: en " +
+                                "esta topología cada trozo se parte entre todas las cuentas"
+                            suma == null || suma == 0L -> ", pero esas cuentas no declaran " +
+                                "cuánto espacio aportan, así que no puedo decirte cuánto creció"
+                            else -> ", con ${legible(suma)} más de espacio"
+                        }
+                    )
+                    append(".\n\nSe cerró el volumen para que vuelva a leerse con la cabecera ")
+                    append("nueva. Ábrelo otra vez con tu frase de paso.")
+                }
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo ampliar", e)
                 dicho(e)
@@ -277,6 +358,8 @@ class Ampliar : Activity() {
     /** Enseña cómo quedó y deja salir. */
     private fun terminar(dicho: String) {
         Sesion.ultimoAviso = dicho
+        tituloSinUsar.visibility = View.GONE
+        lista.removeAllViews()
         estado.text = dicho
         boton.isEnabled = true
         boton.text = "Volver"
