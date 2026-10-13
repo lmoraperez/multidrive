@@ -72,8 +72,6 @@ class Principal : Activity() {
     private lateinit var tarjetaCuentas: View
     private lateinit var listaCuentas: LinearLayout
     private lateinit var notaCuentas: TextView
-    private lateinit var drive: Button
-    private lateinit var onedrive: Button
 
     // El volumen.
     private lateinit var tituloVolumen: TextView
@@ -146,8 +144,6 @@ class Principal : Activity() {
         tarjetaCuentas = findViewById(R.id.tarjeta_cuentas)
         listaCuentas = findViewById(R.id.lista_cuentas)
         notaCuentas = findViewById(R.id.nota_cuentas)
-        drive = findViewById(R.id.drive)
-        onedrive = findViewById(R.id.onedrive)
 
         tituloVolumen = findViewById(R.id.titulo_volumen)
         tarjetaVolumen = findViewById(R.id.tarjeta_volumen)
@@ -178,8 +174,6 @@ class Principal : Activity() {
         eliminar.setOnClickListener { startActivity(Intent(this, Eliminar::class.java)) }
         traer.setOnClickListener { startActivity(Intent(this, Abrir::class.java)) }
 
-        drive.setOnClickListener { conectar("GDRIVE") }
-        onedrive.setOnClickListener { conectar("ONEDRIVE") }
         abrir.setOnClickListener { abrirVolumen() }
         cerrar.setOnClickListener {
             Sesion.cerrar()
@@ -291,11 +285,22 @@ class Principal : Activity() {
 
         tituloCuentas.visibility = if (hayCuentas) View.VISIBLE else View.GONE
         tarjetaCuentas.visibility = if (hayCuentas) View.VISIBLE else View.GONE
-        if (hayCuentas) pintarCuentas(nombres, abierto)
+        // Si la lista de cuentas cambió, lo medido antes ya no la describe: se tira y se vuelve
+        // a preguntar. Pasa al enlazar una, al quitarla, y al eliminar el volumen.
+        if (nombres.toSet() != cuotas.keys) {
+            cuotas = emptyMap()
+            cuotasPedidas = false
+        }
+        if (hayCuentas) {
+            pintarCuentas(nombres, abierto)
+            pedirCuotas(nombres)
+        }
 
-        drive.isEnabled = !ocupado
-        onedrive.isEnabled = !ocupado
-        notaCuentas.text = if (abierto) {
+        val sobreLasBarras =
+            "Lo ocupado es de la cuenta entera, no solo lo de MultiDrive: ahí cuentan " +
+                "también tus fotos y tu correo.\n\n"
+
+        notaCuentas.text = sobreLasBarras + if (abierto) {
             // Conectar una cuenta mas con el volumen abierto no la mete en el volumen: el
             // volumen es el de las cuentas con las que se creo, y anadir otra exige reescribir
             // su cabecera y mover trozos. Decirlo aqui evita que alguien conecte una cuarta
@@ -347,10 +352,13 @@ class Principal : Activity() {
     private fun pintarCuentas(nombres: List<String>, abierto: Boolean) {
         listaCuentas.removeAllViews()
         for (n in nombres) {
+            val bloque = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, 12, 0, 12)
+            }
             val fila = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, 10, 0, 10)
             }
             fila.addView(
                 TextView(this).apply {
@@ -378,7 +386,114 @@ class Principal : Activity() {
                     }
                 )
             }
-            listaCuentas.addView(fila)
+            bloque.addView(fila)
+            bloque.addView(barraDe(n))
+            listaCuentas.addView(bloque)
+        }
+    }
+
+    /**
+     * La barra de espacio de una cuenta, con lo que se sepa de ella en este momento.
+     *
+     * Mientras no haya respuesta sale el texto de que se está preguntando y **no** una barra
+     * vacía: una barra al 0 % es una afirmación, y aquí todavía no se sabe nada.
+     */
+    private fun barraDe(nombre: String): View {
+        val caja = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 8, 0, 0)
+        }
+        val q = cuotas[nombre]
+
+        if (q == null) {
+            caja.addView(pie(if (cuotasPedidas) "Preguntando…" else ""))
+            return caja
+        }
+        if (q.fallo != null || q.total == null || q.usado == null) {
+            // Un proveedor sin cupo que declarar no es un proveedor lleno ni uno vacío: no hay
+            // barra que pintar, y dibujar uno al 0 % sería inventarse un total.
+            caja.addView(pie(q.fallo ?: "No dice cuánto espacio tiene."))
+            return caja
+        }
+
+        val total = q.total
+        val usado = q.usado.coerceAtMost(total)
+        val fraccion = if (total == 0L) 0f else usado.toFloat() / total.toFloat()
+
+        caja.addView(
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    (resources.displayMetrics.density * 6).toInt(),
+                )
+                addView(View(this@Principal).apply {
+                    setBackgroundColor(getColor(R.color.acento))
+                    layoutParams = LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.MATCH_PARENT, fraccion
+                    )
+                })
+                addView(View(this@Principal).apply {
+                    setBackgroundColor(getColor(R.color.linea))
+                    layoutParams = LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.MATCH_PARENT, 1f - fraccion
+                    )
+                })
+            }
+        )
+        caja.addView(
+            pie("${legible(usado)} usados · ${legible(total - usado)} libres de ${legible(total)}")
+        )
+        return caja
+    }
+
+    private fun pie(texto: String): TextView = TextView(this).apply {
+        text = texto
+        textSize = 12.5f
+        setTextColor(getColor(R.color.apagado))
+        setPadding(0, 6, 0, 0)
+        visibility = if (texto.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    /** Lo que declara una cuenta sobre su espacio. `fallo` y «no lo dice» son cosas distintas. */
+    private data class Cuota(val total: Long?, val usado: Long?, val fallo: String?)
+
+    /**
+     * Lo último que contestó cada cuenta, por nombre.
+     *
+     * Se guarda porque `pintar()` corre en cada vuelta a la pantalla y preguntar cuesta una
+     * petición por cuenta. Se vacía al cambiar la lista de cuentas, que es cuando deja de
+     * describir lo que hay.
+     */
+    private var cuotas: Map<String, Cuota> = emptyMap()
+    private var cuotasPedidas = false
+
+    /** Pregunta a cada cuenta cuánto le queda. Una petición por cuenta, todas a la vez. */
+    private fun pedirCuotas(nombres: List<String>) {
+        if (cuotasPedidas) return
+        cuotasPedidas = true
+
+        thread {
+            val leidas = try {
+                val a = JSONArray(Nucleo.cuotas(conf.absolutePath))
+                (0 until a.length()).associate { i ->
+                    val o = a.getJSONObject(i)
+                    o.getString("nombre") to Cuota(
+                        total = if (o.isNull("total")) null else o.getLong("total"),
+                        usado = if (o.isNull("usado")) null else o.getLong("usado"),
+                        fallo = if (o.isNull("fallo")) null else o.getString("fallo"),
+                    )
+                }
+            } catch (e: Throwable) {
+                Log.w(ETIQUETA, "no se pudieron leer las cuotas", e)
+                nombres.associateWith { Cuota(null, null, "No se pudo preguntar.") }
+            }
+            runOnUiThread {
+                cuotas = leidas
+                // Solo se repinta la lista: `pintar()` entero volvería a decidir visibilidades
+                // y a pedir el espacio del volumen, que no ha cambiado por esto.
+                pintarCuentas(cuentasEnlazadas(), Sesion.id != null)
+            }
         }
     }
 
@@ -531,11 +646,6 @@ class Principal : Activity() {
                 avisar(dicho, esperando = false)
             }
         }
-    }
-
-    private fun conectar(tipo: String) = enSegundoPlano(MIENTRAS_NAVEGADOR, cancelable = true) {
-        val nombre = Nucleo.conectar(tipo, conf.absolutePath)
-        "Cuenta conectada como «$nombre»."
     }
 
     /**

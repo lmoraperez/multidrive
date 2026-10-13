@@ -404,6 +404,25 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_espacio<'local>(
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Lo que declara cada cuenta enlazada sobre su espacio, en JSON.
+///
+/// No hace falta el volumen abierto. Ver `cuentas::cuotas` para lo que significa cada campo,
+/// y en particular que `usado` es de la cuenta entera y no de MultiDrive.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_cuotas<'local>(
+    mut entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+    config: JString<'local>,
+) -> JString<'local> {
+    entorno
+        .with_env(|env| -> Result<JString<'local>, Fallo> {
+            let config = config.try_to_string(env)?;
+            let json = cuentas::cuotas(&config).map_err(Fallo::Dicho)?;
+            Ok(env.new_string(json)?)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 /// Que pasaria si se metieran en el volumen las cuentas que no lo forman. No toca nada.
 ///
 /// Devuelve JSON. Puede traer `problema` en vez de un plan, y entonces no se puede ampliar:

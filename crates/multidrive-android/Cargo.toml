@@ -20,6 +20,12 @@ multidrive-core.workspace = true
 multidrive-raid.workspace = true
 multidrive-backend.workspace = true
 tokio.workspace = true
+# Para preguntar a todas las cuentas a la vez. En serie, tres nubes lentas son tres esperas
+# seguidas delante de una pantalla que todavia no ha pintado la barra de ninguna.
+#
+# La misma version que el nucleo, que ya la trae: dos copias de `futures` en el mismo binario
+# compilan, pero no hay razon para pagarlas.
+futures = "0.3.34"
 serde_json.workspace = true
 thiserror.workspace = true
 # La misma version que arrastra `rustls-platform-verifier`, que tambien la necesita en Android.

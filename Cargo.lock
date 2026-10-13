@@ -2565,6 +2565,7 @@ dependencies = [
 name = "multidrive-android"
 version = "0.0.1"
 dependencies = [
+ "futures",
  "jni 0.22.4",
  "multidrive-backend",
  "multidrive-core",
