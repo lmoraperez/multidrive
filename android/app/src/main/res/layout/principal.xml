@@ -152,22 +152,6 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical" />
 
-                <Button
-                    android:id="@+id/drive"
-                    style="@style/BotonSuave"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp"
-                    android:text="Conectar Google Drive" />
-
-                <Button
-                    android:id="@+id/onedrive"
-                    style="@style/BotonSuave"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Conectar OneDrive" />
-
                 <TextView
                     android:id="@+id/nota_cuentas"
                     android:layout_width="match_parent"

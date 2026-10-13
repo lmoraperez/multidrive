@@ -165,6 +165,21 @@ object Nucleo {
     external fun espacio(id: Long): String
 
     /**
+     * Lo que declara cada cuenta enlazada sobre su espacio, en JSON:
+     * `[{ nombre, total, usado }]`, o `{ nombre, fallo }` para la que no conteste.
+     *
+     * `total` y `usado` pueden venir nulos: hay proveedores **sin cupo que declarar**, y eso
+     * no es cero, es que no hay barra que pintar.
+     *
+     * **`usado` es de la cuenta entera, no de MultiDrive.** A quien mira le queda menos sitio
+     * por sus fotos tanto como por sus fragmentos, y la barra tiene que decirlo o se lee como
+     * «esto ocupa MultiDrive», que es falso y por mucho.
+     *
+     * No hace falta el volumen abierto. Cuesta una peticion por cuenta, todas a la vez.
+     */
+    external fun cuotas(config: String): String
+
+    /**
      * Que pasaria si se metieran en el volumen las cuentas enlazadas que no lo forman, **sin
      * tocar nada**. JSON: `{ nuevos: [...], antes, despues, gana, suma }`, o
      * `{ nuevos, antes, problema }` si no se puede.

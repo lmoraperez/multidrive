@@ -14,6 +14,49 @@ use std::path::Path;
 
 use multidrive_backend::{Backend, config, live};
 
+/// Lo que declara cada cuenta enlazada sobre su espacio, en JSON.
+///
+/// `[{ nombre, total, usado, fallo }]`, en el orden en que estan configuradas. `total` y
+/// `usado` pueden venir vacios: hay proveedores **sin cupo que declarar** --un bucket S3 se
+/// factura por lo que ocupa y no se llena--, y eso no es cero, es que no hay barra que pintar.
+/// `fallo` es otra cosa distinta: no se pudo preguntar.
+///
+/// **`usado` es de la cuenta entera, no de MultiDrive.** Es lo que responden las APIs de cupo
+/// de Drive y OneDrive, y es la cifra honesta para una barra: a quien mira le queda menos sitio
+/// por sus fotos tanto como por sus fragmentos. Quien la pinte tiene que decirlo, o la barra se
+/// lee como «esto es lo que ocupa MultiDrive», que es falso y por mucho.
+///
+/// No hace falta tener el volumen abierto: se pregunta a las cuentas, no al volumen. Cuesta
+/// una peticion por cuenta, todas a la vez.
+pub fn cuotas(config_ruta: &str) -> Result<String, String> {
+    let backends = live::configurados_de(Path::new(config_ruta))
+        .map_err(|e| format!("Configuración inválida: {e}"))?;
+
+    let filas = crate::sesion::en_el_runtime(async move {
+        let medidas = futures::future::join_all(backends.iter().map(|b| async move {
+            (b.name().to_string(), b.cuota().await)
+        }))
+        .await;
+
+        Ok(medidas
+            .into_iter()
+            .map(|(nombre, r)| match r {
+                Ok(c) => serde_json::json!({
+                    "nombre": nombre,
+                    "total": c.total,
+                    "usado": c.usado,
+                }),
+                Err(e) => serde_json::json!({
+                    "nombre": nombre,
+                    "fallo": e.to_string(),
+                }),
+            })
+            .collect::<Vec<_>>())
+    })?;
+
+    Ok(serde_json::Value::Array(filas).to_string())
+}
+
 /// Quita del fichero todo lo de una cuenta. Devuelve lo que hay que contar.
 ///
 /// Se niega si esa cuenta forma parte de un volumen **abierto ahora mismo**: ahi si se sabe
