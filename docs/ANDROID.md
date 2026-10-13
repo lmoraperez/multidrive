@@ -122,6 +122,135 @@ necesite.
 Las licencias del SDK de Google están aceptadas en `sdk\licenses`. Se revocan borrando esa
 carpeta, o el SDK entero.
 
+## El flujo de pantallas
+
+Sacado del código, no dibujado a mano: las entradas salen del manifiesto, las flechas de las
+llamadas a `startActivity`, y los estados de qué toca `Sesion`. Si algo de esto no coincide con
+lo que hace la aplicación, el que miente es el diagrama.
+
+Van dos, porque son dos cosas distintas: por dónde se entra y se pasa, y en qué estado está
+`Principal` mientras tanto.
+
+### Las pantallas
+
+```mermaid
+flowchart LR
+    L([Lanzador del teléfono]) --> PR
+    SH([Otra app comparte<br>SEND · SEND_MULTIPLE]) --> CO
+    AF([App de Archivos<br>del sistema]) --> PV
+
+    PR["<b>Principal</b><br>cuentas y volumen"]
+    CR["<b>Crear</b><br>proveedores y topología"]
+    AB["<b>Abrir</b><br>frase · trae las demás cuentas"]
+    EL["<b>Eliminar</b><br>pide escribir el nombre"]
+    EX["<b>Explorador</b><br>buscar, subir, renombrar, borrar"]
+    AJ["<b>Ajustes</b><br>carpetas que se suben solas"]
+    CO["<b>Compartir</b><br>recibe de la hoja del sistema"]
+    FA["<b>Archivos</b><br>listado propio"]
+
+    PV[["<b>Proveedor</b><br>sirve el volumen · no es pantalla"]]
+    SU[["<b>Subidor</b><br>JobScheduler · no es pantalla"]]
+
+    PR --> CR
+    PR --> AB
+    PR --> EL
+    PR --> EX
+    PR --> AJ
+    PR -->|Ver en Archivos| AF
+    PR -.->|si el teléfono no trae<br>navegador de orígenes| FA
+    EX --> AJ
+
+    CR -->|creado| PR
+    AB -->|abierto| PR
+    EL -->|eliminado| PR
+
+    AJ -.->|programa el trabajo| SU
+```
+
+### Los cuatro estados de `Principal`
+
+`Principal` es una sola `Activity`, pero `pintar()` enseña botones distintos según si hay
+cuentas enlazadas, si la sesión está abierta y si se sabe que en esas cuentas no hay volumen.
+Dibujarla como un nodo escondería justo lo que hay que validar: que **`Abrir` y `Eliminar` solo
+existen en un estado**, y **`Crear` en otro**.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> sinCuentas
+
+    sinCuentas: sin cuentas enlazadas
+    hayVolumen: cerrado · hay volumen
+    noHayVolumen: cerrado · no hay volumen
+    abierto: volumen abierto
+
+    sinCuentas --> hayVolumen: Crear termina
+    sinCuentas --> abierto: Abrir termina
+    hayVolumen --> abierto: la frase es correcta
+    hayVolumen --> noHayVolumen: abrir dice que no hay volumen
+    hayVolumen --> noHayVolumen: Eliminar termina
+    noHayVolumen --> hayVolumen: Crear termina
+    abierto --> hayVolumen: Cerrar volumen
+```
+
+Qué botones hay en cada estado, que es lo que se valida contra el teléfono:
+
+| Estado | Lo que se ve |
+|---|---|
+| sin cuentas enlazadas | «Crear un volumen desde cero» y «Abrir un volumen que ya existe», y **nada más**: los botones de enlazar cuenta viven en la tarjeta de cuentas, que está oculta hasta que hay una. Se enlaza desde dentro de `Crear` o de `Abrir` |
+| cerrado · hay volumen | frase de paso, **Abrir**, **Eliminar**, «Traer mis cuentas» |
+| cerrado · no hay volumen | **Crear volumen** |
+| volumen abierto | **Cerrar**, «Ver en Archivos», «Explorar», «Configuración» |
+
+### Lo que el grafo dice, y hay que comprobar
+
+| | |
+|---|---|
+| **Tres entradas**, no una | el lanzador, la hoja de compartir de otra aplicación, y la app de Archivos del sistema. Las dos últimas entran **sin pasar por `Principal`**, así que cada una aguanta el volumen cerrado por su cuenta: `Compartir` lo dice y no sube, y el `Proveedor` no entrega nada |
+| `Crear` deja el volumen **cerrado** | termina en «hay volumen, cerrado», no en «abierto». Después hay que escribir la frase |
+| `Crear` no sale siempre | aparece solo cuando se sabe que no hay volumen. Ofrecerlo siempre ponía dos botones a competir sin decir cuál tocaba |
+| `Archivos` es un **repuesto** | solo se llega si el teléfono no trae navegador de orígenes. En uno que sí lo trae, esa pantalla no se ve nunca |
+| Ningún estado es un callejón | de los cuatro se sale, y las tres pantallas que terminan vuelven a un estado **distinto** del que salieron |
+
+
+### Validado contra un teléfono
+
+TECNO LH7n (Android 14), **con la versión de Google Play**, `versionCode` 12, el 13 de octubre
+de 2026. El teléfono estaba sin cuentas enlazadas, así que se validó el estado inicial y lo que
+sale de él; lo demás exige enlazar una cuenta de verdad y escribir la frase de paso, y eso no se
+hizo.
+
+Se recorrió con `adb` leyendo la jerarquía de vistas (`uiautomator dump`) en cada paso, no
+mirando la pantalla.
+
+**Confirmado:**
+
+| | |
+|---|---|
+| El estado `sin cuentas enlazadas` | el texto es «Empieza por uno de los dos caminos.», y solo hay los dos botones de entrada |
+| `Principal → Crear` | lleva a «CREAR VOLUMEN», con «Conectar Google Drive», «Conectar OneDrive» y «Continuar» |
+| `Principal → Abrir` | lleva a «ABRIR UN VOLUMEN» |
+| El «atrás» de las dos | devuelve a `Principal` |
+| `Explorador`, `Ajustes`, `Archivos` y `Eliminar` **no son alcanzables desde fuera** | `am start` las rechaza con `SecurityException: not exported`. Ninguna otra aplicación puede abrirlas |
+| El `Proveedor` tampoco | pedirlo directamente da `Permission Denial: requires ACTION_OPEN_DOCUMENT`. Solo el sistema entra, que es lo que el manifiesto quería |
+
+**Lo que el teléfono desmintió del diagrama.** En el estado `sin cuentas enlazadas` **no** se
+puede enlazar una cuenta desde `Principal`: `drive` y `onedrive` viven dentro de
+`tarjeta_cuentas`, que está `GONE` hasta que hay una cuenta. Se enlaza desde dentro de `Crear` o
+de `Abrir`. El diagrama de arriba ya está corregido; esto queda escrito porque es justo para lo
+que sirve validar contra el aparato en vez de contra el código leído.
+
+**Lo que no se pudo validar**, y por qué: los estados `cerrado · hay volumen`, `cerrado · no hay
+volumen` y `volumen abierto` exigen enlazar una cuenta de nube real. `Eliminar` se deja sin
+recorrer a propósito: lo que valida esa pantalla es que borre.
+
+**Una advertencia sobre el `minSdk`.** El bundle que se subió declara `minSdkVersion="26"`
+--Android 8--, y eso es lo que dicen el `build.gradle.kts` y el manifiesto fusionado. Pero el
+paquete que Play instaló en este teléfono declara `minSdk=32`. Es lo normal del reparto por
+variantes de Play y no prueba que la aplicación exija Android 12L, pero **tampoco está
+comprobado** que instale en un Android 8. Se confirma mirando el catálogo de dispositivos en
+Play Console, o instalando en un emulador con API 26.
+
 ## La forma de la aplicación
 
 No es un montaje. Es un **`DocumentsProvider`** del Storage Access Framework: el volumen
