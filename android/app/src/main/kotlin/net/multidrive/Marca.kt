@@ -128,3 +128,71 @@ fun LinearLayout.comoPantalla(): LinearLayout = apply {
     orientation = LinearLayout.VERTICAL
     setPadding(56, 72, 56, 56)
 }
+
+/**
+ * La barra de espacio de una cuenta, con lo usado y lo libre debajo.
+ *
+ * Tres estados, y los tres dicen cosas distintas a propósito:
+ *
+ * - **Sin respuesta todavía**: no hay barra, solo «Preguntando…». Una barra al 0 % es una
+ *   afirmación, y mientras no ha contestado nadie no se sabe nada que afirmar.
+ * - **Sin cupo que declarar**, o un fallo al preguntar: tampoco hay barra. Dibujar una al 0 %
+ *   para un bucket S3 sería inventarse un total que ese proveedor no tiene.
+ * - **Con cifras**: la barra, y debajo lo usado y lo libre.
+ *
+ * Quien la use tiene que decir en algún sitio que **lo ocupado es de la cuenta entera**, no
+ * solo de MultiDrive. Esta función no lo repite por fila: saldría tres veces en tres líneas.
+ */
+fun Activity.barraDeEspacio(q: Cuota?, pidiendo: Boolean): View {
+    val caja = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, 8, 0, 0)
+    }
+
+    val pie = { texto: String ->
+        TextView(this).apply {
+            text = texto
+            textSize = 12.5f
+            setTextColor(getColor(R.color.apagado))
+            setPadding(0, 6, 0, 0)
+        }
+    }
+
+    if (q == null) {
+        if (pidiendo) caja.addView(pie("Preguntando…"))
+        return caja
+    }
+    if (q.fallo != null || q.total == null || q.usado == null) {
+        caja.addView(pie(q.fallo ?: "No dice cuánto espacio tiene."))
+        return caja
+    }
+
+    val total = q.total
+    val usado = q.usado.coerceAtMost(total)
+    val fraccion = if (total == 0L) 0f else usado.toFloat() / total.toFloat()
+
+    caja.addView(
+        LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (resources.displayMetrics.density * 6).toInt(),
+            )
+            addView(View(this@barraDeEspacio).apply {
+                setBackgroundColor(getColor(R.color.acento))
+                layoutParams =
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, fraccion)
+            })
+            addView(View(this@barraDeEspacio).apply {
+                setBackgroundColor(getColor(R.color.linea))
+                layoutParams = LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.MATCH_PARENT, 1f - fraccion
+                )
+            })
+        }
+    )
+    caja.addView(
+        pie("${legible(usado)} usados · ${legible(total - usado)} libres de ${legible(total)}")
+    )
+    return caja
+}
