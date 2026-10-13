@@ -200,8 +200,18 @@ class Eliminar : Activity() {
                 //
                 // El fallo de una no para a las demas: lo que se busca es dejar el telefono
                 // limpio, y pararse a la mitad lo deja peor que seguir.
+                // Lo que se quitó se **dice**, aunque saliera bien. El aviso de antes lo
+                // anunciaba, pero quien lo leyó por encima y llega aquí solo ve lo que se
+                // borró de las nubes; que además se haya quedado sin cuentas enlazadas se
+                // entera al volver y encontrarse la pantalla de la primera vez.
+                val cuantas = contarCuentas()
                 val sueltas = desenlazarTodas()
-                if (sueltas.isEmpty()) r else "$r\n\n$sueltas"
+                if (sueltas.isEmpty()) {
+                    "$r\n\nY se quitaron de este teléfono las $cuantas cuenta(s): queda como " +
+                        "recién instalado."
+                } else {
+                    "$r\n\n$sueltas"
+                }
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo retirar el volumen", e)
                 dicho(e)
@@ -219,6 +229,14 @@ class Eliminar : Activity() {
      *
      * Corre en el hilo de fondo, como todo lo que habla con el núcleo.
      */
+    /** Cuántas cuentas hay enlazadas ahora. Se pregunta **antes** de quitarlas, claro. */
+    private fun contarCuentas(): Int = try {
+        JSONArray(Nucleo.cuentas(conf.absolutePath)).length()
+    } catch (e: Throwable) {
+        Log.w(ETIQUETA, "no se pudieron contar las cuentas", e)
+        0
+    }
+
     private fun desenlazarTodas(): String {
         val nombres = try {
             val lista = JSONArray(Nucleo.cuentas(conf.absolutePath))
