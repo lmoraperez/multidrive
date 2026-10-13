@@ -417,7 +417,7 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_mirarAmpliacion<'local>
 ) -> JString<'local> {
     entorno
         .with_env(|env| -> Result<JString<'local>, Fallo> {
-            let config: String = env.get_string(&config)?.into();
+            let config = config.try_to_string(env)?;
             let json = ampliar::mirar(id, &config).map_err(Fallo::Dicho)?;
             Ok(env.new_string(json)?)
         })
@@ -437,7 +437,7 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_ampliar<'local>(
 ) -> JString<'local> {
     entorno
         .with_env(|env| -> Result<JString<'local>, Fallo> {
-            let config: String = env.get_string(&config)?.into();
+            let config = config.try_to_string(env)?;
             let json = ampliar::hacer(id, &config).map_err(Fallo::Dicho)?;
             Ok(env.new_string(json)?)
         })

@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.util.Log
+import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -184,6 +185,19 @@ class Compartir : Activity() {
         }
         // El TextView viene de `onCreate` con su propio relleno; dentro de la caja sobra.
         texto.setPadding(0, 0, 0, 0)
+
+        // **Y viene con padre.** `onCreate` lo metio en la pantalla de antes, y Android no
+        // deja que una vista este en dos sitios: `addView` lanza «The specified child already
+        // has a parent» y la aplicacion se cae antes de pintar nada.
+        //
+        // No era un caso raro: se cae en los **cuatro** caminos que llegan aqui --sin
+        // ficheros, volumen cerrado, volumen de solo lectura, y subida con fallos--. El unico
+        // que se salvaba era el de todo correcto, que sale por un aviso flotante y no pasa por
+        // aqui. O sea que compartir con el volumen cerrado, que es lo normal, tiraba la
+        // aplicacion en vez de decir «abrelo y vuelve a compartir».
+        //
+        // Se encontro recorriendo la aplicacion con adb, no compilando: el codigo se lee bien.
+        (texto.parent as? ViewGroup)?.removeView(texto)
         caja.addView(texto)
         caja.addView(
             android.widget.Button(this).apply {
