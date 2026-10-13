@@ -246,7 +246,7 @@ object Nucleo {
      * Devuelve el nombre con el que quedo: `gdrive`, `gdrive1`... Nunca desde el hilo de la
      * interfaz: se queda esperando a que alguien de permiso en otra pantalla.
      */
-    external fun conectar(tipo: String, config: String): String
+    external fun conectar(tipo: String, config: String, volverA: String): String
 
     /**
      * El contexto de la aplicacion, para poder abrir el navegador desde Rust.

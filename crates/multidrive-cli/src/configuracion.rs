@@ -262,6 +262,8 @@ pub async fn conectar(tipo: &str) -> Result<()> {
         &app.client_id,
         &app.client_secret,
         &multidrive_backend::oauth::abrir_en_navegador,
+        // En el escritorio no hace falta volver a ningun sitio: la ventana sigue detras.
+        None,
     )
     .await?;
     println!(

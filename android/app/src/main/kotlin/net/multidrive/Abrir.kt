@@ -194,7 +194,7 @@ class Abrir : Activity() {
         pintar(MIENTRAS_NAVEGADOR)
         thread {
             val dicho = try {
-                val nombre = Nucleo.conectar(tipo, conf.absolutePath)
+                val nombre = Nucleo.conectar(tipo, conf.absolutePath, VOLVER_A)
                 "Cuenta conectada como «$nombre». Mirando si trae tu configuración…"
             } catch (e: Throwable) {
                 Log.w(ETIQUETA, "no se pudo conectar", e)

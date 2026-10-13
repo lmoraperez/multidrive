@@ -83,6 +83,30 @@
             android:exported="false"
             android:label="Ampliar el volumen" />
 
+        <!-- La vuelta del navegador al terminar de enlazar una cuenta.
+
+             `exported` tiene que ser true: quien la lanza es el navegador, que es otra
+             aplicacion. No recibe nada ni hace nada (nace y se cierra), asi que no hay nada
+             que empujarle desde fuera: el codigo de autorizacion viaja por el puerto local,
+             que es otro camino. Lo unico que consigue quien la abra a mano es lo mismo que
+             abrir MultiDrive desde el lanzador. Ver Volver.kt.
+
+             `noHistory` y `excludeFromRecents` para que no quede rastro de una pantalla que
+             nunca llego a verse. -->
+        <activity
+            android:name=".Volver"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="multidrive" android:host="conectado" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".Archivos"
             android:exported="false"

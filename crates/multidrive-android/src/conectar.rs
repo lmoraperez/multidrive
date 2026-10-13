@@ -127,7 +127,7 @@ fn abrir_navegador(url: &str) -> Result<(), String> {
 /// Devuelve el nombre con el que quedo --`gdrive`, `gdrive1`...-- que es lo que el usuario va a
 /// ver. Bloquea hasta cinco minutos esperando a que se de permiso en el navegador: **nunca desde
 /// el hilo de la interfaz**.
-pub fn conectar(tipo: &str, config: &str) -> Result<String, String> {
+pub fn conectar(tipo: &str, config: &str, volver_a: &str) -> Result<String, String> {
     use multidrive_backend::{aplicacion, catalogo, conformance, live};
 
     let tipo = tipo.to_uppercase();
@@ -168,6 +168,9 @@ pub fn conectar(tipo: &str, config: &str) -> Result<String, String> {
             &app.client_id,
             &app.client_secret,
             &|url| abrir_navegador(url),
+            // Vacio significa que no hay a donde volver: asi es como el escritorio lo pide,
+            // y asi tiene que poder pedirlo tambien quien llame desde Kotlin sin enlace.
+            if volver_a.is_empty() { None } else { Some(volver_a) },
         );
         tokio::select! {
             r = flujo => r.map_err(|e| e.to_string()),
