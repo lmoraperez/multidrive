@@ -180,7 +180,8 @@ Pide Android 8 o posterior y es solo para `arm64-v8a`, que es lo que llevan los 
 desde hace años.
 
 No es un visor de lo que hizo el escritorio: desde el móvil se **crea** un volumen —eligiendo
-proveedores y topología igual que en la ventana— o se abre uno que ya existe. Y para abrirlo no
+proveedores y topología igual que en la ventana—, se **amplía** con cuentas nuevas, y se
+**elimina**. Y para abrirlo no
 hay que volver a enlazar las cuentas una por una: con **una** cuenta enlazada y la frase de
 paso, la maleta trae las demás. En un teléfono eso se nota, porque cada cuenta son una vuelta
 al navegador y una pantalla de permisos escribiendo con el teclado del móvil.
@@ -200,6 +201,15 @@ Lo que hace, una vez abierto:
 - **Sube carpetas del teléfono solo**, como la carga automática de Nextcloud: se eligen las
   carpetas, y un trabajo del sistema sube lo nuevo cuando hay red —con opción de **solo
   WiFi**— sin tener la aplicación delante.
+- **Dice cuánto queda**: el tamaño del volumen con su espacio libre, y una barra por cuenta.
+  Lo ocupado que enseña la barra es el de la cuenta entera, no solo lo de MultiDrive, y la
+  pantalla lo dice: ahí cuentan también tus fotos y tu correo.
+- **Crece metiéndole cuentas nuevas**, con una advertencia que da antes de empezar: solo un
+  volumen `lineal` gana espacio al añadir una. En espejo, paridad o unión cada trozo se parte
+  entre todas, así que una más da **margen de caídas** y ni un byte de sitio; ganar sitio ahí
+  es reescribir el volumen entero, que se hace desde el escritorio.
+- **Vuelve sola del navegador** al enlazar una cuenta, sin tener que cerrar la pestaña y
+  buscar la aplicación.
 
 Dos cosas que conviene saber antes de activarlas:
 
