@@ -4,7 +4,9 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.os.Bundle
 import android.provider.DocumentsContract
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -55,6 +57,7 @@ class Crear : Activity() {
     private lateinit var lista: LinearLayout
     private lateinit var frase: EditText
     private lateinit var otraVez: EditText
+    private lateinit var coinciden: TextView
     private lateinit var boton: Button
     private lateinit var avisoFrase: TextView
     private lateinit var pasoCuentas: LinearLayout
@@ -170,13 +173,33 @@ class Crear : Activity() {
             setPadding(0, 12, 0, 12)
             visibility = View.GONE
         }
+        // Lo que pasa con las dos frases, debajo de ellas y no arriba del todo: quien está
+        // escribiendo mira el teclado y los campos, no la cabecera de la pantalla.
+        coinciden = TextView(this).apply {
+            textSize = 13f
+            setPadding(0, 10, 0, 0)
+            visibility = View.GONE
+        }
         boton = Button(this).apply {
             text = "Crear volumen"
             visibility = View.GONE
+            isEnabled = false
             setOnClickListener { confirmar() }
         }
+
+        // Se revisa a cada tecla, no al pulsar. Enterarte de que no coinciden **después** de
+        // darle al botón es enterarte tarde: para entonces ya creías haber terminado.
+        val vigilante = object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) = revisarFrases()
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        }
+        frase.addTextChangedListener(vigilante)
+        otraVez.addTextChangedListener(vigilante)
+
         caja.addView(frase)
         caja.addView(otraVez)
+        caja.addView(coinciden)
         caja.addView(aviso)
         caja.addView(boton)
         avisoFrase = aviso
@@ -444,14 +467,43 @@ class Crear : Activity() {
      * poner otra encima porque una sal nueva dejaria inalcanzable todo lo anterior. Asi que lo
      * que se va a hacer se dice **con su nombre** antes de hacerlo.
      */
+    /**
+     * Mira si las dos frases coinciden, y enciende el botón solo si lo hacen.
+     *
+     * # Por qué calla mientras vas bien
+     *
+     * Decir «no coinciden» en cuanto el segundo campo tiene una letra es cierto y es inútil:
+     * claro que no coinciden, llevas una letra. Así que mientras lo escrito sea el principio
+     * de la primera frase no se dice nada, y en cuanto te desvías **sí**, en esa misma tecla.
+     * No hay que terminar de escribirla para enterarte de que te equivocaste al empezar.
+     */
+    private fun revisarFrases() {
+        val a = frase.text.toString()
+        val b = otraVez.text.toString()
+
+        val iguales = a.isNotEmpty() && a == b
+        boton.isEnabled = iguales
+
+        val texto = when {
+            b.isEmpty() -> null
+            iguales -> "Las dos coinciden."
+            // Va bien hasta donde lleva escrito: todavía no hay nada que decir.
+            a.startsWith(b) -> null
+            else -> "Las dos frases no coinciden."
+        }
+
+        coinciden.text = texto ?: ""
+        coinciden.visibility = if (texto == null) View.GONE else View.VISIBLE
+        coinciden.setTextColor(getColor(if (iguales) R.color.acento else R.color.aviso))
+    }
+
     private fun confirmar() {
         val o = opciones.getOrNull(elegida) ?: return
+        // Las dos frases ya se comprobaron en `revisarFrases`, que es quien enciende este
+        // botón. Se vuelve a mirar igualmente: esto escribe la llave del volumen en todas las
+        // nubes, y una condición que vive en un solo sitio es la que un día se cae sola.
         val f = frase.text.toString()
-        if (f.isEmpty()) {
-            estado.text = "Escribe una frase de paso."
-            return
-        }
-        if (f != otraVez.text.toString()) {
+        if (f.isEmpty() || f != otraVez.text.toString()) {
             estado.text = "Las dos frases no coinciden. Escríbelas otra vez."
             return
         }
