@@ -69,6 +69,18 @@ instalado desde Google Play como se instala cualquier aplicación.
 - **Su propio explorador**, con buscador, fechas, tamaños, favoritos y menú lateral, en vez de
   depender de la app de Archivos del fabricante.
 - **Subir carpetas del teléfono sola**, con `JobScheduler` y opción de solo WiFi.
+- **Ampliar el volumen** metiéndole cuentas enlazadas que no lo formaban *(escrito, sin
+  publicar todavía)*. Con una advertencia que la pantalla da antes de empezar: **solo un volumen `lineal` crece** al añadir una cuenta.
+  En espejo, paridad o unión cada trozo se parte entre todas, así que una más no agranda nada
+  y lo que se gana es aguantar una caída más. Ganar sitio ahí es reescribir el volumen entero,
+  que tarda horas y se hace desde el escritorio.
+- **Decir cuánto cabe y cuánto queda**, preguntándoselo a cada cuenta: una petición por
+  proveedor, no una enumeración del árbol. *(escrito, sin publicar todavía)*.
+
+> **Las dos últimas, y los cambios en crear y eliminar, están en el código y no en Google
+> Play.** La versión que se instala hoy es la `versionCode` 12, de antes de esto. Hasta que se
+> suba una nueva, el README y la portada no los cuentan a propósito: describen lo que alguien
+> puede instalar, no lo que hay en la rama.
 
 Lo que falta ya no es «que sea una aplicación y no una prueba»: es **miniaturas** —las carpetas
 de fotos se ven como una lista de nombres— y decidir qué hacer cuando Android mata el proceso a
@@ -145,6 +157,7 @@ flowchart LR
     EL["<b>Eliminar</b><br>pide escribir el nombre"]
     EX["<b>Explorador</b><br>buscar, subir, renombrar, borrar"]
     AJ["<b>Ajustes</b><br>carpetas que se suben solas"]
+    AM["<b>Ampliar</b><br>mete en el volumen las cuentas sueltas"]
     CO["<b>Compartir</b><br>recibe de la hoja del sistema"]
     FA["<b>Archivos</b><br>listado propio"]
 
@@ -156,6 +169,7 @@ flowchart LR
     PR --> EL
     PR --> EX
     PR --> AJ
+    PR --> AM
     PR -->|Ver en Archivos| AF
     PR -.->|si el teléfono no trae<br>navegador de orígenes| FA
     EX --> AJ
@@ -184,12 +198,11 @@ stateDiagram-v2
     noHayVolumen: cerrado · no hay volumen
     abierto: volumen abierto
 
-    sinCuentas --> hayVolumen: Crear termina
-    sinCuentas --> abierto: Abrir termina
+    sinCuentas --> abierto: Crear o Abrir terminan
     hayVolumen --> abierto: la frase es correcta
     hayVolumen --> noHayVolumen: abrir dice que no hay volumen
-    hayVolumen --> noHayVolumen: Eliminar termina
-    noHayVolumen --> hayVolumen: Crear termina
+    hayVolumen --> sinCuentas: Eliminar termina (borra también las cuentas)
+    noHayVolumen --> abierto: Crear termina
     abierto --> hayVolumen: Cerrar volumen
 ```
 
@@ -200,17 +213,18 @@ Qué botones hay en cada estado, que es lo que se valida contra el teléfono:
 | sin cuentas enlazadas | «Crear un volumen desde cero» y «Abrir un volumen que ya existe», y **nada más**: los botones de enlazar cuenta viven en la tarjeta de cuentas, que está oculta hasta que hay una. Se enlaza desde dentro de `Crear` o de `Abrir` |
 | cerrado · hay volumen | frase de paso, **Abrir**, **Eliminar**, «Traer mis cuentas» |
 | cerrado · no hay volumen | **Crear volumen** |
-| volumen abierto | **Cerrar**, «Ver en Archivos», «Explorar», «Configuración» |
+| volumen abierto | **Cerrar**, «Ver en Archivos», «Explorar», «Ampliar con más cuentas», «Configuración», y el tamaño del volumen con lo que le queda libre |
 
 ### Lo que el grafo dice, y hay que comprobar
 
 | | |
 |---|---|
 | **Tres entradas**, no una | el lanzador, la hoja de compartir de otra aplicación, y la app de Archivos del sistema. Las dos últimas entran **sin pasar por `Principal`**, así que cada una aguanta el volumen cerrado por su cuenta: `Compartir` lo dice y no sube, y el `Proveedor` no entrega nada |
-| `Crear` deja el volumen **cerrado** | termina en «hay volumen, cerrado», no en «abierto». Después hay que escribir la frase |
+| `Crear` deja el volumen **abierto** | se abre con la frase que acabas de escribir. Antes volvía cerrado y había que escribirla otra vez en la pantalla de al lado, un minuto después, lo que no protegía de nada |
 | `Crear` no sale siempre | aparece solo cuando se sabe que no hay volumen. Ofrecerlo siempre ponía dos botones a competir sin decir cuál tocaba |
 | `Archivos` es un **repuesto** | solo se llega si el teléfono no trae navegador de orígenes. En uno que sí lo trae, esa pantalla no se ve nunca |
 | Ningún estado es un callejón | de los cuatro se sale, y las tres pantallas que terminan vuelven a un estado **distinto** del que salieron |
+| `Eliminar` deja el teléfono **como recién instalado** | además de borrar el volumen, desenlaza las cuentas: sin eso quedaban apuntando a algo que ya no existe, y empezar de cero obligaba a quitarlas una por una |
 
 
 ### Validado contra un teléfono

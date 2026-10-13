@@ -57,6 +57,13 @@ pub struct Abierto {
     /// proveedor de documentos las reparte por **un solo** hilo, asi que el candado no anade
     /// espera que no hubiera.
     pub volumen: Arc<tokio::sync::Mutex<Volume>>,
+    /// La cabecera con la que se abrio.
+    ///
+    /// Se guarda porque ampliar la necesita entera --sal, reparto y version incluidos-- y
+    /// volver a leerla seria otra vuelta a la red para algo que ya se tuvo en la mano. Lo que
+    /// **no** hace es sustituir a la de arriba: al ampliar se publica una nueva, y esta queda
+    /// vieja hasta que se vuelva a abrir el volumen.
+    pub cabecera: multidrive_core::header::Header,
     /// El permiso de escritura mientras dure la sesion. `None` si se abrio para leer.
     ///
     /// Vive aqui y no en una variable suelta porque asi se suelta **con la sesion**: cerrar el
@@ -121,7 +128,7 @@ pub fn abrir(config: &str, frase: &str, escritura: bool) -> Result<i64, String> 
         .map(|b| Arc::new(b) as Arc<dyn Backend>)
         .collect();
 
-    let (volumen, testigo) = runtime().block_on(async {
+    let (volumen, testigo, cabecera) = runtime().block_on(async {
         let cabecera = header::read(&backends)
             .await
             .map_err(|e| format!("no se pudo leer la cabecera: {e}"))?
@@ -151,7 +158,7 @@ pub fn abrir(config: &str, frase: &str, escritura: bool) -> Result<i64, String> 
         let v = Volume::open(almacen)
             .await
             .map_err(|e| format!("no se pudo abrir: {e}\n¿Es esa la frase de paso?"))?;
-        Ok::<_, String>((v, testigo))
+        Ok::<_, String>((v, testigo, cabecera))
     })?;
 
     static SIGUIENTE: AtomicI64 = AtomicI64::new(1);
@@ -160,6 +167,7 @@ pub fn abrir(config: &str, frase: &str, escritura: bool) -> Result<i64, String> 
         id,
         Arc::new(Abierto {
             volumen: Arc::new(tokio::sync::Mutex::new(volumen)),
+            cabecera,
             testigo,
             escritura,
         }),
@@ -353,6 +361,31 @@ pub fn recientes(id: i64, cuantos: usize) -> Result<String, String> {
         let v = abierto.volumen.lock().await;
         let r = multidrive_core::recorrer::recientes(&v, cuantos).await?;
         Ok(a_json(&r))
+    })
+}
+
+/// Cuanto cabe en el volumen y cuanto queda, preguntandoselo a cada proveedor.
+///
+/// Cuesta **una peticion por proveedor**, en paralelo, no una enumeracion del arbol. Aun asi
+/// es red: quien lo llame desde algo que se repinta solo tiene que guardarse la respuesta en
+/// vez de pedirla en cada pintada.
+///
+/// `total` y `libre` pueden venir vacios, y no es lo mismo que cero: significa que ningun
+/// proveedor declaro cupo. `sin_medir` nombra a los que no contestaron o no declaran nada, y
+/// **con esa lista no vacia las dos cifras son un techo, no una medida** --cualquiera de los
+/// que faltan podria ser el mas apretado--. Quien lo pinte tiene que decirlo.
+pub fn espacio(id: i64) -> Result<String, String> {
+    let abierto = sesion(id)?;
+    runtime().block_on(async move {
+        let v = abierto.volumen.lock().await;
+        let e = v.store().espacio().await;
+        Ok(serde_json::json!({
+            "total": e.total,
+            "libre": e.libre,
+            "sin_medir": e.sin_respuesta,
+            "es_medida": e.es_medida(),
+        })
+        .to_string())
     })
 }
 

@@ -18,6 +18,7 @@ import android.widget.TextView
 import android.widget.Toast
 import net.multidrive.nucleo.Nucleo
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -77,13 +78,25 @@ class Principal : Activity() {
     // El volumen.
     private lateinit var tituloVolumen: TextView
     private lateinit var tarjetaVolumen: View
+    private lateinit var espacio: TextView
     private lateinit var notaFrase: TextView
+
+    /**
+     * Lo ultimo que contestaron los proveedores sobre el espacio, y de que sesion.
+     *
+     * Se guarda porque `pintar()` corre en cada vuelta a la pantalla y preguntar cuesta una
+     * peticion por proveedor. La sesion va con el dato para no ensenar la cifra de un volumen
+     * sobre otro: al cerrar y abrir otro, el `id` cambia y la cifra vieja se tira.
+     */
+    private var espacioDicho: String? = null
+    private var espacioDe: Long? = null
     private lateinit var abrir: Button
     private lateinit var crear: Button
     private lateinit var eliminar: Button
     private lateinit var traer: Button
     private lateinit var ver: Button
     private lateinit var explorar: Button
+    private lateinit var ampliar: Button
     private lateinit var ajustes: Button
     private lateinit var cerrar: Button
 
@@ -138,6 +151,7 @@ class Principal : Activity() {
 
         tituloVolumen = findViewById(R.id.titulo_volumen)
         tarjetaVolumen = findViewById(R.id.tarjeta_volumen)
+        espacio = findViewById(R.id.espacio)
         notaFrase = findViewById(R.id.nota_frase)
         abrir = findViewById(R.id.abrir)
         crear = findViewById(R.id.crear)
@@ -145,6 +159,7 @@ class Principal : Activity() {
         traer = findViewById(R.id.traer)
         ver = findViewById(R.id.ver)
         explorar = findViewById(R.id.explorar)
+        ampliar = findViewById(R.id.ampliar)
         ajustes = findViewById(R.id.ajustes)
         cerrar = findViewById(R.id.cerrar)
 
@@ -174,6 +189,7 @@ class Principal : Activity() {
         }
         ver.setOnClickListener { abrirEnArchivos() }
         explorar.setOnClickListener { startActivity(Intent(this, Explorador::class.java)) }
+        ampliar.setOnClickListener { startActivity(Intent(this, Ampliar::class.java)) }
         ajustes.setOnClickListener { startActivity(Intent(this, Ajustes::class.java)) }
     }
 
@@ -284,8 +300,9 @@ class Principal : Activity() {
             // volumen es el de las cuentas con las que se creo, y anadir otra exige reescribir
             // su cabecera y mover trozos. Decirlo aqui evita que alguien conecte una cuarta
             // cuenta esperando mas espacio y se quede esperandolo.
-            "Conectar otra cuenta no la añade al volumen abierto: eso mueve datos y hoy solo " +
-                "se hace desde el escritorio."
+            "Conecta otra cuenta y métela en el volumen con «Ampliar con más cuentas». " +
+                "Cuidado: solo un volumen «lineal» crece al añadir una; en los demás lo que " +
+                "se gana es aguantar una caída más."
         } else {
             "¿Ya usas MultiDrive en otro equipo? Con una cuenta enlazada y tu frase de paso se " +
                 "traen las demás desde «Abrir un volumen que ya existe»."
@@ -306,8 +323,11 @@ class Principal : Activity() {
         eliminar.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
         traer.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
         crear.visibility = if (!abierto && sinVolumen) View.VISIBLE else View.GONE
+        espacio.visibility = if (abierto) View.VISIBLE else View.GONE
+        if (abierto) pintarEspacio() else { espacioDicho = null; espacioDe = null }
         ver.visibility = if (abierto) View.VISIBLE else View.GONE
         explorar.visibility = if (abierto) View.VISIBLE else View.GONE
+        ampliar.visibility = if (abierto) View.VISIBLE else View.GONE
         ajustes.visibility = if (abierto) View.VISIBLE else View.GONE
         cerrar.visibility = if (abierto) View.VISIBLE else View.GONE
         abrir.isEnabled = !ocupado
@@ -383,6 +403,68 @@ class Principal : Activity() {
                 enSegundoPlano("Quitando «$nombre»…") { Nucleo.olvidar(conf.absolutePath, nombre) }
             }
             .show()
+    }
+
+    /**
+     * El tamaño del volumen y lo que le queda.
+     *
+     * Se pregunta **una vez por sesión** y se guarda: cuesta una petición a cada proveedor, y
+     * `pintar()` corre cada vez que se vuelve a esta pantalla. Mientras llega la respuesta se
+     * dice que se está preguntando, en vez de dejar el hueco vacío.
+     */
+    private fun pintarEspacio() {
+        val s = Sesion.id ?: return
+
+        if (espacioDe == s && espacioDicho != null) {
+            espacio.text = espacioDicho
+            return
+        }
+        if (espacioDe == s) return // ya hay una petición en vuelo para esta sesión
+
+        espacioDe = s
+        espacio.text = "Preguntando a tus cuentas cuánto espacio queda…"
+
+        thread {
+            val dicho = try {
+                val r = JSONObject(Nucleo.espacio(s))
+                val libre = if (r.isNull("libre")) null else r.getLong("libre")
+                val total = if (r.isNull("total")) null else r.getLong("total")
+                val sinMedir = r.getJSONArray("sin_medir").let { a ->
+                    (0 until a.length()).map { a.getString(it) }
+                }
+
+                when {
+                    // Ningún proveedor declara cupo. No es cero: es que no hay nada que
+                    // declarar, como en un bucket S3, que se factura por lo que ocupa.
+                    total == null || libre == null ->
+                        "Tus proveedores no declaran cuánto espacio tienen, así que no hay " +
+                            "tamaño que enseñar."
+                    else -> buildString {
+                        append("${legible(libre)} libres de ${legible(total)}")
+                        // Con alguno sin medir la cifra es un techo, y callarlo la convierte
+                        // en una promesa que el volumen no hizo.
+                        if (sinMedir.isNotEmpty()) {
+                            append("\n\nComo mucho: ${sinMedir.joinToString(", ")} no ")
+                            append(
+                                if (sinMedir.size == 1) "contestó, y podría ser el más apretado."
+                                else "contestaron, y cualquiera podría ser el más apretado."
+                            )
+                        }
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.w(ETIQUETA, "no se pudo medir el espacio", e)
+                "No se pudo preguntar cuánto espacio queda."
+            }
+
+            runOnUiThread {
+                // Si entre medias se cerró el volumen o se abrió otro, esta respuesta ya no
+                // describe lo que hay en pantalla.
+                if (Sesion.id != s) return@runOnUiThread
+                espacioDicho = dicho
+                espacio.text = dicho
+            }
+        }
     }
 
     private fun cuentasEnlazadas(): List<String> = try {

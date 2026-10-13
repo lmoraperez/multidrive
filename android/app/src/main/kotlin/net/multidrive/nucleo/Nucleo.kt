@@ -151,6 +151,42 @@ object Nucleo {
     external fun olvidar(config: String, nombre: String): String
 
     /**
+     * Cuanto cabe en el volumen abierto y cuanto queda, en JSON:
+     * `{ total, libre, sin_medir: [...], es_medida }`.
+     *
+     * `total` y `libre` pueden venir nulos, y **eso no es cero**: significa que ningun
+     * proveedor declara cupo, como un bucket S3, que se factura por lo que ocupa y no se
+     * llena. `sin_medir` nombra a los que no contestaron o no declaran nada, y con esa lista
+     * no vacia las dos cifras son un **techo** y no una medida.
+     *
+     * Cuesta una peticion por proveedor, en paralelo. Es red: nunca en el hilo de la interfaz,
+     * y guardandose la respuesta en vez de pedirla en cada pintada.
+     */
+    external fun espacio(id: Long): String
+
+    /**
+     * Que pasaria si se metieran en el volumen las cuentas enlazadas que no lo forman, **sin
+     * tocar nada**. JSON: `{ nuevos: [...], antes, despues, gana, suma }`, o
+     * `{ nuevos, antes, problema }` si no se puede.
+     *
+     * `gana` es `"espacio"` o `"margen"`, y la diferencia no es un matiz: solo un volumen
+     * `lineal` crece al anadir una cuenta. En los demas cada trozo se parte entre todos, asi
+     * que una cuenta mas da **margen de caidas** y ni un byte de sitio. Quien pinte esto tiene
+     * que decirlo con esas palabras: es lo contrario de lo que se espera.
+     *
+     * Cuesta una peticion por cuenta nueva. Nunca en el hilo de la interfaz.
+     */
+    external fun mirarAmpliacion(id: Long, config: String): String
+
+    /**
+     * Amplia el volumen de verdad. **Tarda**: recorre el arbol y escribe en las cuentas.
+     *
+     * Al volver, la sesion abierta se queda con la cabecera vieja en la mano: hay que cerrar y
+     * volver a abrir el volumen para usarlo con la topologia nueva.
+     */
+    external fun ampliar(id: Long, config: String): String
+
+    /**
      * Si alguna de las cuentas enlazadas guarda una maleta. No hace falta la frase.
      *
      * **Bloquea**: una peticion por cuenta. Nunca desde el hilo de la interfaz.

@@ -79,6 +79,11 @@
             android:label="Configuración" />
 
         <activity
+            android:name=".Ampliar"
+            android:exported="false"
+            android:label="Ampliar el volumen" />
+
+        <activity
             android:name=".Archivos"
             android:exported="false"
             android:label="Ficheros" />
