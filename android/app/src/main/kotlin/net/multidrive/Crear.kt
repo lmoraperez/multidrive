@@ -263,38 +263,60 @@ class Crear : Activity() {
     }
 
     /**
-     * Al salir sin haber creado el volumen, se quitan las cuentas enlazadas **aquí**.
+     * Salir de aquí sin haber creado el volumen.
      *
-     * Enlazar una cuenta es un paso de crear el volumen, no un fin en sí mismo. Quien se echa
-     * atrás a mitad volvía a la pantalla principal con cuentas que no había pedido tener y que
-     * no servían para nada, y tenía que quitarlas una por una sin que nada le dijera que
-     * hacía falta.
+     * Enlazar una cuenta es un paso de crear el volumen, no un fin en sí mismo: quien se echa
+     * atrás a mitad volvía a la pantalla principal con cuentas que no había pedido tener. Pero
+     * tampoco se tiran sin preguntar: el «atrás» se pulsa sin querer, y cada cuenta enlazada
+     * costó una vuelta al navegador.
+     *
+     * Descartar el diálogo **se queda aquí**, que es lo que no pierde nada.
+     */
+    private fun salir() {
+        val nuevas = enlazadas().filterNot { it in yaEstaban }
+        if (creado || nuevas.isEmpty()) {
+            finish()
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("No has creado el volumen")
+            .setMessage(
+                "Enlazaste ${nuevas.size} cuenta(s) y no llegaste a crear el volumen:\n" +
+                    nuevas.joinToString("") { "  · $it\n" } +
+                    "\nSi las quitas, el teléfono queda como estaba. El permiso en Google o " +
+                    "en Microsoft no se retira: eso se hace desde tu cuenta."
+            )
+            .setPositiveButton("Quitarlas y salir") { _, _ ->
+                quitar(nuevas)
+                finish()
+            }
+            .setNegativeButton("Dejarlas enlazadas") { _, _ -> finish() }
+            .show()
+    }
+
+    /**
+     * Quita las cuentas, **antes** de salir y no al destruirse la pantalla.
+     *
+     * El orden importa y costó una pantalla mal pintada: cuando esta actividad termina,
+     * Android ejecuta `onResume` de la principal **antes** que su propio `onDestroy`. Haciendo
+     * esto en `onDestroy`, la principal leía las cuentas cuando todavía estaban y se quedaba
+     * dibujada como si las hubiera, con la tarjeta puesta y ninguna cuenta dentro.
      *
      * Solo las de esta sesión: las que ya estaban al entrar son de quien las puso, y puede
      * haber un volumen abierto que dependa de ellas.
-     *
-     * `isFinishing` distingue salir de que Android recree la pantalla --al girar el teléfono,
-     * por ejemplo--. Sin esa comprobación, girar el móvil a mitad de crear un volumen
-     * desenlazaría las cuentas que acabas de conectar.
-     *
-     * Lo que esto **no** hace es retirar el permiso en Google o en Microsoft: eso se revoca
-     * desde la cuenta, y no hay forma de hacerlo desde aquí. Lo que se borra es el testigo de
-     * este teléfono.
      */
-    override fun onDestroy() {
-        if (isFinishing && !creado) {
-            for (n in enlazadas().filterNot { it in yaEstaban }) {
-                try {
-                    Nucleo.olvidar(conf.absolutePath, n)
-                    Log.i(ETIQUETA, "sin crear volumen: se quita la cuenta $n")
-                } catch (e: Throwable) {
-                    // Que no se pueda quitar una no es motivo para dejar las demás: lo que se
-                    // busca es no dejar cuentas sueltas, y parar a la mitad deja más.
-                    Log.w(ETIQUETA, "no se pudo quitar $n al salir", e)
-                }
+    private fun quitar(nuevas: List<String>) {
+        for (n in nuevas) {
+            try {
+                Nucleo.olvidar(conf.absolutePath, n)
+                Log.i(ETIQUETA, "sin crear volumen: se quita la cuenta $n")
+            } catch (e: Throwable) {
+                // Que no se pueda quitar una no es motivo para dejar las demás: lo que se
+                // busca es no dejar cuentas sueltas, y parar a la mitad deja más.
+                Log.w(ETIQUETA, "no se pudo quitar $n al salir", e)
             }
         }
-        super.onDestroy()
     }
 
     /**
@@ -306,8 +328,8 @@ class Crear : Activity() {
     @Deprecated("El reemplazo moderno exige androidx, que esta aplicacion todavia no usa")
     override fun onBackPressed() {
         if (lista.visibility != View.VISIBLE) {
-            @Suppress("DEPRECATION")
-            super.onBackPressed()
+            // Y al salir del todo se pregunta por lo que quede enlazado sin volumen.
+            salir()
             return
         }
         lista.visibility = View.GONE
