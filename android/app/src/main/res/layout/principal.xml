@@ -303,9 +303,27 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="22dp"
-                android:layout_marginBottom="16dp"
                 android:text="Pre-alfa: esto todavía se está construyendo. No confíes en MultiDrive como única copia de nada."
                 android:textColor="@color/apagado"
+                android:textSize="12sp" />
+
+            <!-- La version, abajo del todo.
+
+                 Esta para que al pedirle una captura a alguien no haya que preguntarle ademas
+                 que version tiene: viene en la propia captura. El numero entre parentesis es
+                 el `versionCode`, que es el que de verdad distingue una compilacion de otra;
+                 el `versionName` lleva meses en 0.0.1 y no dice nada.
+
+                 El texto lo pone `Principal` desde `BuildConfig`: escrito aqui a mano se
+                 quedaria viejo en la primera subida y mentiria justo cuando se consulta. -->
+            <TextView
+                android:id="@+id/version"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="16dp"
+                android:textColor="@color/apagado"
+                android:textIsSelectable="true"
                 android:textSize="12sp" />
         </LinearLayout>
     </ScrollView>
