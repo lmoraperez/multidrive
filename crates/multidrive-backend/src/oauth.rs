@@ -145,6 +145,44 @@ pub async fn conectar(
     //
     // Ahora la pestana dice lo que ha pasado de verdad, y cuando falla **ensena el motivo
     // ahi mismo**, que es donde el usuario esta mirando.
+    // # Con vuelta (el movil) el orden es **el contrario**, y por un motivo de peso
+    //
+    // Todo lo de arriba vale cuando el usuario se queda en la pestana. En un movil no: ahi
+    // quien esta delante es el navegador, y nuestra aplicacion esta **en segundo plano**.
+    //
+    // Y a una aplicacion en segundo plano Android le puede cortar la red --ahorro de bateria,
+    // ahorro de datos, una aplicacion marcada como restringida, un VPN que no la enruta-- sin
+    // avisar. Cuando lo hace, el sintoma no es «red no disponible»: es que el DNS deja de
+    // resolver, con un «no address associated with hostname» que parece un problema del
+    // proveedor y no lo es. Un tester se comio exactamente eso.
+    //
+    // Asi que primero se responde --lo que manda al usuario de vuelta a la aplicacion-- y
+    // **despues** se canjea, ya con la aplicacion delante. La pausa es para que al salto le
+    // de tiempo a llegar: sin ella se canjearia igual de fondo y no habriamos arreglado nada.
+    //
+    // La pagina no puede decir «cuenta conectada», porque todavia no se sabe. Dice lo unico
+    // que es cierto en ese momento: que la parte del navegador termino. El resultado de
+    // verdad lo cuenta la aplicacion, que es donde el usuario acaba de aterrizar.
+    if volver_a.is_some() {
+        responder_pagina(
+            &mut socket,
+            "Ya puedes volver",
+            "Terminando en MultiDrive…",
+            volver_a,
+        )
+        .await;
+        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+        return canjear(
+            oauth,
+            client_id,
+            client_secret,
+            &codigo,
+            &redirigir,
+            &verificador,
+        )
+        .await;
+    }
+
     match canjear(
         oauth,
         client_id,
@@ -156,11 +194,13 @@ pub async fn conectar(
     .await
     {
         Ok(c) => {
-            let detalle = match volver_a {
-                Some(_) => "Ya está. Volviendo a MultiDrive…",
-                None => "Ya puedes cerrar esta pestaña y volver a MultiDrive.",
-            };
-            responder_pagina(&mut socket, "Cuenta conectada", detalle, volver_a).await;
+            responder_pagina(
+                &mut socket,
+                "Cuenta conectada",
+                "Ya puedes cerrar esta pestaña y volver a MultiDrive.",
+                None,
+            )
+            .await;
             Ok(c)
         }
         Err(e) => {

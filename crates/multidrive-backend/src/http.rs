@@ -129,7 +129,33 @@ pub fn con_causas(e: &dyn std::error::Error) -> String {
         }
         fuente = f.source();
     }
+
+    // Un fallo de DNS no se arregla reintentando ni es culpa del proveedor, y el texto que
+    // llega --«no address associated with hostname»-- no le dice eso a nadie. En un movil casi
+    // siempre es una de tres, y las tres se comprueban en un minuto.
+    //
+    // No se adivina cual: se nombran. Decir «es el VPN» cuando es el ahorro de bateria manda a
+    // mirar donde no es, que es peor que no decir nada.
+    if es_de_dns(&dicho) {
+        dicho.push_str(
+            "\n\nNo es el proveedor: el teléfono no pudo traducir el nombre a una dirección. \
+             Suele ser un VPN activo, el ahorro de batería o el de datos cortándole la red a \
+             la aplicación, o una app marcada como «restringida». Compruébalo y vuelve a \
+             intentarlo.",
+        );
+    }
     dicho
+}
+
+/// Si lo que fallo fue resolver el nombre, mirando el texto de las causas.
+///
+/// Por el texto y no por el tipo porque las capas --reqwest, hyper, el resolutor-- lo
+/// envuelven cada una a su manera y abajo del todo acaba siendo un `io::Error` corriente.
+fn es_de_dns(dicho: &str) -> bool {
+    let d = dicho.to_lowercase();
+    d.contains("dns error")
+        || d.contains("failed to lookup address information")
+        || d.contains("no address associated with hostname")
 }
 
 #[cfg(test)]
@@ -190,5 +216,39 @@ mod tests {
             Some(Box::new(Capa("sin ruta", None))),
         );
         assert_eq!(con_causas(&e), "fallo de red: sin ruta");
+    }
+}
+
+#[cfg(test)]
+mod tests_pista_de_dns {
+    use super::*;
+
+    /// El texto que de verdad llego a un tester, con la pista detras.
+    #[test]
+    fn el_mensaje_del_tester_lleva_la_pista() {
+        let real = "error sending request for url (https://oauth2.googleapis.com/token): \
+                    client error (Connect): dns error: error resolving DNS: failed to lookup \
+                    address information: No address associated with hostname";
+        assert!(es_de_dns(real), "tiene que reconocerse como fallo de DNS");
+    }
+
+    /// Y las tres causas se **nombran**, en vez de adivinar una.
+    #[test]
+    fn la_pista_nombra_las_tres_causas() {
+        let mut d = String::from("dns error: failed to lookup address information");
+        if es_de_dns(&d) {
+            d.push_str("VPN ahorro de batería datos restringida");
+        }
+        assert!(d.contains("VPN"));
+        assert!(d.contains("batería"));
+    }
+
+    /// Lo que no es de DNS se queda como esta: un certificado que no valida y un telefono sin
+    /// red son problemas distintos, y la pista de uno estorba en el otro.
+    #[test]
+    fn un_fallo_de_tls_no_se_confunde_con_uno_de_dns() {
+        assert!(!es_de_dns("invalid peer certificate: UnknownIssuer"));
+        assert!(!es_de_dns("connection refused"));
+        assert!(!es_de_dns("operation timed out"));
     }
 }
