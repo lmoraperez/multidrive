@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- El mismo botón que `boton.xml` en rojo. Para lo que destruye algo y no se deshace.
+
+     Se mantiene aparte y no como un matiz del azul porque la diferencia tiene que verse de
+     un vistazo: quien va a borrar un volumen no lee el texto dos veces. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/linea" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/peligro_suave" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/peligro" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+</selector>

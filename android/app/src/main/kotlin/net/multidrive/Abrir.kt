@@ -51,6 +51,10 @@ class Abrir : Activity() {
     private lateinit var notaFrase: TextView
     private lateinit var boton: Button
     private lateinit var cancelar: Button
+    private lateinit var empezarDeNuevo: Button
+
+    /** Las que ya estaban al entrar. Las de aquí son las que «empezar de nuevo» deshace. */
+    private var yaEstaban: Set<String> = emptySet()
     private lateinit var conf: File
 
     @Volatile
@@ -62,6 +66,7 @@ class Abrir : Activity() {
     override fun onCreate(guardado: Bundle?) {
         super.onCreate(guardado)
         conf = File(filesDir, "multidrive.conf")
+        yaEstaban = cuentas().toSet()
 
         val caja = LinearLayout(this).comoPantalla()
         caja.addView(cabecera("Abrir un volumen"))
@@ -103,6 +108,17 @@ class Abrir : Activity() {
             visibility = View.GONE
             setOnClickListener { abrir() }
         }
+        // La salida cuando la cuenta enlazada no trae la configuración.
+        //
+        // Sin esto se quedaba en un callejón: la pantalla explicaba qué hacer pero dejaba la
+        // cuenta enlazada, así que volver atrás y probar con otra significaba salir, ir a
+        // quitarla a mano y entrar otra vez. Y quitarla a mano es justo lo que ya no se puede
+        // con un volumen por medio.
+        empezarDeNuevo = botonPrincipal("Volver y quitar esta cuenta").apply {
+            visibility = View.GONE
+            setOnClickListener { desdeCero() }
+        }
+
         // La salida mientras se espera al navegador. Sin ella, el unico recurso es el boton
         // atras del navegador, que reenvia la misma peticion y la deja inservible.
         cancelar = Button(this).apply {
@@ -118,12 +134,39 @@ class Abrir : Activity() {
         caja.addView(frase)
         caja.addView(notaFrase)
         caja.addView(boton)
+        caja.addView(empezarDeNuevo)
         caja.addView(cancelar)
         setContentView(ScrollView(this).apply { addView(caja) })
 
         // Si ya hay cuentas --se vuelve aqui, o se enlazaron antes-- se mira la maleta de
         // entrada en vez de pedir que se conecte otra que ya esta.
         if (cuentas().isNotEmpty()) mirarMaleta() else pintar("Aún no hay ninguna cuenta.")
+    }
+
+    /** Las enlazadas desde que se entró aquí. */
+    private fun nuevas(): List<String> = cuentas().filterNot { it in yaEstaban }
+
+    /**
+     * Quita lo enlazado aquí y vuelve a la pantalla principal.
+     *
+     * La cuenta que no trae la configuración no sirve para nada en esta pantalla, y dejarla
+     * enlazada estorba: con un volumen por medio ya no se puede quitar desde la principal, y
+     * probar con otra cuenta exigía salir a limpiarla a mano.
+     *
+     * El permiso en Google o en Microsoft no se retira: eso se revoca desde la cuenta.
+     */
+    private fun desdeCero() {
+        for (n in nuevas()) {
+            try {
+                Nucleo.olvidar(conf.absolutePath, n)
+                Log.i(ETIQUETA, "sin configuración en esa cuenta: se quita $n")
+            } catch (e: Throwable) {
+                Log.w(ETIQUETA, "no se pudo quitar $n", e)
+            }
+        }
+        // Antes de salir, no al destruirse: la pantalla principal lee las cuentas en su
+        // `onResume`, que Android ejecuta **antes** del `onDestroy` de esta.
+        finish()
     }
 
     private fun cuentas(): List<String> = try {
@@ -156,6 +199,10 @@ class Abrir : Activity() {
         frase.visibility = if (conMaleta) View.VISIBLE else View.GONE
         notaFrase.visibility = if (conMaleta) View.VISIBLE else View.GONE
         boton.visibility = if (conMaleta) View.VISIBLE else View.GONE
+        // Solo cuando enlazaste una cuenta aquí y resultó no traer la configuración: es el
+        // único momento en que deshacerla tiene sentido.
+        empezarDeNuevo.visibility =
+            if (!ocupado && maleta == false && nuevas().isNotEmpty()) View.VISIBLE else View.GONE
         lista.visibility = if (ocupado) View.GONE else View.VISIBLE
         drive.visibility = if (ocupado) View.GONE else View.VISIBLE
         onedrive.visibility = if (ocupado) View.GONE else View.VISIBLE

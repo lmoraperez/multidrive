@@ -9,7 +9,8 @@
     "muted": { "hex": "#8a94a6", "uso": "texto secundario", "contraste_con_bg": 6.2 },
     "accent": { "hex": "#4c8ff0", "uso": "títulos de sección, enlaces, la pieza de acento del logotipo", "contraste_con_bg": 5.9 },
     "accent_suave": { "hex": "#7ab0f7", "uso": "enlace al pasar por encima" },
-    "aviso": { "hex": "#d8a657", "uso": "el distintivo «pre-alfa», y nada más" }
+    "aviso": { "hex": "#d8a657", "uso": "el distintivo «pre-alfa», y nada más" },
+    "peligro": { "hex": "#e5484d", "uso": "lo que destruye algo y no se deshace, como eliminar un volumen; nada más", "contraste_con_fondo": 4.86 }
   },
   "tipografia": {
     "familia": "ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
