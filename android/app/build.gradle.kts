@@ -30,7 +30,7 @@ android {
         targetSdk = 36
         // El contador de Play. Sube en **cada** envio, aunque no cambie nada visible: Play no
         // acepta dos veces el mismo. No es la version que lee nadie, es la que ordena.
-        versionCode = 14
+        versionCode = 15
         versionName = "0.0.1"
     }
 

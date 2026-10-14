@@ -76,12 +76,10 @@ class Abrir : Activity() {
             setTextColor(getColor(R.color.apagado))
             setPadding(0, 0, 0, 16)
         }
-        drive = Button(this).apply {
-            text = "Conectar Google Drive"
+        drive = botonDeProveedor("Conectar Google Drive", R.drawable.ic_drive).apply {
             setOnClickListener { conectar("GDRIVE") }
         }
-        onedrive = Button(this).apply {
-            text = "Conectar OneDrive"
+        onedrive = botonDeProveedor("Conectar OneDrive", R.drawable.ic_onedrive).apply {
             setOnClickListener { conectar("ONEDRIVE") }
         }
         frase = EditText(this).apply {

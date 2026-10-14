@@ -196,3 +196,18 @@ fun Activity.barraDeEspacio(q: Cuota?, pidiendo: Boolean): View {
     )
     return caja
 }
+
+/**
+ * Un botón para conectar una cuenta, con el logotipo del proveedor dentro.
+ *
+ * El icono va como *compound drawable* y no como una vista aparte: se mueve con el texto
+ * cuando el botón cambia de tamaño, y no hay dos cosas que alinear a mano.
+ *
+ * Los logotipos son marcas de Google y de Microsoft. Están para decir a qué cuenta lleva cada
+ * botón, que es el uso que una marca permite; ninguno de los dos patrocina esto ni está
+ * asociado con ello.
+ */
+fun Activity.botonDeProveedor(texto: String, icono: Int): Button = boton(texto).apply {
+    setCompoundDrawablesRelativeWithIntrinsicBounds(icono, 0, 0, 0)
+    compoundDrawablePadding = 28
+}
