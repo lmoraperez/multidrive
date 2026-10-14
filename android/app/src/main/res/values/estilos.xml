@@ -27,6 +27,12 @@
     <!-- El de cualquier accion que no sea **la** accion de la pantalla. Es ademas el que el
          tema da por defecto, asi que un `Button` creado en codigo sale ya con la marca puesta.
          Por eso lleva relleno propio: ahi no hay un XML que se lo ponga. -->
+    <!-- Lo que destruye algo y no se deshace. Mismo peso que el principal, otro color: la
+         diferencia tiene que verse antes de leer el texto. -->
+    <style name="BotonPeligro" parent="@style/Boton">
+        <item name="android:background">@drawable/boton_peligro</item>
+    </style>
+
     <style name="BotonSuave" parent="@android:style/Widget.Material.Button">
         <item name="android:background">@drawable/boton_suave</item>
         <item name="android:textColor">@color/texto</item>

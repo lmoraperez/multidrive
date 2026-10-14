@@ -301,7 +301,7 @@ class Principal : Activity() {
             cuotasPedidas = false
         }
         if (hayCuentas) {
-            pintarCuentas(nombres, abierto)
+            pintarCuentas(nombres)
             pedirCuotas(nombres)
         }
 
@@ -358,7 +358,7 @@ class Principal : Activity() {
     }
 
     /** Una fila por cuenta, con su botón de quitar. */
-    private fun pintarCuentas(nombres: List<String>, abierto: Boolean) {
+    private fun pintarCuentas(nombres: List<String>) {
         listaCuentas.removeAllViews()
         for (n in nombres) {
             val bloque = LinearLayout(this).apply {
@@ -378,10 +378,19 @@ class Principal : Activity() {
                         LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 }
             )
-            // Con el volumen abierto no se ofrece quitar ninguna: el núcleo se negaría con las
-            // que lo forman, y las que no lo forman no se distinguen desde aquí. Un botón que
-            // casi siempre va a decir que no es peor que no tenerlo.
-            if (!abierto) {
+            // **Solo cuando se sabe que no hay volumen.** Quitar una cuenta de un volumen que
+            // existe lo rompe, y la forma de romperlo cambia según el estado:
+            //
+            // - Abierto, el núcleo se niega con las que lo forman, y las que no lo forman no
+            //   se distinguen desde aquí.
+            // - **Cerrado es el caso peligroso**: ahí no hay forma de saber cuáles lo forman
+            //   sin abrirlo, así que se quitaría sin más y el volumen dejaría de abrirse. Un
+            //   botón que puede hacer eso en silencio no debería estar ahí.
+            //
+            // Queda el estado en que sí es inofensivo: cuentas enlazadas y ningún volumen,
+            // que es donde de verdad sobra alguna. Para lo demás está «Eliminar volumen»,
+            // que las quita todas y lo dice antes.
+            if (sinVolumen) {
                 fila.addView(
                     Button(this).apply {
                         text = "Quitar"
@@ -428,7 +437,7 @@ class Principal : Activity() {
                 cuotas = leidas
                 // Solo se repinta la lista: `pintar()` entero volvería a decidir visibilidades
                 // y a pedir el espacio del volumen, que no ha cambiado por esto.
-                pintarCuentas(cuentasEnlazadas(), Sesion.id != null)
+                pintarCuentas(cuentasEnlazadas())
             }
         }
     }

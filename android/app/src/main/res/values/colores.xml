@@ -12,4 +12,9 @@
     <color name="acento_suave">#7ab0f7</color>
     <!-- Solo para el distintivo de pre-alfa. Nada mas. -->
     <color name="aviso">#d8a657</color>
+    <!-- Lo que destruye algo y no se deshace: eliminar un volumen. Nada mas: un rojo que se
+         usa para avisos corrientes deja de avisar de nada. Contraste 4,86 con el texto
+         oscuro que lleva encima, medido, que es lo que pide AA para texto normal. -->
+    <color name="peligro">#e5484d</color>
+    <color name="peligro_suave">#f06a6e</color>
 </resources>

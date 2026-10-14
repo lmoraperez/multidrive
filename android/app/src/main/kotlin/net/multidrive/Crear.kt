@@ -125,8 +125,7 @@ class Crear : Activity() {
         onedrive = botonDeProveedor("Conectar OneDrive", R.drawable.ic_onedrive).apply {
             setOnClickListener { conectar("ONEDRIVE") }
         }
-        seguir = Button(this).apply {
-            text = "Continuar"
+        seguir = botonPrincipal("Continuar").apply {
             // Separado de los botones de conectar: es un paso distinto, no uno más de la
             // lista. Pegado a ellos se leía como una tercera cuenta que conectar.
             layoutParams = LinearLayout.LayoutParams(
@@ -197,8 +196,7 @@ class Crear : Activity() {
             setPadding(0, 10, 0, 0)
             visibility = View.GONE
         }
-        boton = Button(this).apply {
-            text = "Crear volumen"
+        boton = botonPrincipal("Crear volumen").apply {
             visibility = View.GONE
             isEnabled = false
             setOnClickListener { confirmar() }
