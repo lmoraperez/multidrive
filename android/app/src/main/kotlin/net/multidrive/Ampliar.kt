@@ -80,10 +80,10 @@ class Ampliar : Activity() {
             visibility = View.GONE
         }
 
-        drive = boton("Conectar Google Drive").apply {
+        drive = botonDeProveedor("Conectar Google Drive", R.drawable.ic_drive).apply {
             setOnClickListener { conectar("GDRIVE") }
         }
-        onedrive = boton("Conectar OneDrive").apply {
+        onedrive = botonDeProveedor("Conectar OneDrive", R.drawable.ic_onedrive).apply {
             setOnClickListener { conectar("ONEDRIVE") }
         }
         // La salida mientras se espera al navegador, igual que en crear y en abrir. Sin ella,

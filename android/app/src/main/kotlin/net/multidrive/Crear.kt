@@ -27,11 +27,18 @@ private const val ETIQUETA = "multidrive"
 /**
  * Cuentas que hacen falta para poder crear un volumen.
  *
- * Dos, y no una, porque con una no hay reparto posible: la unica topologia que cabe es
- * `concat`, que ni reparte ni aguanta ninguna caida. Eso es un fichero cifrado en una nube,
- * que es util, pero no es lo que esta aplicacion dice que hace.
+ * **Una.** Con una sola la unica topologia que cabe es `concat`: cifra y trocea igual --los
+ * nombres de fichero incluidos-- pero no reparte nada y **no aguanta ninguna caida**. Si esa
+ * cuenta se pierde, se pierde el volumen entero.
+ *
+ * Se deja pasar porque es un uso legitimo --cifrar lo que subes a una nube ya vale por si
+ * solo-- y porque negarlo obligaba a enlazar una segunda cuenta solo para poder mirar. Lo que
+ * **no** se hace es callarlo: `concat` sale en la lista con «No aguanta perder ninguna
+ * cuenta: si falla una, se pierde todo» al lado, y el dialogo de confirmar lo repite.
+ *
+ * Estuvo en 2 un dia. El numero no es lo que protege: lo que protege es el aviso.
  */
-private const val MINIMO = 2
+private const val MINIMO = 1
 
 /**
  * Crear el volumen desde el telefono.
@@ -70,6 +77,12 @@ class Crear : Activity() {
     private lateinit var cajaFlotante: LinearLayout
     private lateinit var conf: File
 
+    /** Las cuentas que ya estaban enlazadas al entrar. Las de aquí no se tocan al salir. */
+    private var yaEstaban: Set<String> = emptySet()
+
+    /** Si el volumen llegó a crearse. Mientras sea falso, salir deshace lo enlazado aquí. */
+    private var creado = false
+
     @Volatile
     private var ocupado = false
 
@@ -106,16 +119,20 @@ class Crear : Activity() {
             setTextColor(getColor(R.color.apagado))
             setPadding(0, 0, 0, 12)
         }
-        drive = Button(this).apply {
-            text = "Conectar Google Drive"
+        drive = botonDeProveedor("Conectar Google Drive", R.drawable.ic_drive).apply {
             setOnClickListener { conectar("GDRIVE") }
         }
-        onedrive = Button(this).apply {
-            text = "Conectar OneDrive"
+        onedrive = botonDeProveedor("Conectar OneDrive", R.drawable.ic_onedrive).apply {
             setOnClickListener { conectar("ONEDRIVE") }
         }
         seguir = Button(this).apply {
             text = "Continuar"
+            // Separado de los botones de conectar: es un paso distinto, no uno más de la
+            // lista. Pegado a ellos se leía como una tercera cuenta que conectar.
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = 56 }
             setOnClickListener { alPasoDos() }
         }
         // La salida mientras se espera al navegador. Sin ella, quien vea que algo se tuerce no
@@ -239,7 +256,45 @@ class Crear : Activity() {
         )
 
         conf = File(filesDir, "multidrive.conf")
+        // Las que ya estaban **antes** de entrar aquí. Las que aparezcan a partir de ahora se
+        // enlazaron para este volumen, y si el volumen no llega a existir no pintan nada.
+        yaEstaban = enlazadas().toSet()
         pintarCuentas(null)
+    }
+
+    /**
+     * Al salir sin haber creado el volumen, se quitan las cuentas enlazadas **aquí**.
+     *
+     * Enlazar una cuenta es un paso de crear el volumen, no un fin en sí mismo. Quien se echa
+     * atrás a mitad volvía a la pantalla principal con cuentas que no había pedido tener y que
+     * no servían para nada, y tenía que quitarlas una por una sin que nada le dijera que
+     * hacía falta.
+     *
+     * Solo las de esta sesión: las que ya estaban al entrar son de quien las puso, y puede
+     * haber un volumen abierto que dependa de ellas.
+     *
+     * `isFinishing` distingue salir de que Android recree la pantalla --al girar el teléfono,
+     * por ejemplo--. Sin esa comprobación, girar el móvil a mitad de crear un volumen
+     * desenlazaría las cuentas que acabas de conectar.
+     *
+     * Lo que esto **no** hace es retirar el permiso en Google o en Microsoft: eso se revoca
+     * desde la cuenta, y no hay forma de hacerlo desde aquí. Lo que se borra es el testigo de
+     * este teléfono.
+     */
+    override fun onDestroy() {
+        if (isFinishing && !creado) {
+            for (n in enlazadas().filterNot { it in yaEstaban }) {
+                try {
+                    Nucleo.olvidar(conf.absolutePath, n)
+                    Log.i(ETIQUETA, "sin crear volumen: se quita la cuenta $n")
+                } catch (e: Throwable) {
+                    // Que no se pueda quitar una no es motivo para dejar las demás: lo que se
+                    // busca es no dejar cuentas sueltas, y parar a la mitad deja más.
+                    Log.w(ETIQUETA, "no se pudo quitar $n al salir", e)
+                }
+            }
+        }
+        super.onDestroy()
     }
 
     /**
@@ -287,13 +342,6 @@ class Crear : Activity() {
         seguir.visibility = if (ocupado) View.GONE else View.VISIBLE
         drive.isEnabled = !ocupado
         onedrive.isEnabled = !ocupado
-        // **Dos cuentas como minimo.** Con una sola lo unico que cabe es `concat`, que no
-        // reparte nada ni aguanta nada: seria un fichero cifrado en una nube, que es util pero
-        // no es esto. Antes se dejaba pasar y se avisaba en la lista de topologias; avisar ahi
-        // llega tarde, porque a esas alturas ya se eligio un camino.
-        //
-        // El numero no es estetico: por debajo de dos no existe ninguna topologia que reparta,
-        // asi que la pantalla siguiente no tendria nada que ofrecer.
         seguir.isEnabled = hay.size >= MINIMO && !ocupado
         cancelar.visibility = if (ocupado) View.VISIBLE else View.GONE
 
@@ -303,12 +351,13 @@ class Crear : Activity() {
         }
         estado.text = dicho ?: when {
             hay.isEmpty() ->
-                "Conecta las cuentas entre las que quieres repartir tus archivos. Hacen falta " +
-                    "al menos $MINIMO: cuantas más, más espacio y más caídas aguanta."
-            // Decir **por qué** no se puede seguir. Un botón apagado sin motivo se lee como que
-            // la aplicación está rota, no como que falta algo.
-            hay.size < MINIMO ->
-                "Con una sola cuenta no hay nada que repartir. Conecta otra para continuar."
+                "Conecta las cuentas entre las que quieres repartir tus archivos. Cuantas más, " +
+                    "más espacio y más caídas aguanta."
+            // Con una sola se puede seguir, pero conviene saber a qué: la única topología
+            // posible no aguanta perder esa cuenta. Decirlo aquí y no solo en la lista.
+            hay.size == 1 ->
+                "Con una sola cuenta el volumen se cifra igual, pero no aguanta perderla. " +
+                    "Conecta otra si quieres margen, o continúa así."
             else ->
                 "Conecta las que falten y continúa."
         }
@@ -592,6 +641,8 @@ class Crear : Activity() {
                 // sellada, que es lo mas util que esta aplicacion llega a decir.
                 Log.i(ETIQUETA, resumen)
                 Sesion.ultimoAviso = resumen
+                // El volumen existe: las cuentas son suyas y salir ya no las toca.
+                creado = true
                 finish()
             }
         }
