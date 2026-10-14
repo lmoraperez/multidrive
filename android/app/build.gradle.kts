@@ -1,9 +1,9 @@
-// `java` dentro del bloque `android` resuelve a la extension de Gradle, no al paquete, asi
+﻿// `java` dentro del bloque `android` resuelve a la extension de Gradle, no al paquete, asi
 // que el nombre completo `java.util.Properties` no compila ahi. Se importa.
 import java.util.Properties
 
 // Desde AGP 9.0 el plugin de Kotlin va dentro: declararlo aparte no es redundante, es un
-// error de compilacion que dice «ya no hace falta».
+// error de compilacion que dice Â«ya no hace faltaÂ».
 plugins {
     alias(libs.plugins.android.application)
 }
@@ -30,7 +30,7 @@ android {
         targetSdk = 36
         // El contador de Play. Sube en **cada** envio, aunque no cambie nada visible: Play no
         // acepta dos veces el mismo. No es la version que lee nadie, es la que ordena.
-        versionCode = 13
+        versionCode = 14
         versionName = "0.0.1"
     }
 
