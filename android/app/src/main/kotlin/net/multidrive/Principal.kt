@@ -122,6 +122,15 @@ class Principal : Activity() {
         setContentView(R.layout.principal)
 
         estado = findViewById(R.id.estado)
+
+        // La versión, para que una captura de pantalla la lleve dentro y no haya que
+        // preguntarla. Se puede seleccionar para copiarla y pegarla en un mensaje.
+        //
+        // El número entre paréntesis es el `versionCode`: es el que distingue de verdad una
+        // compilación de otra. El nombre lleva meses en 0.0.1 y por sí solo no dice cuál es.
+        findViewById<TextView>(R.id.version).text =
+            "MultiDrive ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+
         aviso = findViewById(R.id.aviso)
         cajaAviso = findViewById<View>(R.id.caja_aviso).apply {
             // Tocar la franja tambien la quita, pero nunca es la unica salida: el boton de
