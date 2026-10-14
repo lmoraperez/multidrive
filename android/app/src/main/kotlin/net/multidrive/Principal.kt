@@ -92,6 +92,15 @@ class Principal : Activity() {
     private lateinit var crear: Button
     private lateinit var eliminar: Button
     private lateinit var traer: Button
+
+    /**
+     * Si el último intento de abrir dijo que faltan cuentas de las que forman el volumen.
+     *
+     * De esto depende que salga «Traer mis cuentas de la nube». Antes salía **siempre** con el
+     * volumen cerrado, y en el caso normal --tienes todas tus cuentas y solo falta la frase--
+     * es un botón de más al lado del que toca.
+     */
+    private var faltanCuentas = false
     private lateinit var ver: Button
     private lateinit var explorar: Button
     private lateinit var ampliar: Button
@@ -335,7 +344,12 @@ class Principal : Activity() {
         notaFrase.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
         abrir.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
         eliminar.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
-        traer.visibility = if (!abierto && !sinVolumen) View.VISIBLE else View.GONE
+        // Solo cuando abrir dijo que faltan. Quitarlo del todo dejaría un callejón: si al
+        // volumen le faltan cuentas, desde aquí ya no hay forma de enlazarlas --los botones de
+        // conectar viven en crear y en ampliar-- y la pantalla de entrada no sale habiendo
+        // alguna cuenta. Esta es la puerta, y se abre cuando hace falta pasar por ella.
+        traer.visibility =
+            if (!abierto && !sinVolumen && faltanCuentas) View.VISIBLE else View.GONE
         crear.visibility = if (!abierto && sinVolumen) View.VISIBLE else View.GONE
         espacio.visibility = if (abierto) View.VISIBLE else View.GONE
         if (abierto) pintarEspacio() else { espacioDicho = null; espacioDe = null }
@@ -609,6 +623,8 @@ class Principal : Activity() {
 
     private fun abrirVolumen() {
         val f = tomarFrase() ?: return
+        // Cada intento parte de cero: si antes faltaban y ya las enlazaste, el botón sobra.
+        faltanCuentas = false
         enSegundoPlano("Abriendo. Son unos segundos: hay que preguntarle a cada cuenta…") {
             try {
                 // Siempre con escritura. Preguntarlo no aportaba nada: desde que el testigo
@@ -626,7 +642,8 @@ class Principal : Activity() {
                 // Faltan cuentas: el volumen se hizo con mas de las que hay en este telefono.
                 // Decir solo «los proveedores no coinciden» es cierto y deja a cualquiera
                 // parado; lo que hace falta es el boton de al lado, que las trae.
-                if (porque.contains("no coinciden con los del volumen")) {
+                if (porque.contains("no coinciden con los del volumen") || porque.contains("que forma parte de este volumen")) {
+                    faltanCuentas = true
                     throw IllegalStateException(
                         "$porque.\n\nEstán guardadas en tus propias nubes: pulsa «Traer mis " +
                             "cuentas de la nube» y escribe ahí la misma frase.",

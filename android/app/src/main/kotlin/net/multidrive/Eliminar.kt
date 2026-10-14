@@ -45,6 +45,7 @@ class Eliminar : Activity() {
 
     private lateinit var estado: TextView
     private lateinit var detalle: TextView
+    private lateinit var cuentas: TextView
     private lateinit var instruccion: TextView
     private lateinit var campo: EditText
     private lateinit var boton: Button
@@ -75,10 +76,18 @@ class Eliminar : Activity() {
         // La instrucción va en una línea propia, no en el `hint` del campo. Un `hint` es de una
         // sola línea y se corta por la derecha: decía «Escribe el nombre de la cuenta número…»
         // y el número, que es lo único que hacía falta leer, quedaba fuera de la pantalla.
+        cuentas = TextView(this).apply {
+            textSize = 16f
+            setTextColor(getColor(R.color.acento))
+            setPadding(0, 0, 0, 14)
+            setLineSpacing(8f, 1f)
+            visibility = View.GONE
+        }
         instruccion = TextView(this).apply {
-            textSize = 14f
+            textSize = 15f
             setTextColor(getColor(R.color.texto))
-            setPadding(0, 0, 0, 10)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(0, 8, 0, 12)
             visibility = View.GONE
         }
         campo = EditText(this).apply {
@@ -92,12 +101,12 @@ class Eliminar : Activity() {
             setHintTextColor(getColor(R.color.apagado))
             visibility = View.GONE
         }
-        boton = Button(this).apply {
-            text = "Eliminar el volumen"
+        boton = botonPeligro("Eliminar el volumen").apply {
             visibility = View.GONE
             setOnClickListener { eliminar() }
         }
         caja.addView(estado)
+        caja.addView(cuentas)
         caja.addView(detalle)
         caja.addView(instruccion)
         caja.addView(campo)
@@ -137,10 +146,12 @@ class Eliminar : Activity() {
         esperado = r.getString("esperado")
 
         estado.text = "Esto NO se puede deshacer y no hay papelera."
+        cuentas.text = nombres.withIndex().joinToString("\n") { (i, n) -> "${i + 1}.  $n" }
+        cuentas.visibility = View.VISIBLE
+
         detalle.text = buildString {
-            append("Se va a retirar el volumen «${r.getString("topologia")}» de:\n")
-            for ((i, n) in nombres.withIndex()) append("  ${i + 1}. $n\n")
-            append("\n${r.getInt("fragmentos")} fragmento(s), ")
+            append("Se retira el volumen «${r.getString("topologia")}» de esas cuentas.\n\n")
+            append("${r.getInt("fragmentos")} fragmento(s), ")
             append(legible(r.getLong("bytes")))
             append(".")
             // Las cuentas se desenlazan también, y eso hay que decirlo **antes**: quien lea
@@ -160,7 +171,7 @@ class Eliminar : Activity() {
             }
         }
         instruccion.text =
-            "Para confirmar, escribe el nombre de la cuenta número ${cual + 1} de la lista de arriba."
+            "Para confirmar, escribe el nombre de la cuenta número ${cual + 1} de la lista."
         instruccion.visibility = View.VISIBLE
         campo.visibility = View.VISIBLE
         boton.visibility = View.VISIBLE

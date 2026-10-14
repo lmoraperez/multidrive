@@ -211,3 +211,18 @@ fun Activity.botonDeProveedor(texto: String, icono: Int): Button = boton(texto).
     setCompoundDrawablesRelativeWithIntrinsicBounds(icono, 0, 0, 0)
     compoundDrawablePadding = 28
 }
+
+/** Un botón para lo que destruye y no se deshace. Rojo, con el mismo peso que el principal. */
+fun Activity.botonPeligro(texto: String): Button =
+    Button(
+        android.view.ContextThemeWrapper(this, R.style.BotonPeligro),
+        null,
+        0,
+        R.style.BotonPeligro,
+    ).apply {
+        text = texto
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = 28 }
+    }
