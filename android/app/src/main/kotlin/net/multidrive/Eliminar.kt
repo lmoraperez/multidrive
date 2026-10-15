@@ -4,10 +4,12 @@ import android.app.Activity
 import android.os.Bundle
 import android.text.InputType
 import android.util.Log
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -52,6 +54,8 @@ class Eliminar : Activity() {
     private lateinit var conf: File
 
     private var esperado: String? = null
+
+    private lateinit var flotante: TextView
 
     @Volatile
     private var ocupado = false
@@ -111,7 +115,35 @@ class Eliminar : Activity() {
         caja.addView(instruccion)
         caja.addView(campo)
         caja.addView(boton)
-        setContentView(ScrollView(this).apply { addView(caja) })
+        // El aviso de «borrando», **centrado y encima**, no en la línea de estado de arriba.
+        //
+        // Ahí arriba se pierde: quien acaba de escribir el nombre y pulsar el botón está
+        // mirando la parte de abajo de la pantalla, y lo que cambia queda fuera de su vista.
+        // Encima y en el centro no hay forma de no verlo, y además tapa los controles, que es
+        // lo correcto mientras una operación que no se puede deshacer está en marcha.
+        flotante = TextView(this).apply {
+            textSize = 15f
+            setTextColor(getColor(R.color.texto))
+            setBackgroundResource(R.drawable.aviso_flotante)
+            setPadding(44, 36, 44, 36)
+            visibility = View.GONE
+        }
+        setContentView(
+            FrameLayout(this).apply {
+                addView(ScrollView(this@Eliminar).apply { addView(caja) })
+                addView(
+                    flotante,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply {
+                        gravity = Gravity.CENTER
+                        marginStart = 56
+                        marginEnd = 56
+                    },
+                )
+            }
+        )
 
         mirar()
     }
@@ -188,7 +220,8 @@ class Eliminar : Activity() {
         ocupado = true
         boton.isEnabled = false
         campo.isEnabled = false
-        estado.text = "Borrando. Esto tarda: hay que retirarlo de cada cuenta…"
+        flotante.text = "Borrando.\n\nEsto tarda: hay que retirarlo de cada cuenta."
+        flotante.visibility = View.VISIBLE
 
         thread {
             val dicho = try {
@@ -229,6 +262,7 @@ class Eliminar : Activity() {
             }
             runOnUiThread {
                 ocupado = false
+                flotante.visibility = View.GONE
                 terminar(dicho)
             }
         }
@@ -290,8 +324,7 @@ class Eliminar : Activity() {
             }
         )
         caja.addView(
-            Button(this).apply {
-                text = "Volver"
+            botonPrincipal("Volver").apply {
                 setOnClickListener {
                     contentResolver.notifyChange(
                         android.provider.DocumentsContract.buildRootsUri(AUTORIDAD),
