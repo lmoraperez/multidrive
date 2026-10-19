@@ -23,6 +23,24 @@ encryption**.
 
 Project site: https://multidrive.net
 
+## Download
+
+**Android:** [`multidrive-0.0.1-21-arm64.apk`](https://github.com/lmoraperez/multidrive/releases/latest)
+· Android 8 or later, `arm64-v8a` phones. **The interface is in Spanish only.**
+
+Two things before you install it, and the first one catches everyone:
+
+- **It cannot be installed over the Google Play build.** This APK is signed with the upload
+  key and Play re-signs with its own, so Android sees two different apps. Switching either way
+  means uninstalling first, which drops the accounts linked on the phone. The volume itself is
+  untouched: it lives in your cloud accounts.
+- **Check what you downloaded.** The `sha256` and the signer fingerprint are in the [release
+  notes](https://github.com/lmoraperez/multidrive/releases/tag/v0.0.1-21), along with the
+  command to verify them.
+
+**Windows:** no installer published yet; you build it from source, as described in
+[Installing on Windows](#installing-on-windows).
+
 ## In thirty seconds
 
 [![MultiDrive in thirty seconds](https://multidrive.net/video/cartel.png)](https://multidrive.net/en/#spot)

@@ -79,6 +79,15 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .capturas img{display:block;width:100%;height:auto;border:1px solid var(--line);
   border-radius:10px;background:var(--panel)}
 .capturas figcaption{color:var(--muted);font-size:14px;line-height:1.5;margin-top:8px}
+
+/* La descarga. El boton y su letra pequena van en la misma linea mientras quepan, y se
+   apilan cuando no: en un movil, un boton al lado de tres lineas de texto deja las dos cosas
+   estrechas. */
+.descarga{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:18px 0 14px}
+.boton{display:inline-block;background:var(--accent);color:#0d1017;text-decoration:none;
+  font-weight:700;padding:14px 26px;border-radius:9px;white-space:nowrap}
+.boton:hover,.boton:focus-visible{background:var(--accent-suave)}
+.letra-pequena{color:var(--muted);font-size:14px;line-height:1.5}
 footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 /* El corro de proveedores. En pantalla ancha van en circulo alrededor del logotipo; por
@@ -157,6 +166,30 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
   <p>Si RAID convirtió varios discos poco fiables en un volumen fiable, MultiDrive hace lo
   mismo con varias cuentas de nube: <strong>ningún proveedor tiene tus datos completos,
   ninguno puede leerlos, y la caída de uno no te deja sin volumen.</strong></p>
+</section>
+
+<section id="descargar">
+  <h2>Descargar</h2>
+  <p class="descarga">
+    <a class="boton" rel="noopener"
+       href="https://github.com/lmoraperez/multidrive/releases/download/v0.0.1-21/multidrive-0.0.1-21-arm64.apk">
+      Descargar para Android</a>
+    <span class="letra-pequena">APK de 15 MB · versión 0.0.1 (21) · Android 8 o posterior ·
+    teléfonos arm64</span>
+  </p>
+  <p class="nota">Dos cosas antes de instalarlo, y la primera pilla a todo el mundo.
+  <strong>No se puede instalar encima de la versión de Google Play</strong>: este fichero va
+  firmado con nuestra clave de subida y el de Play lo vuelve a firmar Google, así que para
+  Android son dos aplicaciones distintas y la instalación falla. Para cambiar de uno a otro
+  hay que desinstalar primero, y al desinstalar se pierden las cuentas enlazadas en el
+  teléfono —el volumen no se toca: vive en tus cuentas de nube—. Y
+  <strong>comprueba lo que bajas</strong>: la suma <code>sha256</code> y la huella de la firma
+  están en las <a rel="noopener"
+  href="https://github.com/lmoraperez/multidrive/releases/tag/v0.0.1-21">notas de la
+  publicación</a>, con el comando para verificarlas.</p>
+  <p class="nota">Para Windows todavía no hay instalador publicado: se compila desde el
+  código, y está contado en el <a rel="noopener"
+  href="https://github.com/lmoraperez/multidrive#instalar-en-windows">repositorio</a>.</p>
 </section>
 
 <section id="spot">
