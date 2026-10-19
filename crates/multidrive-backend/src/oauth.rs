@@ -31,6 +31,8 @@
 //! codigo no sirve sin un valor que solo conoce este proceso y que nunca viaja por el
 //! navegador.
 
+use std::future::Future;
+use std::pin::Pin;
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
@@ -47,6 +49,16 @@ use crate::catalogo::Oauth;
 /// para siempre: quien se fue a hacer otra cosa volvera y pulsara otra vez.
 const ESPERA: Duration = Duration::from_secs(300);
 
+/// Lo que lee el usuario en la pestana cuando el proveedor ya dio el permiso y lo que queda es
+/// volver a la aplicacion.
+///
+/// Son constantes para que haya un test que vigile lo que dicen. No es puntillosidad: la
+/// version anterior decia «Ya puedes volver / Terminando en MultiDrive…», y lo segundo era
+/// falso --no terminaba nada hasta que el usuario pulsaba-- de una manera que deja a la gente
+/// esperando a que la pantalla haga sola lo que no va a hacer.
+const VUELTA_TITULO: &str = "Permiso concedido";
+const VUELTA_DETALLE: &str = "Pulsa el botón para volver a MultiDrive y terminar.";
+
 /// Una cuenta recien conectada.
 ///
 /// El `Debug` se escribe a mano y redactado, por el mismo motivo que el de `OauthCreds`: un
@@ -55,6 +67,30 @@ const ESPERA: Duration = Duration::from_secs(300);
 pub struct Conectada {
     /// Lo unico que hay que guardar. Con el, el programa renueva el acceso solo.
     pub refresh_token: String,
+}
+
+/// Como se vuelve a la aplicacion desde el navegador. Solo hace falta en un movil.
+///
+/// Las dos cosas van juntas **a proposito**, y no por comodidad de tener un parametro menos.
+/// Separadas estuvieron, y ese fue el fallo: se servia el boton de volver y despues se contaba
+/// el tiempo a ojo --mil doscientos milisegundos-- confiando en que un salto automatico traeria
+/// la aplicacion al frente dentro de ese plazo. Chrome bloquea ese salto. El plazo se agotaba
+/// con la aplicacion todavia detras, el canje salia en segundo plano, y ahi es donde Android le
+/// corta el DNS sin avisar. Quien pida lo uno tiene que dar lo otro.
+pub struct Vuelta<'a> {
+    /// El enlace que trae de vuelta a la aplicacion. Es lo que lleva el boton de la pagina.
+    pub enlace: &'a str,
+
+    /// Fabrica un futuro que termina cuando la aplicacion esta delante.
+    ///
+    /// Fabrica y no futuro ya hecho porque tiene que empezar a escuchar **despues** de servir
+    /// la pagina. La aplicacion estaba delante hace nada, cuando el usuario pulso el boton de
+    /// conectar; un futuro creado antes de tiempo se daria por cumplido con aquello y no
+    /// habriamos esperado a nadie.
+    ///
+    /// Si nadie vuelve, tiene que terminar igual al cabo de un rato: un canje tardio todavia
+    /// puede salir bien, y una espera sin fondo no.
+    pub delante: &'a (dyn Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Sync),
 }
 
 /// Abre el navegador, espera a que el usuario de permiso y devuelve el token de refresco.
@@ -66,7 +102,7 @@ pub async fn conectar(
     client_id: &str,
     client_secret: &str,
     abrir: &(dyn Fn(&str) -> Result<(), String> + Sync),
-    volver_a: Option<&str>,
+    vuelta: Option<Vuelta<'_>>,
 ) -> Result<Conectada, BackendError> {
     let fallo = |detalle: String| BackendError::Oauth { detalle };
 
@@ -156,22 +192,32 @@ pub async fn conectar(
     // resolver, con un «no address associated with hostname» que parece un problema del
     // proveedor y no lo es. Un tester se comio exactamente eso.
     //
-    // Asi que primero se responde --lo que manda al usuario de vuelta a la aplicacion-- y
-    // **despues** se canjea, ya con la aplicacion delante. La pausa es para que al salto le
-    // de tiempo a llegar: sin ella se canjearia igual de fondo y no habriamos arreglado nada.
+    // Asi que primero se responde --lo que le da al usuario la manera de volver-- y **despues**
+    // se canjea, ya con la aplicacion delante.
+    //
+    // # No se cuenta el tiempo: se espera a que vuelva
+    //
+    // Aqui hubo una pausa de mil doscientos milisegundos, puesta para darle tiempo al salto
+    // automatico. Medido en un telefono: el salto **no llega**, porque Chrome no deja que una
+    // pagina mande a otra aplicacion sin que medie un gesto, y entonces la pausa terminaba con
+    // la aplicacion todavia detras y el canje salia de fondo igual. El arreglo no arreglaba
+    // nada, y de la peor manera: pareciendolo.
+    //
+    // Ahora se espera a la señal de que la aplicacion esta delante de verdad, venga del salto
+    // o del dedo del usuario en el boton. Quien la da es quien puede saberlo, que es la capa
+    // de Android.
     //
     // La pagina no puede decir «cuenta conectada», porque todavia no se sabe. Dice lo unico
-    // que es cierto en ese momento: que la parte del navegador termino. El resultado de
-    // verdad lo cuenta la aplicacion, que es donde el usuario acaba de aterrizar.
-    if volver_a.is_some() {
-        responder_pagina(
-            &mut socket,
-            "Ya puedes volver",
-            "Terminando en MultiDrive…",
-            volver_a,
-        )
-        .await;
-        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+    // que es cierto en ese momento --el proveedor dio el permiso-- y lo que hay que hacer. El
+    // resultado de verdad lo cuenta la aplicacion, que es donde el usuario acaba de aterrizar.
+    if let Some(vuelta) = &vuelta {
+        // La espera se arma **antes** de servir la pagina, y el orden importa: entre servirla
+        // y ponerse a esperar cabe la vuelta del usuario, y una espera armada tarde se pierde
+        // justo el aviso por el que esperaba. Lo que se arma aqui es el punto de partida; lo
+        // que se mira debajo es si ha pasado algo desde este instante.
+        let vuelto = (vuelta.delante)();
+        responder_pagina(&mut socket, VUELTA_TITULO, VUELTA_DETALLE, Some(vuelta.enlace)).await;
+        vuelto.await;
         return canjear(
             oauth,
             client_id,
@@ -299,6 +345,52 @@ async fn esperar_codigo(
     }
 }
 
+/// Por que fallo un canje, que es lo que decide si repetirlo sirve de algo.
+///
+/// La frontera no es «error de red» contra «error del proveedor»: es **si la peticion llego a
+/// salir**. Un codigo de autorizacion es de un solo uso, y repetir uno que el proveedor ya vio
+/// no da otra respuesta, da la misma con peor cara. Pero si la peticion nunca salio, el codigo
+/// sigue sin gastar y repetirla es seguro.
+enum FalloDeCanje {
+    /// No se pudo ni mandar: DNS, conexion rechazada, tiempo agotado. El codigo sigue intacto.
+    Transporte(BackendError),
+    /// El proveedor contesto, y contesto que no. Repetirlo no cambia nada.
+    Respondio(BackendError),
+}
+
+impl From<FalloDeCanje> for BackendError {
+    fn from(f: FalloDeCanje) -> Self {
+        match f {
+            FalloDeCanje::Transporte(e) | FalloDeCanje::Respondio(e) => e,
+        }
+    }
+}
+
+/// Lo que se espera entre un intento y el siguiente.
+///
+/// # Por que hay reintentos
+///
+/// Medido en un telefono, con el ahorro de datos encendido: el usuario pulsa «Volver a
+/// MultiDrive», la pantalla resume, y el canje sale en el mismo instante en que el sistema
+/// esta abriendo el cortafuegos de la aplicacion. El registro de `netpolicy` y el resume caen
+/// dentro de la misma decima de segundo, y la consulta de DNS se cuela por delante: «No
+/// address associated with hostname», que es exactamente el error que reporto un tester.
+///
+/// Esperar a tener la aplicacion delante era necesario y no es suficiente: «delante» y «con
+/// red» no ocurren a la vez. No hay nada que observar para saber cuando la red esta lista --no
+/// hay aviso de que el cortafuegos se abrio-- asi que la unica manera de saberlo es intentarlo.
+///
+/// Tres esperas y no una: la primera cubre la carrera, que es cosa de decimas; las otras dos
+/// cubren el caso de que el sistema tarde mas de lo visto. Si a los cuatro segundos largos
+/// sigue sin haber red, es que no la hay, y entonces el mensaje de error --que nombra el VPN,
+/// el ahorro de bateria y el de datos-- vale mas que seguir esperando.
+const ESPERAS_ENTRE_CANJES: [Duration; 3] = [
+    Duration::from_millis(400),
+    Duration::from_millis(1200),
+    Duration::from_millis(3000),
+];
+
+/// Canjea el codigo, repitiendo si la peticion no llego a salir.
 async fn canjear(
     oauth: &Oauth,
     client_id: &str,
@@ -307,10 +399,43 @@ async fn canjear(
     redirigir: &str,
     verificador: &str,
 ) -> Result<Conectada, BackendError> {
+    let mut ultimo = match canjear_una_vez(oauth, client_id, client_secret, codigo, redirigir, verificador).await {
+        Ok(c) => return Ok(c),
+        Err(FalloDeCanje::Respondio(e)) => return Err(e),
+        Err(FalloDeCanje::Transporte(e)) => e,
+    };
+
+    for espera in ESPERAS_ENTRE_CANJES {
+        tokio::time::sleep(espera).await;
+        match canjear_una_vez(oauth, client_id, client_secret, codigo, redirigir, verificador).await
+        {
+            Ok(c) => return Ok(c),
+            Err(FalloDeCanje::Respondio(e)) => return Err(e),
+            // Se guarda el ultimo y no el primero: si la causa cambia por el camino, lo que le
+            // sirve a quien lo lee es como acabo la cosa, no como empezo.
+            Err(FalloDeCanje::Transporte(e)) => ultimo = e,
+        }
+    }
+
+    Err(ultimo)
+}
+
+async fn canjear_una_vez(
+    oauth: &Oauth,
+    client_id: &str,
+    client_secret: &str,
+    codigo: &str,
+    redirigir: &str,
+    verificador: &str,
+) -> Result<Conectada, FalloDeCanje> {
     // El del proceso, que en Android se construye con otro almacen de confianza. Fabricar uno
     // aqui dejaria el canje de codigo fuera del arreglo, y es justo la peticion sin la que no
     // se puede conectar ninguna cuenta.
-    let cliente = crate::http::construir(Duration::from_secs(30))?;
+    // Construir el cliente puede fallar por el almacen de confianza, y eso no se arregla
+    // repitiendolo. Pero tampoco llega a mandar nada, asi que el codigo queda sin gastar: va
+    // por transporte, que es la categoria que mira justo eso.
+    let cliente =
+        crate::http::construir(Duration::from_secs(30)).map_err(FalloDeCanje::Transporte)?;
 
     let respuesta = cliente
         .post(oauth.token)
@@ -324,8 +449,10 @@ async fn canjear(
         ])
         .send()
         .await
-        .map_err(|e| BackendError::Oauth {
-            detalle: crate::http::con_causas(&e),
+        .map_err(|e| {
+            FalloDeCanje::Transporte(BackendError::Oauth {
+                detalle: crate::http::con_causas(&e),
+            })
         })?;
 
     let estado = respuesta.status();
@@ -339,25 +466,29 @@ async fn canjear(
             .filter(|c| !c.is_control())
             .take(300)
             .collect();
-        return Err(BackendError::Oauth {
+        return Err(FalloDeCanje::Respondio(BackendError::Oauth {
             detalle: format!("el proveedor respondio {estado}: {pista}"),
-        });
+        }));
     }
 
     let json: serde_json::Value =
-        serde_json::from_str(&cuerpo).map_err(|e| BackendError::Oauth {
-            detalle: e.to_string(),
+        serde_json::from_str(&cuerpo).map_err(|e| {
+            FalloDeCanje::Respondio(BackendError::Oauth {
+                detalle: e.to_string(),
+            })
         })?;
     let refresh_token = json["refresh_token"]
         .as_str()
-        .ok_or_else(|| BackendError::Oauth {
-            // Pasa de verdad y tiene arreglo concreto, asi que se dice cual: Google no
-            // reenvia el token de refresco a quien ya le habia dado permiso antes, salvo que
-            // se le pida el consentimiento otra vez.
-            detalle: "el proveedor no devolvio ningun token de refresco. Si ya habias \
-                      conectado esta cuenta, retirale el permiso a la aplicacion en los \
-                      ajustes de tu cuenta y vuelve a conectarla"
-                .into(),
+        .ok_or_else(|| {
+            FalloDeCanje::Respondio(BackendError::Oauth {
+                // Pasa de verdad y tiene arreglo concreto, asi que se dice cual: Google no
+                // reenvia el token de refresco a quien ya le habia dado permiso antes, salvo
+                // que se le pida el consentimiento otra vez.
+                detalle: "el proveedor no devolvio ningun token de refresco. Si ya habias \
+                          conectado esta cuenta, retirale el permiso a la aplicacion en los \
+                          ajustes de tu cuenta y vuelve a conectarla"
+                    .into(),
+            })
         })?;
 
     Ok(Conectada {
@@ -559,16 +690,22 @@ async fn responder(socket: &mut tokio::net::TcpStream, codigo: u16, texto: &str)
 /// movil si: sin esto hay que cerrar la pestana, buscar la aplicacion y abrirla, para algo
 /// que el navegador podria hacer solo.
 ///
-/// Se intenta de **dos** maneras a proposito, y no por redundancia:
+/// Se intenta de **dos** maneras, y hay que saber cual de las dos es la que trabaja:
 ///
-/// - Un `iframe` oculto apuntando al enlace. Es lo que hace el salto automatico.
-/// - Un boton bien visible con el mismo enlace.
+/// - Un boton bien visible con el enlace. **Esta es la que funciona**, y por eso el texto de
+///   la pagina manda pulsarlo en vez de prometer que no hara falta.
+/// - Un `iframe` oculto apuntando al mismo sitio. Es un tiro a puerta, no el plan.
 ///
-/// Chrome bloquea a veces el salto a otra aplicacion si no hubo un gesto del usuario, y no
-/// avisa de que lo ha bloqueado. Por eso el intento va en un `iframe` y no en un
-/// `location.replace`: si lo bloquean, un iframe falla **sin tocar la pagina** y el boton
-/// sigue ahi. Con `location.replace`, el fallo se lleva por delante la pagina y el boton con
-/// ella, y entonces el usuario esta peor que antes de intentarlo.
+/// Chrome bloquea el salto a otra aplicacion si no hubo un gesto del usuario, y desde un
+/// `iframe` lo bloquea siempre. Comprobado en un telefono: no salta. Se deja porque hay
+/// navegadores que si lo permiten y ahi ahorra un toque, pero la pagina no cuenta con ello y
+/// el texto no lo menciona: prometer un salto que no ocurre deja a la gente esperando delante
+/// de una pantalla que dice que ya casi esta.
+///
+/// Que el intento vaya en un `iframe` y no en un `location.replace` es lo que hace que fallar
+/// no cueste nada: un iframe bloqueado **no toca la pagina** y el boton sigue ahi. Con
+/// `location.replace` el fallo se lleva por delante la pagina y el boton con ella, y entonces
+/// el usuario esta peor que antes de intentarlo.
 ///
 /// El guion no lleva la URL escrita: la lee del `href` del boton. Asi solo hay que escaparla
 /// para un atributo HTML, y no ademas para una cadena de JavaScript.
@@ -1017,6 +1154,91 @@ mod tests {
 }
 
 #[cfg(test)]
+mod tests_reintento_del_canje {
+    use super::*;
+
+    fn oauth_con_token(token: &str) -> Oauth {
+        Oauth {
+            autorizar: "http://127.0.0.1:1/autorizar",
+            token: Box::leak(token.to_string().into_boxed_str()),
+            ambito: "un.ambito",
+            anfitrion: "127.0.0.1",
+            cuota: "http://127.0.0.1:1/cuota",
+            identidad: "http://127.0.0.1:1/identidad",
+            campo_identidad: &["id"],
+            extra: &[],
+        }
+    }
+
+    /// Si la peticion no llega a salir, se repite, y se espera entre intento e intento.
+    ///
+    /// El reloj esta parado: lo que se mide es el tiempo **virtual**, que avanza solo cuando
+    /// no queda nada por hacer. Asi el test comprueba las esperas sin tardarlas.
+    #[tokio::test(start_paused = true)]
+    async fn una_peticion_que_no_sale_se_repite() {
+        // Un puerto sin nadie detras: la conexion se rechaza al instante, que es el fallo de
+        // transporte mas limpio que se puede provocar sin tocar la red de la maquina.
+        let oauth = oauth_con_token("http://127.0.0.1:1/token");
+        let principio = tokio::time::Instant::now();
+
+        let e = canjear(&oauth, "id", "secreto", "un-codigo", "http://127.0.0.1/", "v")
+            .await
+            .unwrap_err();
+
+        let tardado = principio.elapsed();
+        let suma: Duration = ESPERAS_ENTRE_CANJES.iter().sum();
+        assert!(
+            tardado >= suma,
+            "tardo {tardado:?} y las esperas suman {suma:?}: no repitio las veces que debia"
+        );
+        // Y lo que se cuenta al final es el fallo, no un «reintentando» a medias.
+        assert!(format!("{e}").contains("http"), "{e}");
+    }
+
+    /// Si el proveedor contesta, se le cree a la primera.
+    ///
+    /// Repetir un codigo que el proveedor ya vio no da otra respuesta: da la misma, y de paso
+    /// hace esperar al usuario cuatro segundos largos para nada.
+    #[tokio::test]
+    async fn una_respuesta_del_proveedor_no_se_repite() {
+        let servidor = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let puerto = servidor.local_addr().unwrap().port();
+        let cuantas = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let suyas = std::sync::Arc::clone(&cuantas);
+        tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = servidor.accept().await.unwrap();
+                suyas.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let mut buf = vec![0u8; 8192];
+                socket.read(&mut buf).await.ok();
+                let cuerpo = "{\"error\":\"invalid_grant\"}";
+                let cabecera = format!(
+                    "HTTP/1.1 400 .\r\nContent-Type: application/json\r\n\
+                     Content-Length: {}\r\nConnection: close\r\n\r\n",
+                    cuerpo.len()
+                );
+                socket.write_all(cabecera.as_bytes()).await.ok();
+                socket.write_all(cuerpo.as_bytes()).await.ok();
+                socket.shutdown().await.ok();
+            }
+        });
+
+        let oauth = oauth_con_token(&format!("http://127.0.0.1:{puerto}/token"));
+        let e = canjear(&oauth, "id", "secreto", "un-codigo", "http://127.0.0.1/", "v")
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            cuantas.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "se le pidio mas de una vez a un proveedor que ya habia contestado"
+        );
+        assert!(format!("{e}").contains("400"), "{e}");
+    }
+}
+
+#[cfg(test)]
 mod tests_pagina_de_vuelta {
     use super::*;
 
@@ -1030,8 +1252,8 @@ mod tests_pagina_de_vuelta {
         assert!(!p.contains("<iframe"), "{p}");
     }
 
-    /// Con destino van **las dos** cosas: el salto automatico y el boton. Si solo fuera el
-    /// salto, el dia que el navegador lo bloquee el usuario se queda sin salida.
+    /// Con destino van **las dos** cosas: el boton, que es el que funciona, y el intento
+    /// automatico, que es el que a veces cuela. Sin el boton no hay salida ninguna.
     #[test]
     fn con_destino_van_el_salto_y_el_boton() {
         let p = pagina("Cuenta conectada", "Volviendo…", Some("multidrive://conectado"));
@@ -1056,6 +1278,23 @@ mod tests_pagina_de_vuelta {
         let p = pagina("x", "y", Some("multidrive://a\"onload=alert(1)"));
         assert!(!p.contains("\"onload="), "{p}");
         assert!(p.contains("&quot;onload="), "{p}");
+    }
+
+    /// El texto de la vuelta **manda pulsar**, y no dice que la cosa se este terminando sola.
+    ///
+    /// Esto no es cuidar el estilo. El texto anterior decia «Terminando en MultiDrive…»
+    /// apoyandose en un salto automatico que el navegador bloquea: quien lo leia se quedaba
+    /// mirando, con el boton que resolvia su problema delante y sin motivo para tocarlo.
+    #[test]
+    fn el_texto_de_la_vuelta_no_promete_un_salto_solo() {
+        let d = VUELTA_DETALLE.to_lowercase();
+        assert!(d.contains("pulsa"), "{VUELTA_DETALLE}");
+        for promesa in ["terminando", "volviendo", "espera", "un momento", "automat"] {
+            assert!(!d.contains(promesa), "«{promesa}» en «{VUELTA_DETALLE}»");
+        }
+        // Y el boton al que manda el texto tiene que existir en la pagina.
+        let p = pagina(VUELTA_TITULO, VUELTA_DETALLE, Some("multidrive://conectado"));
+        assert!(p.contains("Volver a MultiDrive"), "{p}");
     }
 
     /// Lo que cuenta el proveedor cuando falla tampoco se mete en HTML tal cual.

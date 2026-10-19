@@ -384,6 +384,10 @@ class Crear : Activity() {
     }
 
     private fun conectar(tipo: String) {
+        conPermisoDeRed(this) { empezarAConectar(tipo) }
+    }
+
+    private fun empezarAConectar(tipo: String) {
         ocupado = true
         pintarCuentas(MIENTRAS_NAVEGADOR)
         thread {

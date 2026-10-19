@@ -33,7 +33,9 @@ windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem", "Win32
 libc = "0.2"
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# `test-util` es lo que deja parar el reloj en un test. Sin eso, comprobar que el canje espera
+# entre reintentos costaria esperarlos de verdad, y son mas de cuatro segundos en cada pasada.
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }
 
 # Solo en Android: ahi el verificador de la plataforma declara revocado lo que no lo esta --un
 # certificado sin OCSP ni CRL no se puede comprobar, y eso sale como si hubiera fallado-- y el

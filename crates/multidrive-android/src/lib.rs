@@ -116,6 +116,22 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_conectar<'local>(
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Avisa al nucleo de que una pantalla de MultiDrive ha vuelto a estar delante.
+///
+/// La llama Kotlin en cada `onActivityResumed`, haya o no una conexion en curso. Es lo que
+/// permite canjear el codigo de OAuth **con la aplicacion delante** en vez de a los mil
+/// doscientos milisegundos de servir la pagina, que era cuando el usuario todavia estaba en el
+/// navegador y Android podia tener la red cortada por ahorro de bateria o de datos.
+///
+/// No bloquea y no lanza: se puede llamar desde el hilo de la interfaz sin pensarlo.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_delante<'local>(
+    _entorno: EnvUnowned<'local>,
+    _clase: JObject<'local>,
+) {
+    conectar::delante();
+}
+
 /// Version de MultiDrive, como cadena.
 ///
 /// Es la primera funcion a proposito, y no es de mentira: si esto vuelve con la version
@@ -870,6 +886,7 @@ mod tests {
             "leer",
             "conectar",
             "cancelarConexion",
+            "delante",
             "refrescar",
             "recuperar",
             "cuentas",

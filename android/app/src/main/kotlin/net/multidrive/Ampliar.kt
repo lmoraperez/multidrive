@@ -129,6 +129,10 @@ class Ampliar : Activity() {
     }
 
     private fun conectar(tipo: String) {
+        conPermisoDeRed(this) { empezarAConectar(tipo) }
+    }
+
+    private fun empezarAConectar(tipo: String) {
         ocupado = true
         pintarOcupado(MIENTRAS_NAVEGADOR)
 

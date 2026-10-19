@@ -23,6 +23,56 @@ use jni::{Env, JavaVM};
 /// La maquina virtual, para poder volver a Kotlin desde un hilo de Rust.
 static VM: OnceLock<JavaVM> = OnceLock::new();
 
+/// Cuantas veces ha vuelto a estar delante una pantalla de MultiDrive.
+///
+/// # Para que sirve contar esto
+///
+/// Para no canjear el codigo de autorizacion con la aplicacion en segundo plano. A una
+/// aplicacion de fondo Android le puede cortar la red --ahorro de bateria, ahorro de datos,
+/// una aplicacion marcada como restringida-- y cuando lo hace el sintoma es un fallo de DNS
+/// que parece del proveedor. Un tester se comio exactamente eso.
+///
+/// Antes esto se resolvia con una pausa de mil doscientos milisegundos, confiando en que para
+/// entonces el navegador habria devuelto al usuario solo. **No lo hace**: Chrome bloquea el
+/// salto a otra aplicacion sin un gesto de por medio, asi que la pausa terminaba con la
+/// aplicacion todavia detras y el canje salia de fondo igual que antes.
+///
+/// Un contador y no una señal suelta porque lo que hay que preguntar es «¿ha vuelto alguien
+/// **desde que empece a mirar**?». Un receptor de `watch` se queda con el valor que habia al
+/// clonarlo, asi que clonarlo marca el instante de partida sin perderse nada de lo que venga
+/// detras, incluso si la vuelta ocurre antes de ponerse a esperar.
+static DELANTE: std::sync::LazyLock<(
+    tokio::sync::watch::Sender<u64>,
+    tokio::sync::watch::Receiver<u64>,
+)> = std::sync::LazyLock::new(|| tokio::sync::watch::channel(0));
+
+/// Cuanto se espera a que alguien traiga la aplicacion al frente antes de canjear igual.
+///
+/// Hay plazo porque quien cierra la pestana sin volver no deberia perder la cuenta que acaba
+/// de autorizar: un canje tardio todavia puede salir bien, y de fondo sale bien casi siempre
+/// --el corte de red es el caso malo, no el normal--. Lo que no puede haber es una espera sin
+/// fondo dejando la pantalla pensando para siempre.
+const ESPERA_DELANTE: std::time::Duration = std::time::Duration::from_secs(90);
+
+/// Avisa de que una pantalla de MultiDrive ha vuelto a estar delante.
+///
+/// Lo llama Kotlin en cada `onActivityResumed`. No bloquea, no falla y no le importa que no
+/// haya nadie esperando: si no hay ninguna conexion en curso, esto es un contador que sube.
+pub fn delante() {
+    DELANTE.0.send_modify(|v| *v += 1);
+}
+
+/// Arma la espera y devuelve el futuro que termina cuando la aplicacion este delante.
+///
+/// Clonar el receptor **aqui**, y no dentro del futuro, es lo que fija el punto de partida en
+/// el momento de armar y no en el de empezar a esperar.
+fn esperar_delante() -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+    let mut rx = DELANTE.1.clone();
+    Box::pin(async move {
+        let _ = tokio::time::timeout(ESPERA_DELANTE, rx.changed()).await;
+    })
+}
+
 /// Con que cortar la espera del navegador, si hay una en curso.
 ///
 /// # Por que hace falta poder cancelar
@@ -170,7 +220,14 @@ pub fn conectar(tipo: &str, config: &str, volver_a: &str) -> Result<String, Stri
             &|url| abrir_navegador(url),
             // Vacio significa que no hay a donde volver: asi es como el escritorio lo pide,
             // y asi tiene que poder pedirlo tambien quien llame desde Kotlin sin enlace.
-            if volver_a.is_empty() { None } else { Some(volver_a) },
+            if volver_a.is_empty() {
+                None
+            } else {
+                Some(multidrive_backend::oauth::Vuelta {
+                    enlace: volver_a,
+                    delante: &esperar_delante,
+                })
+            },
         );
         tokio::select! {
             r = flujo => r.map_err(|e| e.to_string()),
