@@ -10,7 +10,7 @@
     <color name="apagado">#8a94a6</color>
     <color name="acento">#4c8ff0</color>
     <color name="acento_suave">#7ab0f7</color>
-    <!-- Solo para el distintivo de pre-alfa. Nada mas. -->
+    <!-- Solo para el distintivo de alfa. Nada mas. -->
     <color name="aviso">#d8a657</color>
     <!-- Lo que destruye algo y no se deshace: eliminar un volumen. Nada mas: un rojo que se
          usa para avisos corrientes deja de avisar de nada. Contraste 4,86 con el texto

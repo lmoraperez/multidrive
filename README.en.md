@@ -10,12 +10,16 @@ drive on Windows and Linux, and that on Android shows up inside the system Files
 RAID-like semantics (mirroring, striping and parity via *erasure coding*) and **zero-knowledge
 encryption**.
 
-> Status: **pre-alpha.** The core works and is covered by tests: encryption, RAID, chunking,
+> Status: **alpha.** The core works and is covered by tests: encryption, RAID, chunking,
 > the copy-on-write metadata tree and rescue. Google Drive and OneDrive pass the conformance
 > suite against real accounts. **It mounts as a read-write drive on Windows**, with in-memory
 > and on-disk caches and background upload. **There is an Android app**, in internal testing
-> on Google Play, that creates volumes, reads, writes, and uploads whichever phone folders you
-> point it at. It is still pre-alpha: this is not where you keep the only copy of anything.
+> on Google Play, that creates volumes, grows them, deletes them, reads, writes, and uploads
+> whichever phone folders you point it at.
+>
+> Alpha means the main paths work and get daily use, and that pieces are still missing:
+> thumbnails, a web version, and of the providers only Drive and OneDrive are verified
+> against real accounts. **This is not where you keep the only copy of anything.**
 
 Project site: https://multidrive.net
 
@@ -176,6 +180,15 @@ real.
 > detail, and what's still open, is in [docs/ROADMAP.md](docs/ROADMAP.md) (Spanish).
 
 ## Android
+
+| | | | |
+|:-:|:-:|:-:|:-:|
+| <img src="site/capturas/principal.png" width="200" alt="Main screen with the volume open and the space on each account"> | <img src="site/capturas/topologia.png" width="200" alt="Choosing a layout, with what each one costs"> | <img src="site/capturas/archivos.png" width="200" alt="File browser"> | <img src="site/capturas/ampliar.png" width="200" alt="Growing the volume with more accounts"> |
+| The volume, open | Pick the layout | Your files | Grow it later |
+
+Screenshots taken on a handset running the published build. Not mocked up, not retouched. **The
+app's interface is in Spanish only**, like the rest of the project; there is no English build
+yet.
 
 There is an **Android app**, published on Google Play as `com.jlsoltech.multidrive`. It is in
 **internal testing**: you install it from the testing link, not by searching the store. It

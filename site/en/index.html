@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MultiDrive — one drive, many clouds</title>
-<meta name="description" content="MultiDrive aggregates several cloud storage services into a single volume with RAID-like semantics and zero-knowledge encryption. It mounts as a drive on Windows and Linux, and on Android it shows up in the Files app. Pre-alpha: the core works and is verified against real accounts.">
+<meta name="description" content="MultiDrive aggregates several cloud storage services into a single volume with RAID-like semantics and zero-knowledge encryption. It mounts as a drive on Windows and Linux, and on Android it shows up in the Files app. Alpha: the core works and is verified against real accounts.">
 <link rel="canonical" href="https://multidrive.net/en/">
 <link rel="alternate" hreflang="es" href="https://multidrive.net/">
 <link rel="alternate" hreflang="en" href="https://multidrive.net/en/">
@@ -70,6 +70,15 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .spot{background:var(--panel);border:1px solid var(--line);border-radius:10px;
   overflow:hidden;line-height:0}
 .spot video{display:block;width:100%;height:auto;aspect-ratio:16/9;background:#000}
+
+/* Las capturas del movil. Una rejilla que cabe a lo ancho y que en un telefono se queda en
+   una sola columna: cuatro pantallas de movil en fila, dentro de un movil, no se leen. */
+.capturas{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  margin-top:18px}
+.capturas figure{margin:0}
+.capturas img{display:block;width:100%;height:auto;border:1px solid var(--line);
+  border-radius:10px;background:var(--panel)}
+.capturas figcaption{color:var(--muted);font-size:14px;line-height:1.5;margin-top:8px}
 footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 /* El corro de proveedores. En pantalla ancha van en circulo alrededor del logotipo; por
@@ -122,7 +131,7 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 <header>
   <div class="arriba">
-    <div class="badge">Pre-alpha · it already mounts</div>
+    <div class="badge">Alpha · it already mounts</div>
     <p class="idioma"><a href="/">Español</a> · <b>English</b></p>
   </div>
   <div class="logotipo">
@@ -165,6 +174,38 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
   itself either: until you hit play, only the file's header travels, not the video. And if
   you'd rather read, everything below is written out in more detail than fits in half a
   minute.</p>
+</section>
+
+<section id="screenshots">
+  <h2>On the phone</h2>
+  <p>Real screenshots, taken on a handset running the published build. Not mocked up and not
+  retouched: what you see there is what you get.</p>
+  <div class="capturas">
+    <figure>
+      <img src="/capturas/principal.png" width="1080" height="2460" loading="lazy"
+           alt="MultiDrive's main screen with the volume open, two Google Drive accounts and a
+                space bar for each one.">
+      <figcaption>The volume open, with what is left on each account.</figcaption>
+    </figure>
+    <figure>
+      <img src="/capturas/topologia.png" width="1080" height="2460" loading="lazy"
+           alt="Choosing a layout: espejo:2, lineal:2 and union:2, each with how many failures
+                it survives and how much space it gives.">
+      <figcaption>You pick the layout when you create it, and each cost is spelled out.</figcaption>
+    </figure>
+    <figure>
+      <img src="/capturas/archivos.png" width="1080" height="2460" loading="lazy"
+           alt="MultiDrive's file browser showing three folders: Documentos, Fotos and
+                Respaldo.">
+      <figcaption>Your files, from here or from the system's Files app.</figcaption>
+    </figure>
+    <figure>
+      <img src="/capturas/ampliar.png" width="1080" height="2460" loading="lazy"
+           alt="The grow-the-volume screen, with buttons to connect Google Drive and
+                OneDrive.">
+      <figcaption>Accounts can be added later, without rebuilding it.</figcaption>
+    </figure>
+  </div>
 </section>
 
 <section>
@@ -385,7 +426,7 @@ rs(k,m)     k of k+m                 m failures     (k+m)/k ×</code></pre>
 
 <footer>
   <div class="wrap" style="padding:0">
-    MultiDrive · AGPL-3.0 · pre-alpha: it mounts on the desktop, there is an Android app and it
+    MultiDrive · AGPL-3.0 · alpha: it mounts on the desktop, there is an Android app and it
     is covered by tests, but there is no stable release and the on-disk format can still change.
     <br><br>
     <a href="/en/privacidad.html" style="color:var(--accent)">Privacy policy</a>

@@ -22,7 +22,7 @@ import net.multidrive.nucleo.Nucleo
  *
  * Son las mismas decisiones que ofrece Nextcloud, que es un buen catálogo de lo que hay que
  * preguntar, menos una: **no se ofrece borrar el original tras subirlo**. Borrar las fotos de
- * alguien con un sistema en pre-alfa no se hace, y un ajuste que existe se acaba activando.
+ * alguien con un sistema en alfa no se hace, y un ajuste que existe se acaba activando.
  */
 object Carga {
     private const val FICHERO = "carga"

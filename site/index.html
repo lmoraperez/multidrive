@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MultiDrive — una sola unidad, muchas nubes</title>
-<meta name="description" content="MultiDrive agrega varios servicios de almacenamiento en la nube en un unico volumen con semantica RAID y cifrado de conocimiento cero. Se monta como unidad en Windows y Linux, y en Android aparece en la app de Archivos. Pre-alfa: el nucleo funciona y esta verificado contra cuentas reales.">
+<meta name="description" content="MultiDrive agrega varios servicios de almacenamiento en la nube en un unico volumen con semantica RAID y cifrado de conocimiento cero. Se monta como unidad en Windows y Linux, y en Android aparece en la app de Archivos. Alfa: el nucleo funciona y esta verificado contra cuentas reales.">
 <link rel="canonical" href="https://multidrive.net/">
 <link rel="alternate" hreflang="es" href="https://multidrive.net/">
 <link rel="alternate" hreflang="en" href="https://multidrive.net/en/">
@@ -70,6 +70,15 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .spot{background:var(--panel);border:1px solid var(--line);border-radius:10px;
   overflow:hidden;line-height:0}
 .spot video{display:block;width:100%;height:auto;aspect-ratio:16/9;background:#000}
+
+/* Las capturas del movil. Una rejilla que cabe a lo ancho y que en un telefono se queda en
+   una sola columna: cuatro pantallas de movil en fila, dentro de un movil, no se leen. */
+.capturas{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  margin-top:18px}
+.capturas figure{margin:0}
+.capturas img{display:block;width:100%;height:auto;border:1px solid var(--line);
+  border-radius:10px;background:var(--panel)}
+.capturas figcaption{color:var(--muted);font-size:14px;line-height:1.5;margin-top:8px}
 footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 /* El corro de proveedores. En pantalla ancha van en circulo alrededor del logotipo; por
@@ -122,7 +131,7 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 <header>
   <div class="arriba">
-    <div class="badge">Pre-alfa · ya se monta</div>
+    <div class="badge">Alfa · ya se monta</div>
     <p class="idioma"><b>Español</b> · <a href="/en/">English</a></p>
   </div>
   <div class="logotipo">
@@ -164,6 +173,38 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
   te pierdes nada viéndolo en silencio y no hacen falta subtítulos. Tampoco se reproduce solo:
   hasta que le das al play solo viaja la cabecera del fichero, no el vídeo. Y si prefieres
   leerlo, todo lo de abajo está escrito con más detalle que lo que cabe en medio minuto.</p>
+</section>
+
+<section id="capturas">
+  <h2>En el móvil</h2>
+  <p>Capturas de verdad, hechas en un teléfono con la versión que hay publicada. Sin maquetar
+  ni retocar: lo que sale ahí es lo que verás.</p>
+  <div class="capturas">
+    <figure>
+      <img src="/capturas/principal.png" width="1080" height="2460" loading="lazy"
+           alt="Pantalla principal de MultiDrive con el volumen abierto, dos cuentas de Google
+                Drive y una barra de espacio para cada una.">
+      <figcaption>El volumen abierto, con lo que queda en cada cuenta.</figcaption>
+    </figure>
+    <figure>
+      <img src="/capturas/topologia.png" width="1080" height="2460" loading="lazy"
+           alt="Elección de topología: espejo:2, lineal:2 y union:2, cada una con cuántas
+                caídas aguanta y cuánto espacio da.">
+      <figcaption>Al crearlo eliges el reparto, y se dice qué cuesta cada opción.</figcaption>
+    </figure>
+    <figure>
+      <img src="/capturas/archivos.png" width="1080" height="2460" loading="lazy"
+           alt="Explorador de archivos de MultiDrive con tres carpetas: Documentos, Fotos y
+                Respaldo.">
+      <figcaption>Tus archivos, también desde la app de Archivos del sistema.</figcaption>
+    </figure>
+    <figure>
+      <img src="/capturas/ampliar.png" width="1080" height="2460" loading="lazy"
+           alt="Pantalla de ampliar el volumen, con los botones de conectar Google Drive y
+                OneDrive.">
+      <figcaption>Se le pueden meter cuentas después, sin rehacerlo.</figcaption>
+    </figure>
+  </div>
 </section>
 
 <section>
@@ -382,7 +423,7 @@ rs(k,m)     k de k+m                m caídas      (k+m)/k ×</code></pre>
 
 <footer>
   <div class="wrap" style="padding:0">
-    MultiDrive · AGPL-3.0 · pre-alfa: se monta en el escritorio, hay aplicación de Android y
+    MultiDrive · AGPL-3.0 · alfa: se monta en el escritorio, hay aplicación de Android y
     está cubierto por pruebas, pero no hay versión estable y el formato en disco todavía
     puede cambiar.
     <br><br>
