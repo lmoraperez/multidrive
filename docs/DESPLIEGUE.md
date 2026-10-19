@@ -6,14 +6,14 @@
   `kebueno.com` y `nextcloud.kebueno.com`.
 - **`chambaya.net` ya no apunta a esta máquina** (19 de octubre de 2026). El dominio y sus
   subdominios se fueron a otro sitio: `chambaya.net` → `2.59.170.20`, y
-  `nextcloud.chambaya.net` y `libredisk.chambaya.net` → `104.219.250.37`. Aquí abajo decía
-  que podía pasar cualquier día; pasó.
+  `nextcloud.chambaya.net` y `libredisk.chambaya.net` → `104.219.250.37`. Este documento
+  avisaba de que podía pasar cualquier día; pasó. Lo que se llevó por delante está en
+  [El redirector de `libredisk.chambaya.net`, retirado](#el-redirector-de-libredischambayanet-retirado).
 - Servidor web: **Caddy**, con TLS automático de Let's Encrypt.
 - Raíz del sitio: `/var/www/multidrive` (propietario `www-data`).
 - Fuente en este repo: [`site/`](../site).
-- Acceso: `ssh soporte@multidrive.net`, con `sudo` sin contraseña. Es la misma máquina que
-  `chambaya.net` --mismas claves de anfitrión-- pero se entra por el nombre del proyecto: el
-  otro es de otra cosa y puede dejar de apuntar aquí cualquier día.
+- Acceso: `ssh soporte@multidrive.net`, con `sudo` sin contraseña. Se entra **por el nombre
+  del proyecto**: antes valía también `chambaya.net`, y es justo lo que dejó de apuntar aquí.
 
 Bloques en `/etc/caddy/Caddyfile`:
 
@@ -30,30 +30,37 @@ multidrive.net, www.multidrive.net {
 	file_server
 }
 
-libredisk.chambaya.net {
-	redir https://multidrive.net{uri} permanent
-}
 ```
 
-El segundo bloque es el nombre de antes del cambio de marca. Redirige **conservando la
-ruta**, y eso no es un detalle: la política de privacidad registrada en la pantalla de
-consentimiento de Google apunta todavía a
-`https://libredisk.chambaya.net/privacidad.html`. La copia vieja en `/var/www/libredisk` ya no
-la sirve nadie.
+### El redirector de `libredisk.chambaya.net`, retirado
 
-> **Ese redirector ya no funciona, y hay que arreglarlo en Google Cloud.** El bloque sigue en
-> el Caddyfile, pero `libredisk.chambaya.net` dejó de resolver a esta máquina, así que la
-> redirección no la ve nadie: la URL de la política de privacidad que Google enseña en la
-> pantalla de consentimiento **no responde**. Comprobado el 19 de octubre de 2026: da error de
-> conexión.
->
-> No es cosmético. Google exige que esa URL funcione para verificar la aplicación, y mientras
-> tanto quien pulse «Política de privacidad» al enlazar su cuenta no ve nada.
->
-> El arreglo está en la consola de Google Cloud, no aquí: cambiar la URL de la política por
-> `https://multidrive.net/privacidad.html`, que sí responde y es la misma política. Hecho eso,
-> los cuatro bloques que nombran `chambaya` se pueden quitar del Caddyfile; mientras estén,
-> Caddy intenta renovar certificados de nombres que ya no son suyos.
+Hubo un bloque más, que redirigía `libredisk.chambaya.net` --el nombre de antes del cambio de
+marca-- a `multidrive.net` conservando la ruta. Existía por una razón concreta: la política de
+privacidad registrada en la pantalla de consentimiento de Google apuntaba a
+`https://libredisk.chambaya.net/privacidad.html`.
+
+Se retiró el 19 de octubre de 2026, junto con los otros tres bloques que nombraban `chambaya`,
+y el orden de los pasos importa por si hay que rehacerlo algún día:
+
+1. El dominio `chambaya.net` y sus subdominios **dejaron de apuntar a esta máquina**. Desde ese
+   momento el redirector ya no lo veía nadie: la URL que Google enseñaba **no respondía**. No
+   era cosmético --Google exige que ese enlace funcione para verificar la aplicación-- pero
+   tampoco se arreglaba aquí, porque el nombre ya no era nuestro.
+2. Se cambió la URL en la consola de Google Cloud por `https://multidrive.net/privacidad.html`,
+   que responde, no redirige y es la misma política.
+3. Sólo entonces se quitaron los cuatro bloques. Mientras estaban, Caddy intentaba mantener
+   certificados de nombres que ya no eran suyos.
+
+Comprobado antes y después de tocar el Caddyfile, porque ese fichero sirve también otros
+sitios: `kebueno.com` 200, `mc.kebueno.com` 302, `nextcloud.kebueno.com` 302, `multidrive.net`
+y `www.multidrive.net` 200. Idéntico.
+
+Queda una mención suelta, **a propósito**: Nextcloud sigue listando `nextcloud.chambaya.net`
+entre sus dominios de confianza. No hace nada --esa lista sólo dice qué cabeceras `Host` se
+aceptan, y ese nombre ya no llega aquí-- y tocar la configuración de Nextcloud para quitar algo
+inofensivo tiene más riesgo que dejarlo.
+
+La copia vieja en `/var/www/libredisk` no la sirve nadie.
 
 ## Publicar un cambio
 
@@ -172,7 +179,7 @@ No hace falta recargar Caddy para cambios de contenido. Si se toca el `Caddyfile
 
 ```sh
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-sudo systemctl reload caddy   # reload, NO restart: no interrumpe nextcloud.chambaya.net
+sudo systemctl reload caddy   # reload, NO restart: no interrumpe nextcloud.kebueno.com
 ```
 
 > El `Caddyfile` también sirve Nextcloud en producción. Respaldar siempre antes de editarlo.
