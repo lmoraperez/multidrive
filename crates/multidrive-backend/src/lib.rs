@@ -603,16 +603,30 @@ impl Backend for OpendalBackend {
 mod redaccion {
     use super::*;
 
-    /// El caso real que destapo el fallo: borrando un volumen, la renovacion de token fallo
-    /// y el error de OpenDAL trajo la URL entera. Google pone el token de refresco, el
-    /// `client_id` y el `client_secret` en la propia URL.
+    /// El caso que destapo el fallo: borrando un volumen, la renovacion de token fallo y el
+    /// error de OpenDAL trajo la URL entera. Google pone el token de refresco, el `client_id`
+    /// y el `client_secret` en la propia URL.
+    ///
+    /// # Los valores son inventados, y tienen que seguir siendolo
+    ///
+    /// Este test nacio con los valores **del error de verdad**, recortados. Eso estuvo mal:
+    /// un dato de prueba se queda en el historial para siempre, y el historial de un
+    /// repositorio que algun dia se abre es publico para siempre. Se cambiaron por estos, que
+    /// no abren nada.
+    ///
+    /// No se pierde nada al hacerlo, porque lo que el test ejercita no depende del valor:
+    /// `sin_secretos` tacha **por el nombre del parametro**, no por la pinta de lo que venga
+    /// detras. Un secreto de verdad aqui no probaria ni un caso mas.
+    ///
+    /// Si alguna vez hay que reproducir un fallo con los valores buenos, se hace en local y no
+    /// se confirma.
     #[test]
     fn el_error_que_publico_un_token_de_refresco_ya_no_lo_publica() {
         let real = "fallo de E/S en el proveedor 'gdrive' sobre 'chunks/': Unexpected \
                     (persistent) at list, context: { service_operation: RefreshAccessToken, \
                     uri: https://oauth2.googleapis.com/token?refresh_token=1//0FINGIDO-esto-\
-                    no-es-un-token&client_id=000000000000-fingido.apps.google\
-                    usercontent.com&client_secret=FINGIDO-esto-no-es-un-secreto&grant_type=refresh_to\
+                    no-es-un-token&client_id=000000000000-fingido.apps.googleusercontent.com\
+                    &client_secret=FINGIDO-esto-no-es-un-secreto&grant_type=refresh_to\
                     ken, response: Parts { status: 401 } }";
         let limpio = sin_secretos(real);
 
