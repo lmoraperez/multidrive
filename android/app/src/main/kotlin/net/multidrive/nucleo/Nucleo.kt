@@ -1,8 +1,11 @@
 package net.multidrive.nucleo
 
+import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 
 /**
  * La unica puerta al nucleo escrito en Rust.
@@ -31,6 +34,49 @@ object Nucleo {
     fun iniciar(contexto: Context) {
         this.contexto = contexto.applicationContext
         iniciarNativo(contexto.applicationContext)
+        vigilarPantallas(contexto.applicationContext)
+    }
+
+    /** Para no registrar el vigilante dos veces: `iniciar` la llama cada pantalla. */
+    @Volatile
+    private var vigilando = false
+
+    /**
+     * Avisa al nucleo cada vez que una pantalla de MultiDrive vuelve a estar delante.
+     *
+     * # Por que aqui y no en las tres pantallas que conectan
+     *
+     * Porque desde ninguna de ellas se sabe por donde va a volver el usuario. Al conectar una
+     * cuenta, quien esta delante es el navegador; la vuelta puede llegar por el boton de la
+     * pagina, por el icono de la aplicacion, por la lista de recientes o por el salto
+     * automatico cuando el navegador lo permite. Todos esos caminos terminan en el
+     * `onActivityResumed` de alguna pantalla, y ninguno en un sitio mas concreto que ese.
+     *
+     * Puesto en Crear, Abrir y Ampliar por separado serian tres sitios donde acertar y un
+     * cuarto donde olvidarse el dia que haya otra pantalla que conecte cuentas. El olvido no
+     * daria error: daria una espera de noventa segundos y un canje en segundo plano.
+     */
+    private fun vigilarPantallas(contexto: Context) {
+        if (vigilando) return
+        val app = contexto as? Application ?: return
+        vigilando = true
+        app.registerActivityLifecycleCallbacks(
+            object : Application.ActivityLifecycleCallbacks {
+                override fun onActivityResumed(actividad: Activity) = delante()
+
+                override fun onActivityCreated(actividad: Activity, estado: Bundle?) {}
+
+                override fun onActivityStarted(actividad: Activity) {}
+
+                override fun onActivityPaused(actividad: Activity) {}
+
+                override fun onActivityStopped(actividad: Activity) {}
+
+                override fun onActivitySaveInstanceState(actividad: Activity, estado: Bundle) {}
+
+                override fun onActivityDestroyed(actividad: Activity) {}
+            }
+        )
     }
 
     private external fun iniciarNativo(contexto: Context)
@@ -247,6 +293,18 @@ object Nucleo {
      * interfaz: se queda esperando a que alguien de permiso en otra pantalla.
      */
     external fun conectar(tipo: String, config: String, volverA: String): String
+
+    /**
+     * Le dice al nucleo que una pantalla de MultiDrive esta delante.
+     *
+     * La llama [vigilarPantallas] en cada `onActivityResumed`. No bloquea y no lanza.
+     *
+     * Lo que depende de esto: al conectar una cuenta, el nucleo no canjea el codigo de
+     * autorizacion hasta recibir este aviso. Si deja de llegar, el canje se hace igual a los
+     * noventa segundos, pero con la aplicacion en segundo plano, que es donde Android puede
+     * tener la red cortada por ahorro de bateria o de datos.
+     */
+    external fun delante()
 
     /**
      * El contexto de la aplicacion, para poder abrir el navegador desde Rust.

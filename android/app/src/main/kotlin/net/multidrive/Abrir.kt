@@ -235,6 +235,10 @@ class Abrir : Activity() {
     }
 
     private fun conectar(tipo: String) {
+        conPermisoDeRed(this) { empezarAConectar(tipo) }
+    }
+
+    private fun empezarAConectar(tipo: String) {
         ocupado = true
         pintar(MIENTRAS_NAVEGADOR)
         thread {
