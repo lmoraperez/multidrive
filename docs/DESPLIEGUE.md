@@ -2,8 +2,12 @@
 
 `multidrive.net` se sirve **desde el servidor propio** (no GitHub Pages).
 
-- DNS: `multidrive.net` y `www.multidrive.net` → `154.197.1.5`, la misma IP que
-  `chambaya.net` y `nextcloud.chambaya.net`.
+- DNS: `multidrive.net` y `www.multidrive.net` → `154.197.1.5`. También apuntan aquí
+  `kebueno.com` y `nextcloud.kebueno.com`.
+- **`chambaya.net` ya no apunta a esta máquina** (19 de octubre de 2026). El dominio y sus
+  subdominios se fueron a otro sitio: `chambaya.net` → `2.59.170.20`, y
+  `nextcloud.chambaya.net` y `libredisk.chambaya.net` → `104.219.250.37`. Aquí abajo decía
+  que podía pasar cualquier día; pasó.
 - Servidor web: **Caddy**, con TLS automático de Let's Encrypt.
 - Raíz del sitio: `/var/www/multidrive` (propietario `www-data`).
 - Fuente en este repo: [`site/`](../site).
@@ -34,9 +38,22 @@ libredisk.chambaya.net {
 El segundo bloque es el nombre de antes del cambio de marca. Redirige **conservando la
 ruta**, y eso no es un detalle: la política de privacidad registrada en la pantalla de
 consentimiento de Google apunta todavía a
-`https://libredisk.chambaya.net/privacidad.html`. Mientras esa URL no se cambie en Google
-Cloud, el bloque tiene que quedarse; quitarlo dejaría el consentimiento apuntando a un sitio
-que no responde. La copia vieja en `/var/www/libredisk` ya no la sirve nadie.
+`https://libredisk.chambaya.net/privacidad.html`. La copia vieja en `/var/www/libredisk` ya no
+la sirve nadie.
+
+> **Ese redirector ya no funciona, y hay que arreglarlo en Google Cloud.** El bloque sigue en
+> el Caddyfile, pero `libredisk.chambaya.net` dejó de resolver a esta máquina, así que la
+> redirección no la ve nadie: la URL de la política de privacidad que Google enseña en la
+> pantalla de consentimiento **no responde**. Comprobado el 19 de octubre de 2026: da error de
+> conexión.
+>
+> No es cosmético. Google exige que esa URL funcione para verificar la aplicación, y mientras
+> tanto quien pulse «Política de privacidad» al enlazar su cuenta no ve nada.
+>
+> El arreglo está en la consola de Google Cloud, no aquí: cambiar la URL de la política por
+> `https://multidrive.net/privacidad.html`, que sí responde y es la misma política. Hecho eso,
+> los cuatro bloques que nombran `chambaya` se pueden quitar del Caddyfile; mientras estén,
+> Caddy intenta renovar certificados de nombres que ya no son suyos.
 
 ## Publicar un cambio
 
