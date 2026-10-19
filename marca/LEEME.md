@@ -47,8 +47,8 @@ medirlo antes de darlo por bueno.
 El acento se usa **solo** en los títulos de sección, los enlaces y la cuña del logotipo. Un
 acento en todas partes deja de ser un acento.
 
-El ámbar `#d8a657` es exclusivamente del distintivo «pre-alfa». Cuando el proyecto deje de
-serlo, ese color desaparece.
+El ámbar `#d8a657` es exclusivamente del distintivo de etapa: hoy «alfa», antes «pre-alfa».
+Cuando el proyecto no necesite distintivo, ese color desaparece.
 
 ## Volver a generar los PNG y el .ico
 

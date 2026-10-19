@@ -59,7 +59,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="10dp"
-                    android:text="pre-alfa"
+                    android:text="alfa"
                     android:textColor="@color/aviso"
                     android:textSize="11sp" />
             </LinearLayout>
@@ -303,7 +303,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="22dp"
-                android:text="Pre-alfa: esto todavía se está construyendo. No confíes en MultiDrive como única copia de nada."
+                android:text="Alfa: lo principal funciona y todavía faltan piezas. No confíes en MultiDrive como única copia de nada."
                 android:textColor="@color/apagado"
                 android:textSize="12sp" />
 

@@ -25,11 +25,11 @@ import android.widget.TextView
  */
 
 /**
- * La cabecera: el rombo, el nombre, el distintivo de pre-alfa y el titulo de la pantalla.
+ * La cabecera: el rombo, el nombre, el distintivo de alfa y el titulo de la pantalla.
  *
  * El distintivo va aqui y no solo en la principal **a proposito**. Alguien puede entrar
  * directamente a eliminar un volumen desde una notificacion o desde atras, y enterarse de que
- * esto es pre-alfa en la pantalla que borra cosas vale mas que en la primera.
+ * esto es alfa en la pantalla que borra cosas vale mas que en la primera.
  */
 fun Activity.cabecera(titulo: String): View = LinearLayout(this).apply {
     orientation = LinearLayout.VERTICAL
@@ -61,7 +61,7 @@ fun Activity.cabecera(titulo: String): View = LinearLayout(this).apply {
             )
             addView(
                 TextView(this@cabecera).apply {
-                    text = "pre-alfa"
+                    text = "alfa"
                     textSize = 10f
                     setTextColor(getColor(R.color.aviso))
                     setPadding(20, 0, 0, 0)

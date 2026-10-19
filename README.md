@@ -10,13 +10,16 @@ una unidad más del sistema en Windows y Linux, y que en Android aparece dentro 
 Archivos, con semántica tipo RAID (espejo, striping y paridad por *erasure coding*) y
 **cifrado de conocimiento cero**.
 
-> Estado: **pre-alfa.** El núcleo funciona y está cubierto por tests: cifrado, RAID,
-> troceado, árbol de metadatos copy-on-write y rescate. Google Drive y OneDrive pasan la
-> suite de conformidad contra cuentas reales. **Se monta como unidad en Windows en lectura
-> y escritura**, con caché en memoria y en disco y subida en segundo plano. **Hay aplicación
-> de Android**, en pruebas internas de Google Play, que crea volúmenes, lee, escribe y sube
-> solas las carpetas del teléfono que se le digan. Sigue siendo pre-alfa: no es donde poner
-> el único ejemplar de nada.
+> Estado: **alfa.** El núcleo funciona y está cubierto por tests: cifrado, RAID, troceado,
+> árbol de metadatos copy-on-write y rescate. Google Drive y OneDrive pasan la suite de
+> conformidad contra cuentas reales. **Se monta como unidad en Windows en lectura y
+> escritura**, con caché en memoria y en disco y subida en segundo plano. **Hay aplicación
+> de Android**, en pruebas internas de Google Play, que crea volúmenes, los amplía, los
+> elimina, lee, escribe y sube solas las carpetas del teléfono que se le digan.
+>
+> Alfa quiere decir que los caminos principales funcionan y se usan a diario, y que todavía
+> faltan piezas: miniaturas, versión web, y de proveedores sólo Drive y OneDrive están
+> verificados contra cuentas reales. **No es donde poner el único ejemplar de nada.**
 
 Sitio del proyecto: https://multidrive.net
 
@@ -173,6 +176,13 @@ montando de verdad.
 
 
 ## Android
+
+| | | | |
+|:-:|:-:|:-:|:-:|
+| <img src="site/capturas/principal.png" width="200" alt="Pantalla principal con el volumen abierto y el espacio de cada cuenta"> | <img src="site/capturas/topologia.png" width="200" alt="Elección de topología, con lo que cuesta cada una"> | <img src="site/capturas/archivos.png" width="200" alt="Explorador de archivos"> | <img src="site/capturas/ampliar.png" width="200" alt="Ampliar el volumen con más cuentas"> |
+| El volumen abierto | Elegir el reparto | Tus archivos | Ampliar después |
+
+Capturas hechas en un teléfono con la versión publicada. Sin maquetar ni retocar.
 
 Hay **aplicación de Android**, publicada en Google Play como `com.jlsoltech.multidrive`. Está
 en **pruebas internas**: se instala desde el enlace de prueba, no buscándola en la tienda.

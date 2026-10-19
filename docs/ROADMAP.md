@@ -971,7 +971,7 @@ notificación, porque puede durar minutos.
 ### Lo que yo dejaría fuera de la primera versión
 
 - **Borrar el original tras subirlo.** Nextcloud lo ofrece. Borrar las fotos de alguien con un
-  sistema en pre-alfa no se hace.
+  sistema en alfa no se hace.
 - **Sincronización en dos sentidos.** Esto es subida, como la de Nextcloud. Bajar y reconciliar
   es otro problema.
 
