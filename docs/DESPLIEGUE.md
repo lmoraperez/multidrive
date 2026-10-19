@@ -182,3 +182,67 @@ PNG tal cual.
 
 El ZIP que se descarga de `multidrive.net/marca.html` se arma con `Compress-Archive` a partir
 de esa misma carpeta, y se publica como un fichero más del sitio.
+
+## El formulario de las pruebas
+
+Es lo único del sitio que no es un fichero estático. Recoge el correo de quien quiere entrar
+en las pruebas de Google Play y lo apunta en una lista que se lee por SSH.
+
+| | |
+|---|---|
+| Script | [`servidor/apuntarse.php`](../servidor/apuntarse.php) → `/var/www/multidrive-cgi/apuntarse.php` |
+| Ruta pública | `POST /apuntarse` |
+| La lista | `/var/lib/multidrive/betatesters.csv`, `0600`, de `www-data` |
+| Límite de ritmo | `/var/lib/multidrive/ritmo`, se puede borrar entero sin perder nada |
+
+### Por qué el script vive fuera de la raíz
+
+Porque dentro de `/var/www/multidrive` una petición a `/apuntarse.php` —que no casa con el
+matcher de Caddy— caería en `file_server`, y el servidor devolvería **el código fuente** en
+vez de ejecutarlo. Fuera de la raíz eso no puede pasar ni por descuido.
+
+El bloque en el Caddyfile:
+
+```caddyfile
+	@apuntarse path /apuntarse
+	handle @apuntarse {
+		root * /var/www/multidrive-cgi
+		rewrite * /apuntarse.php
+		php_fastcgi unix//run/php/php8.5-fpm.sock
+	}
+
+	handle {
+		file_server
+	}
+```
+
+El `handle` de abajo no es decorativo: sin él, `file_server` atendería también `/apuntarse` y
+el matcher no serviría de nada.
+
+### Publicar un cambio del script
+
+```sh
+scp servidor/apuntarse.php soporte@multidrive.net:/tmp/
+ssh soporte@multidrive.net '
+  php -l /tmp/apuntarse.php
+  sudo install -o root -g root -m 644 /tmp/apuntarse.php /var/www/multidrive-cgi/apuntarse.php'
+```
+
+No hace falta recargar Caddy: php-fpm lee el fichero en cada petición. Recargar sí hace falta
+si se toca el Caddyfile, y entonces `caddy validate` **antes** y `systemctl reload caddy`,
+nunca `restart`.
+
+### Leer y vaciar la lista
+
+```sh
+ssh soporte@multidrive.net 'sudo cat /var/lib/multidrive/betatesters.csv'
+ssh soporte@multidrive.net 'sudo truncate -s 0 /var/lib/multidrive/betatesters.csv'
+```
+
+### Lo que hace y lo que no
+
+Guarda la fecha, el correo en minúsculas y el idioma de la página. **No guarda la IP**: para
+el límite de ritmo usa un resumen irreversible que se borra en una hora. Rechaza lo que no sea
+un correo, no apunta dos veces el mismo, y tiene un campo trampa que los robots rellenan y las
+personas no ven. Está contado en la política de privacidad, en las dos lenguas, porque recoger
+un dato y no decirlo no es una opción.

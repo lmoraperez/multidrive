@@ -80,14 +80,26 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
   border-radius:10px;background:var(--panel)}
 .capturas figcaption{color:var(--muted);font-size:14px;line-height:1.5;margin-top:8px}
 
-/* La descarga. El boton y su letra pequena van en la misma linea mientras quepan, y se
-   apilan cuando no: en un movil, un boton al lado de tres lineas de texto deja las dos cosas
-   estrechas. */
-.descarga{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:18px 0 14px}
+/* El formulario para entrar en las pruebas. El campo y el boton van juntos mientras quepan y
+   se apilan cuando no: en un movil, un boton al lado de un campo deja los dos inservibles. */
+.apuntarse{margin:18px 0 14px}
+.apuntarse label{display:block;font-weight:600;margin-bottom:8px}
+.fila{display:flex;flex-wrap:wrap;gap:12px}
+.apuntarse input[type=email]{flex:1 1 16rem;min-width:0;background:var(--panel);
+  color:var(--fg);border:1px solid var(--line);border-radius:9px;padding:14px 16px;
+  font:inherit}
+.apuntarse input[type=email]:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .boton{display:inline-block;background:var(--accent);color:#0d1017;text-decoration:none;
-  font-weight:700;padding:14px 26px;border-radius:9px;white-space:nowrap}
+  font-weight:700;padding:14px 26px;border-radius:9px;white-space:nowrap;border:0;
+  font-size:inherit;font-family:inherit;cursor:pointer}
 .boton:hover,.boton:focus-visible{background:var(--accent-suave)}
-.letra-pequena{color:var(--muted);font-size:14px;line-height:1.5}
+.letra-pequena{color:var(--muted);font-size:14px;line-height:1.5;margin-top:10px}
+
+/* La trampa para robots. Fuera de la pantalla y fuera del recorrido del tabulador, no
+   `display:none`: hay robots que saltan lo que esta oculto asi, y el campo sirve justo para
+   que lo rellenen. Quien navega con lector de pantalla no se lo encuentra por el
+   `aria-hidden` del contenedor. */
+.trampa{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 /* El corro de proveedores. En pantalla ancha van en circulo alrededor del logotipo; por
@@ -168,28 +180,38 @@ footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
   ninguno puede leerlos, y la caída de uno no te deja sin volumen.</strong></p>
 </section>
 
-<section id="descargar">
-  <h2>Descargar</h2>
-  <p class="descarga">
-    <a class="boton" rel="noopener"
-       href="https://github.com/lmoraperez/multidrive/releases/download/v0.0.1-21/multidrive-0.0.1-21-arm64.apk">
-      Descargar para Android</a>
-    <span class="letra-pequena">APK de 15 MB · versión 0.0.1 (21) · Android 8 o posterior ·
-    teléfonos arm64</span>
-  </p>
-  <p class="nota">Dos cosas antes de instalarlo, y la primera pilla a todo el mundo.
-  <strong>No se puede instalar encima de la versión de Google Play</strong>: este fichero va
-  firmado con nuestra clave de subida y el de Play lo vuelve a firmar Google, así que para
-  Android son dos aplicaciones distintas y la instalación falla. Para cambiar de uno a otro
-  hay que desinstalar primero, y al desinstalar se pierden las cuentas enlazadas en el
-  teléfono —el volumen no se toca: vive en tus cuentas de nube—. Y
-  <strong>comprueba lo que bajas</strong>: la suma <code>sha256</code> y la huella de la firma
-  están en las <a rel="noopener"
-  href="https://github.com/lmoraperez/multidrive/releases/tag/v0.0.1-21">notas de la
-  publicación</a>, con el comando para verificarlas.</p>
-  <p class="nota">Para Windows todavía no hay instalador publicado: se compila desde el
-  código, y está contado en el <a rel="noopener"
-  href="https://github.com/lmoraperez/multidrive#instalar-en-windows">repositorio</a>.</p>
+<section id="probarla">
+  <h2>Probarla</h2>
+  <p>La aplicación de Android está en <strong>pruebas internas de Google Play</strong>: no se
+  busca en la tienda, se entra por invitación. Deja tu correo y te añadimos a la lista.</p>
+  <form class="apuntarse" method="post" action="/apuntarse">
+    <input type="hidden" name="lang" value="es">
+    <div class="trampa" aria-hidden="true">
+      <label>Déjalo vacío <input type="text" name="telefono" tabindex="-1"
+             autocomplete="off"></label>
+    </div>
+    <label for="correo">Tu cuenta de Google</label>
+    <div class="fila">
+      <input id="correo" type="email" name="correo" required maxlength="254"
+             autocomplete="email" spellcheck="false" placeholder="nombre@gmail.com">
+      <button class="boton" type="submit">Apúntame</button>
+    </div>
+    <p class="letra-pequena">Tiene que ser <strong>la cuenta de Google con la que usas el
+    teléfono</strong>, no otro correo: Google manda ahí la invitación y sólo esa cuenta puede
+    aceptarla.</p>
+  </form>
+  <p class="nota">La invitación <strong>no es inmediata</strong>: la lista se añade a mano.
+  Cuando llegue, ábrela en el teléfono y acepta desde ahí. Hace falta Android 8 o posterior y
+  un teléfono <code>arm64</code>, que es lo que llevan todos desde hace años. La interfaz está
+  en español.</p>
+  <p class="nota">Tu correo se usa <strong>sólo</strong> para añadirte a esa lista. Se guarda
+  en este mismo servidor, no se le cede a nadie y no se manda ningún boletín. Para salir,
+  escribe a <a href="mailto:gerencia@jlsoltech.com">gerencia@jlsoltech.com</a>. Está contado en
+  la <a href="/privacidad.html">política de privacidad</a>.</p>
+  <p class="nota">¿Prefieres el fichero a secas, o compilarlo tú? Están en el
+  <a rel="noopener" href="https://github.com/lmoraperez/multidrive/releases/latest">repositorio</a>.
+  Aviso: el APK de ahí va firmado con otra clave que el de Play, así que no se pueden
+  instalar uno encima del otro.</p>
 </section>
 
 <section id="spot">
