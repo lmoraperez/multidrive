@@ -1087,6 +1087,52 @@ Depende de qué se busque, y hay caminos más baratos para algunas respuestas:
 - **Quitarse de encima el lío del OAuth en Android**: mucho más barato cambiando el redirect a un
   esquema propio.
 
+## Multilingüe (español e inglés) — **aplazado a propósito**
+
+Hoy la aplicación de Android **está sólo en español**: no hay `strings.xml` ni carpeta
+`values-en`, y los textos están escritos directamente en el código. Se puede hacer bilingüe, y
+aquí queda medido lo que cuesta, que no es donde uno esperaría.
+
+### Dónde está el texto, contado
+
+| Capa | Frases visibles |
+|---|---|
+| Kotlin, las pantallas | ~235 |
+| Rust, `multidrive-android` | ~34 |
+| Rust, `multidrive-backend` | ~84 |
+| Rust, `multidrive-core` y `-raid` | ~120 |
+
+**Casi la mitad de lo que lee el usuario sale del núcleo**, no de Android. Son los mensajes de
+error y de ayuda que más trabajo han costado: «no se pudo conectar la cuenta…», «Aguanta perder
+1 cuenta(s)», «falta «gdrive», que forma parte de este volumen». Y esos mismos textos los usan
+también la línea de órdenes y la ventana del escritorio.
+
+Eso es lo que hace que no sea el cambio mecánico que parece: `values-en/strings.xml` --el
+mecanismo estándar, el que además sabe gestionar Google Play-- cubre los 235 de Kotlin y deja
+la otra mitad en español.
+
+### Los dos caminos para la mitad que vive en Rust
+
+- **Que el núcleo devuelva códigos y que el texto lo ponga cada interfaz.** Es lo correcto a
+  largo plazo: todo queda bajo el sistema de traducción estándar de cada plataforma. Cuesta
+  rediseñar cómo se informan los errores en todo el núcleo, que hoy devuelve prosa a propósito,
+  y arrastra a la CLI y al escritorio.
+- **Un catálogo de idiomas dentro del núcleo**, al que se le pasa la lengua. Bastante menos
+  trabajo y conserva la prosa donde está. A cambio duplica maquinaria de traducción en un sitio
+  que las herramientas de Android y de Play no ven.
+
+### Por qué se aplaza
+
+Porque son unas 470 frases **que todavía se mueven**: en una sola jornada de trabajo se tocó
+una docena. Traducir texto que aún cambia es traducirlo dos veces. Mientras los testers hablen
+español, el idioma no es lo que frena la adopción.
+
+Lo que sí se puede hacer ya y no toca código: **la ficha de Google Play en inglés**. Es
+independiente de la aplicación.
+
+Cuando se retome, lo primero es decidir cuál de los dos caminos, porque lo demás depende de
+eso.
+
 ## Fuera de alcance por ahora
 - Escritura concurrente desde varias máquinas (v1 es un solo escritor)
 - Uso como disco de sistema o volumen de base de datos
