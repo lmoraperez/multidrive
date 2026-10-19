@@ -23,6 +23,25 @@ Archivos, con semántica tipo RAID (espejo, striping y paridad por *erasure codi
 
 Sitio del proyecto: https://multidrive.net
 
+## Descargar
+
+**Android:** [`multidrive-0.0.1-21-arm64.apk`](https://github.com/lmoraperez/multidrive/releases/latest)
+· Android 8 o posterior, teléfonos `arm64-v8a`. La interfaz está en español.
+
+Dos cosas antes de instalarlo, y la primera pilla a todo el mundo:
+
+- **No se puede instalar encima de la versión de Google Play.** Este APK va firmado con la
+  clave de subida y el de Play lo vuelve a firmar Google: para Android son dos aplicaciones
+  distintas. Para cambiar de uno a otro hay que desinstalar primero, y al desinstalar se
+  pierden las cuentas enlazadas en el teléfono. El volumen no se toca: vive en tus cuentas de
+  nube.
+- **Comprueba lo que bajas.** La suma `sha256` y la huella de la firma están en las [notas de
+  la publicación](https://github.com/lmoraperez/multidrive/releases/tag/v0.0.1-21), con el
+  comando para verificarlas.
+
+**Windows:** todavía no hay instalador publicado; se compila desde el código, y está contado
+en [Instalar en Windows](#instalar-en-windows).
+
 ## En treinta segundos
 
 [![MultiDrive en treinta segundos](https://multidrive.net/video/cartel.png)](https://multidrive.net/#spot)
