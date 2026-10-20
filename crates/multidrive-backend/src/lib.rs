@@ -631,7 +631,10 @@ mod redaccion {
         let limpio = sin_secretos(real);
 
         assert!(!limpio.contains("1//0FINGIDO-esto-"), "{limpio}");
-        assert!(!limpio.contains("FINGIDO-esto-no-es-un-secreto"), "{limpio}");
+        assert!(
+            !limpio.contains("FINGIDO-esto-no-es-un-secreto"),
+            "{limpio}"
+        );
         // Lo que queda tiene que seguir sirviendo para diagnosticar: el proveedor, la
         // operacion y el codigo de estado. Un mensaje redactado hasta la inutilidad obliga a
         // volver a reproducir el fallo con los secretos puestos, que es peor.

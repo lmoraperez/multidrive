@@ -33,9 +33,11 @@ pub fn cuotas(config_ruta: &str) -> Result<String, String> {
         .map_err(|e| format!("Configuración inválida: {e}"))?;
 
     let filas = crate::sesion::en_el_runtime(async move {
-        let medidas = futures::future::join_all(backends.iter().map(|b| async move {
-            (b.name().to_string(), b.cuota().await)
-        }))
+        let medidas = futures::future::join_all(
+            backends
+                .iter()
+                .map(|b| async move { (b.name().to_string(), b.cuota().await) }),
+        )
         .await;
 
         Ok(medidas

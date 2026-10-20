@@ -32,11 +32,14 @@ use multidrive_raid::Layout;
 
 use crate::sesion;
 
+/// Las cuentas repartidas en dos grupos: las que el volumen ya usa y las que sobran.
+///
+/// Tiene nombre propio porque la pareja de vectores aparece en la firma y en quien la recibe,
+/// y dos `Vec<Arc<dyn Backend>>` seguidos no dicen cual es cual.
+type Bandos = (Vec<Arc<dyn Backend>>, Vec<Arc<dyn Backend>>);
+
 /// Los del volumen y los que estan configurados pero no lo forman.
-fn bandos(
-    cabecera: &Header,
-    configurados: &[Arc<dyn Backend>],
-) -> Result<(Vec<Arc<dyn Backend>>, Vec<Arc<dyn Backend>>), String> {
+fn bandos(cabecera: &Header, configurados: &[Arc<dyn Backend>]) -> Result<Bandos, String> {
     let mut del_volumen = Vec::new();
     for nombre in &cabecera.backends {
         let Some(b) = configurados.iter().find(|b| b.name() == nombre) else {
@@ -94,10 +97,7 @@ async fn suma_libre(backends: &[Arc<dyn Backend>]) -> Option<u64> {
 pub fn mirar(id: i64, config: &str) -> Result<String, String> {
     let abierto = sesion::sesion(id)?;
     let configurados = configurados(config)?;
-    let antes: Layout = abierto
-        .cabecera
-        .layout()
-        .map_err(|e| e.to_string())?;
+    let antes: Layout = abierto.cabecera.layout().map_err(|e| e.to_string())?;
     let (_, nuevos) = bandos(&abierto.cabecera, &configurados)?;
 
     let nombres: Vec<String> = nuevos.iter().map(|b| b.name().to_string()).collect();
@@ -168,7 +168,11 @@ pub fn hacer(id: i64, config: &str) -> Result<String, String> {
         // Lo que suman las que llegan, **antes** de moverlas: es lo que se va a anadir, y
         // decirlo al terminar es lo unico que convierte «ahora es lineal:3» en una cifra.
         // En margen es cero y se dice cero: una copia mas no anade ni un byte.
-        let suma = if gana == "espacio" { suma_libre(&nuevos).await } else { Some(0) };
+        let suma = if gana == "espacio" {
+            suma_libre(&nuevos).await
+        } else {
+            Some(0)
+        };
 
         let v = abierto.volumen.lock().await;
 
@@ -291,7 +295,7 @@ mod tests {
             pesos: vec![],
         };
         let configurados = backends(&["a", "b"]);
-        let (del, nuevos) = bandos(&cab, &configurados).ok().expect("estan las dos");
+        let (del, nuevos) = bandos(&cab, &configurados).expect("estan las dos");
         assert_eq!(del.len(), 2);
         assert!(nuevos.is_empty());
     }
