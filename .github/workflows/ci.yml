@@ -10,7 +10,7 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -89,7 +89,7 @@ jobs:
   # `fuser`, y FUSE no existe para Android; tampoco haria falta, porque Android no deja montar
   # a nadie sin root y la integracion seria un `DocumentsProvider` sobre `multidrive-core`.
   android:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -126,7 +126,7 @@ jobs:
   # Los runners de GitHub permiten montar FUSE sin privilegios, asi que esto prueba tambien el
   # camino que en un contenedor LXC sin privilegios no funciona: el del ayudante fusermount3.
   fuse:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
