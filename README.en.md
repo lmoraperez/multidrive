@@ -329,6 +329,19 @@ carries this notice here, in [packaging/windows/AVISOS.txt](packaging/windows/AV
 —which is installed alongside the program— and in the mount command itself, and it ships with
 no proprietary components.
 
+## Like the project? Help me keep building it
+
+MultiDrive is free software under AGPL-3.0: no paid tier, no features held back behind a
+subscription, no ads. If you find it useful and want it to keep growing, you can chip in.
+
+| | |
+|---|:--|
+| <a href="https://ko-fi.com/luismora4all"><img src="https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-ff5e5b?logo=kofi&logoColor=white&style=for-the-badge" alt="Buy me a coffee on Ko-fi"></a> | Opens on Ko-fi, who handle the payment. |
+| <img src="site/apoyo/binance-pay.png" width="150" alt="Binance Pay QR code for the alias LuisMora78"> | **Binance Pay** — scan it from the Binance app, or look up the alias `LuisMora78`. |
+
+Chipping in is entirely optional and unlocks nothing: what exists, exists for everyone alike.
+What it does do is pay for the server and buy time to keep going.
+
 ## Licence
 
 [AGPL-3.0](LICENSE) — see [docs/VIABILIDAD.md](docs/VIABILIDAD.md#licencia) (Spanish) for the
