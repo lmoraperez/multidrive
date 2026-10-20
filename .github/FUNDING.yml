@@ -1,0 +1,7 @@
+# El boton «Sponsor» que GitHub pone arriba del repositorio.
+#
+# Ko-fi va por su clave propia, que GitHub reconoce. Binance Pay no esta en la lista de
+# plataformas que admite, y por eso `custom` apunta a la seccion de la propia pagina: alli
+# estan las dos vias, con el QR y el alias.
+ko_fi: luismora4all
+custom: ["https://multidrive.net/#apoyo"]

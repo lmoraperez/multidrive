@@ -100,6 +100,14 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
    que lo rellenen. Quien navega con lector de pantalla no se lo encuentra por el
    `aria-hidden` del contenedor. */
 .trampa{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+
+/* Las dos vias de apoyo, lado a lado mientras quepan. El QR no crece: un codigo gigante no se
+   lee mejor, y al lado de un boton descuadra la seccion entera. */
+.apoyo{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start;margin:18px 0 14px}
+.apoyo-via{flex:1 1 15rem;margin:0}
+.apoyo-via img{display:block;width:100%;max-width:220px;height:auto;border-radius:10px}
+.apoyo-via figcaption{color:var(--muted);font-size:14px;line-height:1.5;margin-top:10px;
+  max-width:260px}
 footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 /* El corro de proveedores. En pantalla ancha van en circulo alrededor del logotipo; por
@@ -473,6 +481,29 @@ rs(k,m)     k de k+m                m caídas      (k+m)/k ×</code></pre>
     pruebas internas—, el formato en disco puede cambiar sin aviso, y no debes confiarle
     todavía el único ejemplar de nada.</li>
   </ul>
+</section>
+
+<section id="apoyo">
+  <h2>¿Te gusta el proyecto? Apóyame a seguir creando</h2>
+  <p>MultiDrive es software libre bajo AGPL-3.0: no hay versión de pago, ni funciones
+  guardadas detrás de una suscripción, ni anuncios. Si te resulta útil y quieres que siga
+  creciendo, puedes echar una mano.</p>
+  <div class="apoyo">
+    <div class="apoyo-via">
+      <p><a class="boton" rel="noopener" href="https://ko-fi.com/luismora4all">Invítame un café
+      en Ko-fi</a></p>
+      <p class="letra-pequena">Se abre en Ko-fi, que es quien gestiona el pago. Las formas y
+      los importes los verás allí.</p>
+    </div>
+    <figure class="apoyo-via">
+      <img src="/apoyo/binance-pay.png" width="660" height="660" loading="lazy"
+           alt="Código QR de Binance Pay para enviar al alias LuisMora78.">
+      <figcaption>Binance Pay · escanéalo desde la aplicación de Binance, o busca el alias
+      <code>LuisMora78</code>.</figcaption>
+    </figure>
+  </div>
+  <p class="nota">Apoyar es del todo opcional y no desbloquea nada: lo que hay, lo hay para
+  todo el mundo igual. Lo que sí hace es pagar el servidor y dar tiempo para seguir.</p>
 </section>
 
 <footer>

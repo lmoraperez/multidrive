@@ -323,6 +323,20 @@ bajo AGPL-3.0, lleva este aviso aquí, en [packaging/windows/AVISOS.txt](packagi
 —que se instala junto al programa— y en la propia orden de montaje, y no va con ningún
 componente propietario.
 
+## ¿Te gusta el proyecto? Apóyame a seguir creando
+
+MultiDrive es software libre bajo AGPL-3.0: no hay versión de pago, ni funciones guardadas
+detrás de una suscripción, ni anuncios. Si te resulta útil y quieres que siga creciendo,
+puedes echar una mano.
+
+| | |
+|---|:--|
+| <a href="https://ko-fi.com/luismora4all"><img src="https://img.shields.io/badge/Ko--fi-Inv%C3%ADtame%20un%20caf%C3%A9-ff5e5b?logo=kofi&logoColor=white&style=for-the-badge" alt="Invítame un café en Ko-fi"></a> | Se abre en Ko-fi, que es quien gestiona el pago. |
+| <img src="site/apoyo/binance-pay.png" width="150" alt="Código QR de Binance Pay para el alias LuisMora78"> | **Binance Pay** — escanéalo desde la aplicación de Binance, o busca el alias `LuisMora78`. |
+
+Apoyar es del todo opcional y no desbloquea nada: lo que hay, lo hay para todo el mundo igual.
+Lo que sí hace es pagar el servidor y dar tiempo para seguir.
+
 ## Licencia
 
 [AGPL-3.0](LICENSE) — ver [docs/VIABILIDAD.md](docs/VIABILIDAD.md#licencia) para el razonamiento.

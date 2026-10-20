@@ -100,6 +100,14 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
    que lo rellenen. Quien navega con lector de pantalla no se lo encuentra por el
    `aria-hidden` del contenedor. */
 .trampa{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+
+/* Las dos vias de apoyo, lado a lado mientras quepan. El QR no crece: un codigo gigante no se
+   lee mejor, y al lado de un boton descuadra la seccion entera. */
+.apoyo{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start;margin:18px 0 14px}
+.apoyo-via{flex:1 1 15rem;margin:0}
+.apoyo-via img{display:block;width:100%;max-width:220px;height:auto;border-radius:10px}
+.apoyo-via figcaption{color:var(--muted);font-size:14px;line-height:1.5;margin-top:10px;
+  max-width:260px}
 footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 /* El corro de proveedores. En pantalla ancha van en circulo alrededor del logotipo; por
@@ -476,6 +484,29 @@ rs(k,m)     k of k+m                 m failures     (k+m)/k ×</code></pre>
     testing—, the on-disk format may change without notice, and you should not trust it yet
     with the only copy of anything.</li>
   </ul>
+</section>
+
+<section id="support">
+  <h2>Like the project? Help me keep building it</h2>
+  <p>MultiDrive is free software under AGPL-3.0: there is no paid tier, no features held back
+  behind a subscription, and no ads. If you find it useful and want it to keep growing, you can
+  chip in.</p>
+  <div class="apoyo">
+    <div class="apoyo-via">
+      <p><a class="boton" rel="noopener" href="https://ko-fi.com/luismora4all">Buy me a coffee
+      on Ko-fi</a></p>
+      <p class="letra-pequena">Opens on Ko-fi, who handle the payment. You'll see the methods
+      and amounts there.</p>
+    </div>
+    <figure class="apoyo-via">
+      <img src="/apoyo/binance-pay.png" width="660" height="660" loading="lazy"
+           alt="Binance Pay QR code for sending to the alias LuisMora78.">
+      <figcaption>Binance Pay · scan it from the Binance app, or look up the alias
+      <code>LuisMora78</code>.</figcaption>
+    </figure>
+  </div>
+  <p class="nota">Chipping in is entirely optional and unlocks nothing: what exists, exists for
+  everyone alike. What it does do is pay for the server and buy time to keep going.</p>
 </section>
 
 <footer>
