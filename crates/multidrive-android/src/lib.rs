@@ -109,8 +109,7 @@ pub extern "system" fn Java_net_multidrive_nucleo_Nucleo_conectar<'local>(
             let tipo = tipo.try_to_string(env)?;
             let config = config.try_to_string(env)?;
             let volver_a = volver_a.try_to_string(env)?;
-            let nombre =
-                conectar::conectar(&tipo, &config, &volver_a).map_err(Fallo::Dicho)?;
+            let nombre = conectar::conectar(&tipo, &config, &volver_a).map_err(Fallo::Dicho)?;
             Ok(env.new_string(nombre)?)
         })
         .resolve::<ThrowRuntimeExAndDefault>()

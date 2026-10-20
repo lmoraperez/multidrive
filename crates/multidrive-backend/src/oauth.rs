@@ -216,7 +216,13 @@ pub async fn conectar(
         // justo el aviso por el que esperaba. Lo que se arma aqui es el punto de partida; lo
         // que se mira debajo es si ha pasado algo desde este instante.
         let vuelto = (vuelta.delante)();
-        responder_pagina(&mut socket, VUELTA_TITULO, VUELTA_DETALLE, Some(vuelta.enlace)).await;
+        responder_pagina(
+            &mut socket,
+            VUELTA_TITULO,
+            VUELTA_DETALLE,
+            Some(vuelta.enlace),
+        )
+        .await;
         vuelto.await;
         return canjear(
             oauth,
@@ -399,7 +405,16 @@ async fn canjear(
     redirigir: &str,
     verificador: &str,
 ) -> Result<Conectada, BackendError> {
-    let mut ultimo = match canjear_una_vez(oauth, client_id, client_secret, codigo, redirigir, verificador).await {
+    let mut ultimo = match canjear_una_vez(
+        oauth,
+        client_id,
+        client_secret,
+        codigo,
+        redirigir,
+        verificador,
+    )
+    .await
+    {
         Ok(c) => return Ok(c),
         Err(FalloDeCanje::Respondio(e)) => return Err(e),
         Err(FalloDeCanje::Transporte(e)) => e,
@@ -407,7 +422,15 @@ async fn canjear(
 
     for espera in ESPERAS_ENTRE_CANJES {
         tokio::time::sleep(espera).await;
-        match canjear_una_vez(oauth, client_id, client_secret, codigo, redirigir, verificador).await
+        match canjear_una_vez(
+            oauth,
+            client_id,
+            client_secret,
+            codigo,
+            redirigir,
+            verificador,
+        )
+        .await
         {
             Ok(c) => return Ok(c),
             Err(FalloDeCanje::Respondio(e)) => return Err(e),
@@ -471,25 +494,22 @@ async fn canjear_una_vez(
         }));
     }
 
-    let json: serde_json::Value =
-        serde_json::from_str(&cuerpo).map_err(|e| {
-            FalloDeCanje::Respondio(BackendError::Oauth {
-                detalle: e.to_string(),
-            })
-        })?;
-    let refresh_token = json["refresh_token"]
-        .as_str()
-        .ok_or_else(|| {
-            FalloDeCanje::Respondio(BackendError::Oauth {
-                // Pasa de verdad y tiene arreglo concreto, asi que se dice cual: Google no
-                // reenvia el token de refresco a quien ya le habia dado permiso antes, salvo
-                // que se le pida el consentimiento otra vez.
-                detalle: "el proveedor no devolvio ningun token de refresco. Si ya habias \
+    let json: serde_json::Value = serde_json::from_str(&cuerpo).map_err(|e| {
+        FalloDeCanje::Respondio(BackendError::Oauth {
+            detalle: e.to_string(),
+        })
+    })?;
+    let refresh_token = json["refresh_token"].as_str().ok_or_else(|| {
+        FalloDeCanje::Respondio(BackendError::Oauth {
+            // Pasa de verdad y tiene arreglo concreto, asi que se dice cual: Google no
+            // reenvia el token de refresco a quien ya le habia dado permiso antes, salvo
+            // que se le pida el consentimiento otra vez.
+            detalle: "el proveedor no devolvio ningun token de refresco. Si ya habias \
                           conectado esta cuenta, retirale el permiso a la aplicacion en los \
                           ajustes de tu cuenta y vuelve a conectarla"
-                    .into(),
-            })
-        })?;
+                .into(),
+        })
+    })?;
 
     Ok(Conectada {
         refresh_token: refresh_token.to_string(),
@@ -924,9 +944,15 @@ mod tests {
                 .await;
         let oauth = oauth_falso(&url);
 
-        let c = conectar(&oauth, "id-de-la-app", "secreto", &navegador_que_acepta, None)
-            .await
-            .unwrap();
+        let c = conectar(
+            &oauth,
+            "id-de-la-app",
+            "secreto",
+            &navegador_que_acepta,
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(c.refresh_token, "el-bueno");
 
         // Y se comprueba que el canje llevaba lo que el protocolo exige. Sin el
@@ -961,9 +987,15 @@ mod tests {
             .await;
             let oauth = con_anfitrion(&url, anfitrion);
 
-            let c = conectar(&oauth, "id-de-la-app", "secreto", &navegador_que_acepta, None)
-                .await
-                .unwrap_or_else(|e| panic!("con {anfitrion}: {e}"));
+            let c = conectar(
+                &oauth,
+                "id-de-la-app",
+                "secreto",
+                &navegador_que_acepta,
+                None,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("con {anfitrion}: {e}"));
             assert_eq!(c.refresh_token, "el-bueno");
 
             // Y va tal cual en el canje, que es donde el proveedor lo vuelve a comparar.
@@ -1027,7 +1059,9 @@ mod tests {
             r
         };
 
-        let e = conectar(&oauth, "id", "secreto", &abrir, None).await.unwrap_err();
+        let e = conectar(&oauth, "id", "secreto", &abrir, None)
+            .await
+            .unwrap_err();
         // El cerrojo se suelta antes de esperar: sostenerlo a traves de un `await` es lo
         // que convierte un test en un bloqueo intermitente.
         let canal = pagina.lock().unwrap().take().unwrap();
@@ -1056,7 +1090,9 @@ mod tests {
             r
         };
 
-        let c = conectar(&oauth, "id", "secreto", &abrir, None).await.unwrap();
+        let c = conectar(&oauth, "id", "secreto", &abrir, None)
+            .await
+            .unwrap();
         assert_eq!(c.refresh_token, "el-bueno");
 
         let canal = pagina.lock().unwrap().take().unwrap();
@@ -1148,7 +1184,9 @@ mod tests {
             Ok(())
         };
 
-        let c = conectar(&oauth, "id", "secreto", &con_ruido, None).await.unwrap();
+        let c = conectar(&oauth, "id", "secreto", &con_ruido, None)
+            .await
+            .unwrap();
         assert_eq!(c.refresh_token, "el-bueno");
     }
 }
@@ -1181,9 +1219,16 @@ mod tests_reintento_del_canje {
         let oauth = oauth_con_token("http://127.0.0.1:1/token");
         let principio = tokio::time::Instant::now();
 
-        let e = canjear(&oauth, "id", "secreto", "un-codigo", "http://127.0.0.1/", "v")
-            .await
-            .unwrap_err();
+        let e = canjear(
+            &oauth,
+            "id",
+            "secreto",
+            "un-codigo",
+            "http://127.0.0.1/",
+            "v",
+        )
+        .await
+        .unwrap_err();
 
         let tardado = principio.elapsed();
         let suma: Duration = ESPERAS_ENTRE_CANJES.iter().sum();
@@ -1209,9 +1254,17 @@ mod tests_reintento_del_canje {
         tokio::spawn(async move {
             loop {
                 let (mut socket, _) = servidor.accept().await.unwrap();
-                suyas.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 let mut buf = vec![0u8; 8192];
-                socket.read(&mut buf).await.ok();
+                let n = socket.read(&mut buf).await.unwrap_or(0);
+
+                // Se cuenta **despues** de leer, y se cuenta solo lo que de verdad trae el
+                // canje. Una conexion que se abre y no manda nada no es un intento: contarla
+                // haria pasar el test aunque el reintento estuviera repitiendo la peticion.
+                let peticion = String::from_utf8_lossy(&buf[..n]);
+                if peticion.contains("grant_type=authorization_code") {
+                    suyas.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+
                 let cuerpo = "{\"error\":\"invalid_grant\"}";
                 let cabecera = format!(
                     "HTTP/1.1 400 .\r\nContent-Type: application/json\r\n\
@@ -1225,9 +1278,16 @@ mod tests_reintento_del_canje {
         });
 
         let oauth = oauth_con_token(&format!("http://127.0.0.1:{puerto}/token"));
-        let e = canjear(&oauth, "id", "secreto", "un-codigo", "http://127.0.0.1/", "v")
-            .await
-            .unwrap_err();
+        let e = canjear(
+            &oauth,
+            "id",
+            "secreto",
+            "un-codigo",
+            "http://127.0.0.1/",
+            "v",
+        )
+        .await
+        .unwrap_err();
 
         assert_eq!(
             cuantas.load(std::sync::atomic::Ordering::SeqCst),
@@ -1256,7 +1316,11 @@ mod tests_pagina_de_vuelta {
     /// automatico, que es el que a veces cuela. Sin el boton no hay salida ninguna.
     #[test]
     fn con_destino_van_el_salto_y_el_boton() {
-        let p = pagina("Cuenta conectada", "Volviendo…", Some("multidrive://conectado"));
+        let p = pagina(
+            "Cuenta conectada",
+            "Volviendo…",
+            Some("multidrive://conectado"),
+        );
         assert!(p.contains("href=\"multidrive://conectado\""), "{p}");
         assert!(p.contains("Volver a MultiDrive"), "{p}");
         assert!(p.contains("<iframe"), "{p}");
@@ -1293,7 +1357,11 @@ mod tests_pagina_de_vuelta {
             assert!(!d.contains(promesa), "«{promesa}» en «{VUELTA_DETALLE}»");
         }
         // Y el boton al que manda el texto tiene que existir en la pagina.
-        let p = pagina(VUELTA_TITULO, VUELTA_DETALLE, Some("multidrive://conectado"));
+        let p = pagina(
+            VUELTA_TITULO,
+            VUELTA_DETALLE,
+            Some("multidrive://conectado"),
+        );
         assert!(p.contains("Volver a MultiDrive"), "{p}");
     }
 
