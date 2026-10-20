@@ -108,6 +108,12 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .apoyo-via img{display:block;width:100%;max-width:220px;height:auto;border-radius:10px}
 .apoyo-via figcaption{color:var(--muted);font-size:14px;line-height:1.5;margin-top:10px;
   max-width:260px}
+
+/* Una direccion de Monero son 95 caracteres sin un solo espacio donde partir. Sin esto
+   desborda el movil y se lleva por delante el ancho de la pagina entera. */
+.direccion{display:block;margin-top:6px;word-break:break-all;font-size:12px;line-height:1.5;
+  color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:7px;
+  padding:8px 10px;user-select:all}
 footer{padding:40px 0 64px;color:var(--muted);font-size:14px}
 
 /* El corro de proveedores. En pantalla ancha van en circulo alrededor del logotipo; por
@@ -500,6 +506,12 @@ rs(k,m)     k de k+m                m caídas      (k+m)/k ×</code></pre>
            alt="Código QR de Binance Pay para enviar al alias LuisMora78.">
       <figcaption>Binance Pay · escanéalo desde la aplicación de Binance, o busca el alias
       <code>LuisMora78</code>.</figcaption>
+    </figure>
+    <figure class="apoyo-via">
+      <img src="/apoyo/monero.png" width="596" height="596" loading="lazy"
+           alt="Código QR con la dirección de Monero del proyecto.">
+      <figcaption>Monero (XMR) · dirección principal:
+      <code class="direccion">426WwUxyLAbEAvzxcaLgofXf9xu4E7qEagGGdqPHkbDddHk36XdpGFf9U1Kc8N5DuAAzAYN5PStwtLj2zhKcuNm1KLH2bxc</code></figcaption>
     </figure>
   </div>
   <p class="nota">Apoyar es del todo opcional y no desbloquea nada: lo que hay, lo hay para

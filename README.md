@@ -333,6 +333,11 @@ puedes echar una mano.
 |---|:--|
 | <a href="https://ko-fi.com/luismora4all"><img src="https://img.shields.io/badge/Ko--fi-Inv%C3%ADtame%20un%20caf%C3%A9-ff5e5b?logo=kofi&logoColor=white&style=for-the-badge" alt="Invítame un café en Ko-fi"></a> | Se abre en Ko-fi, que es quien gestiona el pago. |
 | <img src="site/apoyo/binance-pay.png" width="150" alt="Código QR de Binance Pay para el alias LuisMora78"> | **Binance Pay** — escanéalo desde la aplicación de Binance, o busca el alias `LuisMora78`. |
+| <img src="site/apoyo/monero.png" width="150" alt="Código QR con la dirección de Monero del proyecto"> | **Monero (XMR)** — escanea el código, o copia la dirección de aquí abajo. |
+
+```
+426WwUxyLAbEAvzxcaLgofXf9xu4E7qEagGGdqPHkbDddHk36XdpGFf9U1Kc8N5DuAAzAYN5PStwtLj2zhKcuNm1KLH2bxc
+```
 
 Apoyar es del todo opcional y no desbloquea nada: lo que hay, lo hay para todo el mundo igual.
 Lo que sí hace es pagar el servidor y dar tiempo para seguir.

@@ -338,6 +338,11 @@ subscription, no ads. If you find it useful and want it to keep growing, you can
 |---|:--|
 | <a href="https://ko-fi.com/luismora4all"><img src="https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-ff5e5b?logo=kofi&logoColor=white&style=for-the-badge" alt="Buy me a coffee on Ko-fi"></a> | Opens on Ko-fi, who handle the payment. |
 | <img src="site/apoyo/binance-pay.png" width="150" alt="Binance Pay QR code for the alias LuisMora78"> | **Binance Pay** — scan it from the Binance app, or look up the alias `LuisMora78`. |
+| <img src="site/apoyo/monero.png" width="150" alt="QR code holding the project's Monero address"> | **Monero (XMR)** — scan the code, or copy the address below. |
+
+```
+426WwUxyLAbEAvzxcaLgofXf9xu4E7qEagGGdqPHkbDddHk36XdpGFf9U1Kc8N5DuAAzAYN5PStwtLj2zhKcuNm1KLH2bxc
+```
 
 Chipping in is entirely optional and unlocks nothing: what exists, exists for everyone alike.
 What it does do is pay for the server and buy time to keep going.
