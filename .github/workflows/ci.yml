@@ -70,7 +70,7 @@ jobs:
         # comprueba su huella y su firma: si en esa URL apareciera algo distinto, se descubre
         # aqui y no el dia de la publicacion.
         run: .\packaging\windows\construir-msi.ps1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: multidrive-instaladores
           path: |
