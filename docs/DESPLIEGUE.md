@@ -270,3 +270,72 @@ el límite de ritmo usa un resumen irreversible que se borra en una hora. Rechaz
 un correo, no apunta dos veces el mismo, y tiene un campo trampa que los robots rellenan y las
 personas no ven. Está contado en la política de privacidad, en las dos lenguas, porque recoger
 un dato y no decirlo no es una opción.
+
+## El aviso por correo de cada alta
+
+Cuando alguien se apunta, el servidor manda un correo a `gerencia@jlsoltech.com`. Lo hace
+[`apuntarse.php`](../servidor/apuntarse.php) al final, **despues** de guardar y tragandose
+cualquier fallo: si el aviso no sale, la persona ya esta en la lista y su pantalla dice que si.
+
+### Por que hizo falta montar DKIM
+
+Enviar desde un VPS sin acreditar no funciona, y no por estar en ninguna lista negra —se
+comprobo en Spamhaus, SpamCop y Barracuda, y la IP esta limpia—. Lo que pasaba, medido:
+
+| Destino | Respuesta |
+|---|---|
+| Gmail | `550 5.7.26` — correo no autenticado: ni SPF ni DKIM respaldan a esa IP |
+| Zoho (jlsoltech.com) | `554 5.7.1` — rechazado por politica antispam, ya en el `RCPT TO` |
+
+Postfix ademas se presentaba como `luisserver.localdomain`, un dominio que no existe.
+
+### Lo que hay montado en el servidor
+
+| | |
+|---|---|
+| Postfix | `myhostname = mail.multidrive.net`, `myorigin = multidrive.net` |
+| OpenDKIM | milter en `inet:localhost:8891`, firma `*@multidrive.net` |
+| Clave | `/etc/opendkim/claves/multidrive.net/md1.private`, selector `md1` |
+| Tablas | `/etc/opendkim/{KeyTable,SigningTable,TrustedHosts}` |
+
+El remitente del sobre se fija en el quinto argumento de `mail()` (`-f`). Sin eso Postfix
+pondria `www-data@`, que no alinea con la cabecera `From`, y DMARC lo cuenta como fallo.
+
+### Los registros DNS que hacen falta
+
+En el panel de **Namecheap**, zona de `multidrive.net`:
+
+| Tipo | Host | Valor |
+|---|---|---|
+| `A` | `mail` | `154.197.1.5` |
+| `TXT` | `md1._domainkey` | `v=DKIM1;h=sha256;k=rsa;p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxGZsbomlD9h4F39thnGxZ7g6CKXAu2fBIsat8MAVPecPMFWPqi2UcZiaO+Krhacb9ZwHAx1rVP3KkaQb/pZBK2LEE+htOBiecGoz8eQ7ZEDPoCb4Nhtopl/uSHZKsGgmm1xZIppLn0XyeJW0bPi5ktz0KTB+lcZrOmmHRIWwK9z7ipdboNHOUdY0aKMV/QJa7aBDvcC1xJlOlJ3zgeK8Mi6RAEsGk3klr/JuUMu7eXWK/lEe1mGFQr1bPEtv1J2D3rpRcOvt2FSBoT2/Jykx+S9Bh4Dk1qUVNN3dd4DeOQU0FDm72YpBR8HRdm3K/7UeCJpDDYm//EDbmpO6qejTcQIDAQAB` |
+| `TXT` | `_dmarc` | `v=DMARC1; p=none; rua=mailto:gerencia@jlsoltech.com` |
+
+Y el SPF que **ya existe** se edita, no se duplica. De:
+
+```
+v=spf1 include:spf.efwd.registrar-servers.com ~all
+```
+
+a:
+
+```
+v=spf1 ip4:154.197.1.5 include:spf.efwd.registrar-servers.com ~all
+```
+
+> **Dos registros SPF en la misma zona son peores que ninguno**: da `permerror` y todo el
+> correo del dominio queda sin respaldo. Tiene que quedar **uno solo**, con el `ip4:` anadido
+> delante del `include`, que es lo que mantiene funcionando el reenvio de Namecheap.
+
+Queda una pieza fuera de Namecheap: el **DNS inverso (PTR)** de `154.197.1.5` deberia apuntar
+a `mail.multidrive.net`, y eso se pide en el panel del proveedor del VPS. Sin el, algunos
+destinos siguen desconfiando aunque SPF y DKIM esten bien.
+
+### Comprobar que funciona
+
+```sh
+ssh soporte@multidrive.net 'sudo journalctl -u opendkim --since "5 min ago" | grep "field added"'
+ssh soporte@multidrive.net 'sudo tail -20 /var/log/mail.log | grep status='
+```
+
+`status=sent` es que llego. `status=bounced` trae el motivo del servidor de destino escrito.

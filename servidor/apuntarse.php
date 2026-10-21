@@ -31,6 +31,18 @@ const POR_HORA = 5;
 /** Un correo de verdad no pasa de aquí (RFC 5321). Más largo es alguien probando cosas. */
 const LARGO_MAXIMO = 254;
 
+/** A quien se avisa de cada alta. Vacio apaga el aviso sin tocar nada mas. */
+const AVISAR_A = 'gerencia@jlsoltech.com';
+
+/**
+ * Desde que direccion sale el aviso.
+ *
+ * Tiene que ser del dominio que el servidor esta acreditado para firmar --`multidrive.net`,
+ * con DKIM y con la IP en el SPF--. Puesta de otro dominio, Gmail la rechaza con un 5.7.26 y
+ * el aviso no llega.
+ */
+const AVISAR_DESDE = 'avisos@multidrive.net';
+
 // --------------------------------------------------------------------------------------
 // Respuestas
 // --------------------------------------------------------------------------------------
@@ -99,6 +111,53 @@ function demasiados(string $ip): bool
     $vivas[] = $ahora;
     @file_put_contents($f, json_encode($vivas), LOCK_EX);
     return false;
+}
+
+// --------------------------------------------------------------------------------------
+// El aviso
+// --------------------------------------------------------------------------------------
+
+/**
+ * Avisa por correo de que alguien se ha apuntado.
+ *
+ * # Nunca estorba al que se apunta
+ *
+ * Va **despues** de guardar, y lo que falle aqui se traga en silencio. Si el correo no sale,
+ * la persona ya esta en la lista y su pantalla dice que si; contarle que un aviso interno no
+ * se mando seria darle un problema que no es suyo y que no puede resolver.
+ *
+ * # Por que no hay que escapar el correo en las cabeceras
+ *
+ * Porque llega despues de `FILTER_VALIDATE_EMAIL`, que no admite saltos de linea: sin salto
+ * de linea no se puede inyectar una cabecera. Aun asi el asunto va sin el --sale en el
+ * cuerpo-- porque un asunto es lo que mas viaja y lo mas facil de reenviar sin querer.
+ */
+function avisar(string $correo, string $lang): void
+{
+    if (AVISAR_A === '') {
+        return;
+    }
+
+    $cuantos = is_file(LISTA) ? count(file(LISTA, FILE_SKIP_EMPTY_LINES) ?: []) : 0;
+
+    $cuerpo = "Alguien se ha apuntado a las pruebas de Google Play.\n\n"
+        . "  correo:  {$correo}\n"
+        . "  idioma:  {$lang}\n"
+        . "  fecha:   " . date('c') . "\n"
+        . "  en lista: {$cuantos}\n\n"
+        . "Para anadirlo: Play Console > Pruebas > Pruebas internas > Testers.\n"
+        . "Tiene que ser esa misma cuenta de Google, que es a donde Google manda la invitacion.\n\n"
+        . "La lista entera:\n"
+        . "  ssh soporte@multidrive.net 'sudo cat " . LISTA . "'\n";
+
+    $cabeceras = 'From: MultiDrive <' . AVISAR_DESDE . ">\r\n"
+        . 'Reply-To: ' . $correo . "\r\n"
+        . "Content-Type: text/plain; charset=utf-8\r\n";
+
+    // El quinto argumento fija el remitente del sobre, que es lo que miran SPF y DMARC. Sin
+    // el, Postfix lo pone del usuario del sistema --`www-data@`-- y la comprobacion no alinea
+    // con la cabecera `From`, que es justo lo que hace que un correo acabe en spam.
+    @mail(AVISAR_A, 'Nuevo apuntado a las pruebas de MultiDrive', $cuerpo, $cabeceras, '-f' . AVISAR_DESDE);
 }
 
 // --------------------------------------------------------------------------------------
@@ -221,6 +280,8 @@ if ($ok === false) {
     );
 }
 @chmod(LISTA, 0600);
+
+avisar($correo, $lang);
 
 contestar(
     200,
