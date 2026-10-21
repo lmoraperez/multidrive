@@ -301,22 +301,27 @@ Postfix ademas se presentaba como `luisserver.localdomain`, un dominio que no ex
 El remitente del sobre se fija en el quinto argumento de `mail()` (`-f`). Sin eso Postfix
 pondria `www-data@`, que no alinea con la cabecera `From`, y DMARC lo cuenta como fallo.
 
-### La maquina esta detras de NAT, y eso cambia que IP va en los registros
+### Comprueba por que IP sale el correo, no por cual entra la web
 
-No es la misma IP la que recibe que la que envia, y es facil equivocarse porque la del sitio
-web es la que uno tiene a mano:
+La maquina tiene IP privada (`10.0.0.213`) y esta detras de NAT, asi que **la IP de salida no
+tiene por que ser la de entrada**. Durante el montaje salia por `154.194.14.37` mientras el
+sitio web entraba por `154.197.1.5`, y el SPF escrito con la de la web no valia para nada: la
+comprobacion la hace quien recibe, contra la IP que le llega.
 
-| | |
-|---|---|
-| IP privada de la maquina | `10.0.0.213` |
-| Entra el sitio web por | `154.197.1.5` |
-| **Sale el correo por** | **`154.194.14.37`** |
+Despues se cambio la salida para que coincidiera con la de entrada, y es lo que hay ahora:
+**entra y sale por `154.197.1.5`**. Si algun dia vuelven a separarse, el SPF y el PTR van
+**siempre con la de salida**.
 
-En los registros de correo va **siempre la de salida**. Puesta la otra, el SPF falla aunque
-parezca bien escrito, y el PTR se pide para una IP que no es la que ve el destinatario.
+Como averiguarla sin fiarse de nada:
 
-Comprobada estable preguntando a tres servicios distintos, y coincide con la que aparece entre
-corchetes en los rechazos del registro de correo, que es lo que de verdad ve quien recibe.
+```sh
+# Por DNS sobre UDP, que no pasa por ningun proxy HTTP
+dig +short myip.opendns.com @resolver1.opendns.com
+dig +short TXT o-o.myaddr.l.google.com @ns1.google.com
+```
+
+Y la fuente que no miente: la IP que aparece entre corchetes en los rechazos del registro de
+correo, porque esa la escribe el servidor que recibe.
 
 ### Los registros DNS que hacen falta
 
@@ -324,7 +329,7 @@ En el panel de **Namecheap**, zona de `multidrive.net`:
 
 | Tipo | Host | Valor |
 |---|---|---|
-| `A` | `mail` | `154.194.14.37` |
+| `A` | `mail` | `154.197.1.5` |
 | `TXT` | `md1._domainkey` | `v=DKIM1;h=sha256;k=rsa;p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxGZsbomlD9h4F39thnGxZ7g6CKXAu2fBIsat8MAVPecPMFWPqi2UcZiaO+Krhacb9ZwHAx1rVP3KkaQb/pZBK2LEE+htOBiecGoz8eQ7ZEDPoCb4Nhtopl/uSHZKsGgmm1xZIppLn0XyeJW0bPi5ktz0KTB+lcZrOmmHRIWwK9z7ipdboNHOUdY0aKMV/QJa7aBDvcC1xJlOlJ3zgeK8Mi6RAEsGk3klr/JuUMu7eXWK/lEe1mGFQr1bPEtv1J2D3rpRcOvt2FSBoT2/Jykx+S9Bh4Dk1qUVNN3dd4DeOQU0FDm72YpBR8HRdm3K/7UeCJpDDYm//EDbmpO6qejTcQIDAQAB` |
 | `TXT` | `_dmarc` | `v=DMARC1; p=none; rua=mailto:gerencia@jlsoltech.com` |
 
@@ -337,16 +342,18 @@ v=spf1 include:spf.efwd.registrar-servers.com ~all
 a:
 
 ```
-v=spf1 ip4:154.194.14.37 include:spf.efwd.registrar-servers.com ~all
+v=spf1 ip4:154.197.1.5 include:spf.efwd.registrar-servers.com ~all
 ```
 
 > **Dos registros SPF en la misma zona son peores que ninguno**: da `permerror` y todo el
 > correo del dominio queda sin respaldo. Tiene que quedar **uno solo**, con el `ip4:` anadido
 > delante del `include`, que es lo que mantiene funcionando el reenvio de Namecheap.
 
-Queda una pieza fuera de Namecheap: el **DNS inverso (PTR)** de `154.194.14.37` deberia apuntar
-a `mail.multidrive.net`, y eso se pide en el panel del proveedor del VPS. Sin el, algunos
-destinos siguen desconfiando aunque SPF y DKIM esten bien.
+Queda una pieza fuera de Namecheap que **no esta puesta**: el **DNS inverso (PTR)** de
+`154.197.1.5` apuntando a `mail.multidrive.net`, que se pide en el panel del proveedor del VPS.
+
+Gmail acepta igualmente --con SPF y DKIM correctos no le hizo falta-- pero es lo primero que
+mirar si algun destino empieza a rechazar.
 
 ### Comprobar que funciona
 
@@ -356,3 +363,25 @@ ssh soporte@multidrive.net 'sudo tail -20 /var/log/mail.log | grep status='
 ```
 
 `status=sent` es que llego. `status=bounced` trae el motivo del servidor de destino escrito.
+
+### A donde llega el aviso, y por que no a `gerencia@jlsoltech.com`
+
+El aviso se manda a **`lmoraperez@gmail.com`**, y eso no fue la primera eleccion.
+
+Medido mandando correos de verdad, con SPF, DKIM y DMARC ya correctos:
+
+| Destino | Respuesta |
+|---|---|
+| Gmail | `250 2.0.0 OK` — **llega** |
+| Zoho, que lleva `jlsoltech.com` | `554 5.7.1 Mail rejected due to antispam policy` |
+
+El rechazo de Zoho ocurre en el `RCPT TO`, **antes de mirar quien envia**. No es autenticacion
+--esa pasa-- sino politica suya sobre la reputacion de la IP. Ningun registro DNS lo cambia.
+
+Para que llegue a `gerencia@jlsoltech.com` haria falta **relayar por el SMTP de Zoho** con una
+contrasena de aplicacion: el correo saldria autenticado desde el propio proveedor del dominio,
+sin depender de IP ni de PTR. Eso implica guardar una credencial en el servidor, con el mismo
+cuidado que el fichero `credenciales.conf`: fuera de la raiz web, `0600`, y nunca en el repositorio.
+
+Mientras tanto, cambiar el destino es una linea: la constante `AVISAR_A` en
+[`apuntarse.php`](../servidor/apuntarse.php). Vacia, apaga el aviso sin tocar nada mas.
