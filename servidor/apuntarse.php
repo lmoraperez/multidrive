@@ -32,7 +32,7 @@ const POR_HORA = 5;
 const LARGO_MAXIMO = 254;
 
 /** A quien se avisa de cada alta. Vacio apaga el aviso sin tocar nada mas. */
-const AVISAR_A = 'gerencia@jlsoltech.com';
+const AVISAR_A = 'lmoraperez@gmail.com';
 
 /**
  * Desde que direccion sale el aviso.
