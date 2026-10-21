@@ -301,13 +301,30 @@ Postfix ademas se presentaba como `luisserver.localdomain`, un dominio que no ex
 El remitente del sobre se fija en el quinto argumento de `mail()` (`-f`). Sin eso Postfix
 pondria `www-data@`, que no alinea con la cabecera `From`, y DMARC lo cuenta como fallo.
 
+### La maquina esta detras de NAT, y eso cambia que IP va en los registros
+
+No es la misma IP la que recibe que la que envia, y es facil equivocarse porque la del sitio
+web es la que uno tiene a mano:
+
+| | |
+|---|---|
+| IP privada de la maquina | `10.0.0.213` |
+| Entra el sitio web por | `154.197.1.5` |
+| **Sale el correo por** | **`154.194.14.37`** |
+
+En los registros de correo va **siempre la de salida**. Puesta la otra, el SPF falla aunque
+parezca bien escrito, y el PTR se pide para una IP que no es la que ve el destinatario.
+
+Comprobada estable preguntando a tres servicios distintos, y coincide con la que aparece entre
+corchetes en los rechazos del registro de correo, que es lo que de verdad ve quien recibe.
+
 ### Los registros DNS que hacen falta
 
 En el panel de **Namecheap**, zona de `multidrive.net`:
 
 | Tipo | Host | Valor |
 |---|---|---|
-| `A` | `mail` | `154.197.1.5` |
+| `A` | `mail` | `154.194.14.37` |
 | `TXT` | `md1._domainkey` | `v=DKIM1;h=sha256;k=rsa;p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxGZsbomlD9h4F39thnGxZ7g6CKXAu2fBIsat8MAVPecPMFWPqi2UcZiaO+Krhacb9ZwHAx1rVP3KkaQb/pZBK2LEE+htOBiecGoz8eQ7ZEDPoCb4Nhtopl/uSHZKsGgmm1xZIppLn0XyeJW0bPi5ktz0KTB+lcZrOmmHRIWwK9z7ipdboNHOUdY0aKMV/QJa7aBDvcC1xJlOlJ3zgeK8Mi6RAEsGk3klr/JuUMu7eXWK/lEe1mGFQr1bPEtv1J2D3rpRcOvt2FSBoT2/Jykx+S9Bh4Dk1qUVNN3dd4DeOQU0FDm72YpBR8HRdm3K/7UeCJpDDYm//EDbmpO6qejTcQIDAQAB` |
 | `TXT` | `_dmarc` | `v=DMARC1; p=none; rua=mailto:gerencia@jlsoltech.com` |
 
@@ -320,14 +337,14 @@ v=spf1 include:spf.efwd.registrar-servers.com ~all
 a:
 
 ```
-v=spf1 ip4:154.197.1.5 include:spf.efwd.registrar-servers.com ~all
+v=spf1 ip4:154.194.14.37 include:spf.efwd.registrar-servers.com ~all
 ```
 
 > **Dos registros SPF en la misma zona son peores que ninguno**: da `permerror` y todo el
 > correo del dominio queda sin respaldo. Tiene que quedar **uno solo**, con el `ip4:` anadido
 > delante del `include`, que es lo que mantiene funcionando el reenvio de Namecheap.
 
-Queda una pieza fuera de Namecheap: el **DNS inverso (PTR)** de `154.197.1.5` deberia apuntar
+Queda una pieza fuera de Namecheap: el **DNS inverso (PTR)** de `154.194.14.37` deberia apuntar
 a `mail.multidrive.net`, y eso se pide en el panel del proveedor del VPS. Sin el, algunos
 destinos siguen desconfiando aunque SPF y DKIM esten bien.
 
