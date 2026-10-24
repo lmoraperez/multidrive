@@ -208,7 +208,7 @@ montando de verdad.
 
 | | | | |
 |:-:|:-:|:-:|:-:|
-| <img src="site/capturas/principal.png" width="200" alt="Pantalla principal con el volumen abierto y el espacio de cada cuenta"> | <img src="site/capturas/topologia.png" width="200" alt="Elección de topología, con lo que cuesta cada una"> | <img src="site/capturas/archivos.png" width="200" alt="Explorador de archivos"> | <img src="site/capturas/ampliar.png" width="200" alt="Ampliar el volumen con más cuentas"> |
+| <img src="https://multidrive.net/capturas/principal.png" width="200" alt="Pantalla principal con el volumen abierto y el espacio de cada cuenta"> | <img src="https://multidrive.net/capturas/topologia.png" width="200" alt="Elección de topología, con lo que cuesta cada una"> | <img src="https://multidrive.net/capturas/archivos.png" width="200" alt="Explorador de archivos"> | <img src="https://multidrive.net/capturas/ampliar.png" width="200" alt="Ampliar el volumen con más cuentas"> |
 | El volumen abierto | Elegir el reparto | Tus archivos | Ampliar después |
 
 Capturas hechas en un teléfono con la versión publicada. Sin maquetar ni retocar.
@@ -342,8 +342,8 @@ puedes echar una mano.
 | | |
 |---|:--|
 | <a href="https://ko-fi.com/luismora4all"><img src="https://img.shields.io/badge/Ko--fi-Inv%C3%ADtame%20un%20caf%C3%A9-ff5e5b?logo=kofi&logoColor=white&style=for-the-badge" alt="Invítame un café en Ko-fi"></a> | Se abre en Ko-fi, que es quien gestiona el pago. |
-| <img src="site/apoyo/binance-pay.png" width="150" alt="Código QR de Binance Pay para el alias LuisMora78"> | **Binance Pay** — escanéalo desde la aplicación de Binance, o busca el alias `LuisMora78`. |
-| <img src="site/apoyo/monero.png" width="150" alt="Código QR con la dirección de Monero del proyecto"> | **Monero (XMR)** — escanea el código, o copia la dirección de aquí abajo. |
+| <img src="https://multidrive.net/apoyo/binance-pay.png" width="150" alt="Código QR de Binance Pay para el alias LuisMora78"> | **Binance Pay** — escanéalo desde la aplicación de Binance, o busca el alias `LuisMora78`. |
+| <img src="https://multidrive.net/apoyo/monero.png" width="150" alt="Código QR con la dirección de Monero del proyecto"> | **Monero (XMR)** — escanea el código, o copia la dirección de aquí abajo. |
 
 ```
 426WwUxyLAbEAvzxcaLgofXf9xu4E7qEagGGdqPHkbDddHk36XdpGFf9U1Kc8N5DuAAzAYN5PStwtLj2zhKcuNm1KLH2bxc

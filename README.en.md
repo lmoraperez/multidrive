@@ -212,7 +212,7 @@ real.
 
 | | | | |
 |:-:|:-:|:-:|:-:|
-| <img src="site/capturas/principal.png" width="200" alt="Main screen with the volume open and the space on each account"> | <img src="site/capturas/topologia.png" width="200" alt="Choosing a layout, with what each one costs"> | <img src="site/capturas/archivos.png" width="200" alt="File browser"> | <img src="site/capturas/ampliar.png" width="200" alt="Growing the volume with more accounts"> |
+| <img src="https://multidrive.net/capturas/principal.png" width="200" alt="Main screen with the volume open and the space on each account"> | <img src="https://multidrive.net/capturas/topologia.png" width="200" alt="Choosing a layout, with what each one costs"> | <img src="https://multidrive.net/capturas/archivos.png" width="200" alt="File browser"> | <img src="https://multidrive.net/capturas/ampliar.png" width="200" alt="Growing the volume with more accounts"> |
 | The volume, open | Pick the layout | Your files | Grow it later |
 
 Screenshots taken on a handset running the published build. Not mocked up, not retouched. **The
@@ -347,8 +347,8 @@ subscription, no ads. If you find it useful and want it to keep growing, you can
 | | |
 |---|:--|
 | <a href="https://ko-fi.com/luismora4all"><img src="https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-ff5e5b?logo=kofi&logoColor=white&style=for-the-badge" alt="Buy me a coffee on Ko-fi"></a> | Opens on Ko-fi, who handle the payment. |
-| <img src="site/apoyo/binance-pay.png" width="150" alt="Binance Pay QR code for the alias LuisMora78"> | **Binance Pay** — scan it from the Binance app, or look up the alias `LuisMora78`. |
-| <img src="site/apoyo/monero.png" width="150" alt="QR code holding the project's Monero address"> | **Monero (XMR)** — scan the code, or copy the address below. |
+| <img src="https://multidrive.net/apoyo/binance-pay.png" width="150" alt="Binance Pay QR code for the alias LuisMora78"> | **Binance Pay** — scan it from the Binance app, or look up the alias `LuisMora78`. |
+| <img src="https://multidrive.net/apoyo/monero.png" width="150" alt="QR code holding the project's Monero address"> | **Monero (XMR)** — scan the code, or copy the address below. |
 
 ```
 426WwUxyLAbEAvzxcaLgofXf9xu4E7qEagGGdqPHkbDddHk36XdpGFf9U1Kc8N5DuAAzAYN5PStwtLj2zhKcuNm1KLH2bxc

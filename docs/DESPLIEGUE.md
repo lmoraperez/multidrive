@@ -11,7 +11,15 @@
   [El redirector de `libredisk.chambaya.net`, retirado](#el-redirector-de-libredischambayanet-retirado).
 - Servidor web: **Caddy**, con TLS automático de Let's Encrypt.
 - Raíz del sitio: `/var/www/multidrive` (propietario `www-data`).
-- Fuente en este repo: [`site/`](../site).
+- Fuente: la carpeta `site/`, que **no está en este repositorio**. Vive en el equipo desde el
+  que se despliega, junto al resto del proyecto pero sin versionar, y se ignora en
+  `.gitignore` para que no vuelva a entrar por descuido. Todas las órdenes de más abajo se
+  lanzan desde la raíz del proyecto y la dan por presente.
+
+> Dejó de versionarse el 24 de octubre de 2026, por decisión expresa: el repositorio es el
+> software. Lo que se pierde con ello, y conviene tener presente, es el historial y la copia
+> de seguridad de la web; el servidor guarda una copia con fecha de cada fichero que se
+> sustituye, y eso es lo único que queda haciendo de red.
 - Acceso: `ssh soporte@multidrive.net`, con `sudo` sin contraseña. Se entra **por el nombre
   del proyecto**: antes valía también `chambaya.net`, y es justo lo que dejó de apuntar aquí.
 
@@ -125,18 +133,21 @@ Publicar el video sin el cartel deja la portada con un hueco negro y los README 
 rota.
 
 ```sh
-scp site/video/multidrive-spot.mp4 site/video/cartel.png soporte@multidrive.net:/tmp/
+scp site/video/multidrive-spot.mp4 site/video/multidrive-spot-vertical.mp4 \
+    site/video/cartel.png site/video/cartel-vertical.png soporte@multidrive.net:/tmp/
 ssh soporte@multidrive.net '
   sudo mkdir -p /var/www/multidrive/video
-  sudo install -o www-data -g www-data -m 644 /tmp/multidrive-spot.mp4 /tmp/cartel.png /var/www/multidrive/video/
-  rm -f /tmp/multidrive-spot.mp4 /tmp/cartel.png'
+  sudo install -o www-data -g www-data -m 644 /tmp/multidrive-spot.mp4 \
+    /tmp/multidrive-spot-vertical.mp4 /tmp/cartel.png /tmp/cartel-vertical.png \
+    /var/www/multidrive/video/
+  rm -f /tmp/multidrive-spot.mp4 /tmp/multidrive-spot-vertical.mp4 /tmp/cartel.png /tmp/cartel-vertical.png'
 ```
 
-Van aparte del HTML por lo mismo que los logotipos, solo que aqui el video pesa 1,75 MB:
-subirlo en cada despliegue de texto seria mover dos megas para nada.
+Van aparte del HTML por lo mismo que los logotipos, solo que aqui los dos videos pesan 5 MB
+juntos: subirlos en cada despliegue de texto seria mover cinco megas para nada.
 
-`site/video/LEEME.md` y `site/video/cartel.svg` **no se publican**: el primero es la
-documentacion y el segundo la fuente del cartel.
+`site/video/LEEME.md`, `site/video/cartel.svg` y `site/video/cartel-vertical.svg` **no se
+publican**: el primero es la documentacion y los otros dos las fuentes de los carteles.
 
 > **`cartel.png` lo pide tambien GitHub**, desde los dos README. Si se borra del servidor, la
 > portada del repositorio se queda con una imagen rota, y eso no se ve desde aqui.

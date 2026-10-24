@@ -48,3 +48,11 @@
 # valen para ese `.so` exacto, asi que versionarlos seria guardar algo que caduca en la
 # siguiente compilacion.
 /packaging/android/simbolos-nativos.zip
+
+# La carpeta donde Claude deja ficheros de trabajo. No es del proyecto.
+/Claude outputs/
+
+# El sitio web. Dejo de versionarse el 24 de octubre de 2026 por decision expresa: este
+# repositorio es el software. Los fuentes viven en el equipo desde el que se despliega.
+# Se ignora para que un `git add -A` no lo vuelva a meter sin que nadie se entere.
+/site/
