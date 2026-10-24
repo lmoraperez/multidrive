@@ -39,8 +39,18 @@ You need Android 8 or later and an `arm64-v8a` phone. **The interface is in Span
 > The form cannot live in this README: GitHub strips `<form>` and `<input>` when it renders the
 > page, so a link is what is left.
 
-**Windows:** no installer published yet; you build it from source, as described in
-[Installing on Windows](#installing-on-windows).
+### 💻 [Download for Windows](https://github.com/lmoraperez/multidrive/releases/latest)
+
+64-bit Windows. Two files, and for almost everyone the right one is
+`multidrive-0.0.1-x64-completo.exe`, which bundles **WinFsp**: that is what lets the volume
+show up as a system drive. The bare `.msi` is for people who already have WinFsp or deploy it
+themselves.
+
+They are **unsigned**, so SmartScreen will warn that it doesn't recognise the publisher. The
+`sha256` sums to check what you downloaded are in the [release
+notes](https://github.com/lmoraperez/multidrive/releases/tag/v0.0.1-windows).
+
+You can also build it from source: [Installing on Windows](#installing-on-windows).
 
 ## In thirty seconds
 

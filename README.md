@@ -39,8 +39,18 @@ Hace falta Android 8 o posterior y un teléfono `arm64-v8a`. La interfaz está e
 > El formulario no puede vivir en este README: GitHub elimina `<form>` y `<input>` al mostrar
 > la página, así que lo que queda es el enlace.
 
-**Windows:** todavía no hay instalador publicado; se compila desde el código, y está contado
-en [Instalar en Windows](#instalar-en-windows).
+### 💻 [Descargar para Windows](https://github.com/lmoraperez/multidrive/releases/latest)
+
+Windows de 64 bits. Dos ficheros, y para casi todo el mundo el bueno es
+`multidrive-0.0.1-x64-completo.exe`, que trae **WinFsp** dentro: es lo que permite que el
+volumen aparezca como una unidad del sistema. El `.msi` a secas es para quien ya tenga WinFsp
+o lo despliegue por su cuenta.
+
+Van **sin firmar**, así que SmartScreen avisará de que no reconoce al editor. Las sumas
+`sha256` para comprobar lo que bajas están en las [notas de la
+publicación](https://github.com/lmoraperez/multidrive/releases/tag/v0.0.1-windows).
+
+También se compila desde el código: [Instalar en Windows](#instalar-en-windows).
 
 ## En treinta segundos
 
