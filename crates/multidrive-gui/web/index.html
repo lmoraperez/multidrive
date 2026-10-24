@@ -15,7 +15,7 @@
       <polygon points="24,42 6,24 24,24" fill="var(--fg)" transform="translate(-1.4,1.4)"/>
       <polygon points="6,24 24,6 24,24" fill="var(--fg)" transform="translate(-1.4,-1.4)"/>
     </svg>
-    <h1>Multi<span>Drive</span></h1>
+    <h1>Multi<span>Drive</span> <span class="etapa">alfa</span></h1>
   </div>
   <p id="cabecera">Comprobando…</p>
 </header>
@@ -73,7 +73,7 @@
          un formulario, un botón sin tipo lo envía. -->
     <div class="enlinea">
       <button type="submit" id="abrir">Abrir volumen</button>
-      <button type="button" class="pedir-borrar secundario" data-destino="confirmar-borrado">
+      <button type="button" class="pedir-borrar peligro" data-destino="confirmar-borrado">
         Eliminar el volumen…
       </button>
     </div>
@@ -120,14 +120,21 @@
   <p class="nota" id="sobre-proveedores"></p>
 
   <form id="form-crear">
-    <label for="topologia">Cómo repartirlo</label>
-    <select id="topologia"></select>
+    <!-- Todas las opciones a la vista, no una cada vez. Es lo que la aplicación de Android
+         hace mejor que esta ventana: con un desplegable hay que abrir, elegir, leer el coste,
+         volver a abrir y comparar de memoria. Puestas en lista se comparan de un vistazo, que
+         es justo lo que se viene a hacer aquí. El detalle largo sigue debajo, para la elegida.
+         `#topologia` se queda como campo oculto para no tocar quien lo lee al enviar. -->
+    <span id="como-repartirlo">Cómo repartirlo</span>
+    <div id="topologias" role="radiogroup" aria-labelledby="como-repartirlo"></div>
+    <input type="hidden" id="topologia">
     <p class="nota" id="precio"></p>
 
     <label for="frase-nueva">Frase de paso</label>
     <input type="password" id="frase-nueva" autocomplete="off" spellcheck="false" required>
     <label for="frase-otra">Repítela</label>
     <input type="password" id="frase-otra" autocomplete="off" spellcheck="false" required>
+    <p id="coinciden" class="nota" hidden></p>
 
     <div class="aviso">
       <b>No hay recuperación.</b> La frase no se guarda en ninguna parte y sin ella el
@@ -135,14 +142,14 @@
       que no puedes perder, y no en esta máquina.
     </div>
 
-    <button type="submit" id="boton-crear">Crear volumen</button>
+    <button type="submit" id="boton-crear" disabled>Crear volumen</button>
   </form>
 </section>
 <!-- Abierto: estado, salud y lo que todavía no ha subido. -->
 <section id="panel" hidden>
   <div class="fila">
     <h2>Volumen</h2>
-    <button class="pedir-borrar secundario" data-destino="confirmar-borrado-panel">
+    <button class="pedir-borrar peligro" data-destino="confirmar-borrado-panel">
       Eliminar el volumen…
     </button>
     <button id="cerrar" class="secundario">Cerrar</button>
@@ -176,6 +183,8 @@
   <h2>Pendiente de subir</h2>
   <div id="pendiente"><p class="nota">Consultando…</p></div>
 </section>
+
+<p id="pie">Comprobando la versión…</p>
 
 <script src="app.js"></script>
 </body>

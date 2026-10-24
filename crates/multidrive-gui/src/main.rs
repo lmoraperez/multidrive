@@ -229,6 +229,19 @@ fn ejemplo_de_punto() -> String {
     }
 }
 
+/// La version, para el pie de la ventana.
+///
+/// Sale a la vista por el mismo motivo que en la aplicacion de Android: quien reporta un fallo
+/// tiene que poder decir **que version** tiene sin ir a buscarla, y lo normal es que mande una
+/// captura. Si no esta en la pantalla, no esta en la captura.
+///
+/// Se lee de `CARGO_PKG_VERSION`, que es el `Cargo.toml` de este crate: asi no hay un numero
+/// escrito a mano en la interfaz que se quede atras el dia que se publique otra.
+#[tauri::command]
+fn version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
 #[tauri::command]
 async fn montaje(estado: tauri::State<'_, Estado>) -> Result<EstadoMontaje, String> {
     let guardia = estado.montado.lock().await;
@@ -1547,6 +1560,12 @@ struct ParaBorrar {
     bytes: u64,
     /// Proveedores donde ademas hay configuracion sellada, que tambien se va.
     con_maleta: Vec<String>,
+    /// De los que se van a desenlazar, cuales estan escritos a mano.
+    ///
+    /// La distincion no es cosmetica. Una cuenta de nube se vuelve a enlazar en dos clics,
+    /// pero un S3 o un WebDAV llevan credenciales **tecleadas**, y quitarlos destruye trabajo
+    /// que no esta en ningun otro sitio. Quien confirma tiene que ver esa lista aparte.
+    a_mano: Vec<String>,
     /// Lo que hay que escribir para confirmar: el nombre de **uno** de los proveedores.
     ///
     /// Se pide un nombre y no un «si» porque obliga a mirar la lista de lo que se va a borrar,
@@ -1565,6 +1584,22 @@ struct ParaBorrar {
 ///
 /// Cuesta una enumeracion por proveedor —contra una nube, puede tardar— y por eso se pide
 /// aparte: la pantalla no puede ir a preguntarlo cada vez que se repinta.
+/// Si ese proveedor se enlazo por el navegador, en vez de escribirse a mano.
+///
+/// El nombre de una ranura es su tipo en minusculas y, si hay mas de una, un numero detras:
+/// `gdrive`, `gdrive1`, `s3`, `s31`. Quitando los digitos del final y mirando el catalogo se
+/// sabe si ese tipo tiene OAuth, que es justo lo que separa «se vuelve a enlazar en dos
+/// clics» de «hay que volver a teclear unas credenciales».
+///
+/// Ante la duda devuelve `false`, o sea **a mano**: equivocarse hacia ese lado hace que se
+/// avise de mas, y equivocarse hacia el otro hace que alguien pierda credenciales sin que
+/// nadie se lo haya advertido.
+fn es_de_nube(nombre: &str) -> bool {
+    let sin_numero = nombre.trim_end_matches(|c: char| c.is_ascii_digit());
+    multidrive_backend::catalogo::tipo(&sin_numero.to_uppercase())
+        .is_some_and(|t| t.oauth.is_some())
+}
+
 #[tauri::command]
 async fn volumen_a_borrar() -> Result<ParaBorrar, String> {
     let backends = proveedores()?;
@@ -1581,7 +1616,9 @@ async fn volumen_a_borrar() -> Result<ParaBorrar, String> {
 
     let nombres: Vec<String> = backends.iter().map(|b| b.name().to_string()).collect();
     let cual = multidrive_core::retirar::a_quien_nombrar(&header.salt, nombres.len());
+    let a_mano: Vec<String> = nombres.iter().filter(|n| !es_de_nube(n)).cloned().collect();
     Ok(ParaBorrar {
+        a_mano,
         layout: header
             .layout()
             .map_or_else(|_| header.layout.clone(), |l| l.to_string()),
@@ -1627,13 +1664,46 @@ async fn borrar_volumen(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(format!(
+    // Y se desenlazan las cuentas, igual que en Android: dejar configurados unos proveedores
+    // que ya no forman parte de nada era lo que hacia que la pantalla siguiente pareciese que
+    // el volumen seguia ahi.
+    //
+    // Va **despues** de retirar y sin `?`: si algo falla aqui, el volumen ya no existe y el
+    // trabajo importante esta hecho. Abortar dejaria lo peor de los dos mundos --borrado pero
+    // diciendo que fallo-- asi que se cuenta al final lo que no se pudo quitar.
+    let mut sin_quitar = Vec::new();
+    if let Some(fichero) = config::fichero_de_usuario() {
+        for nombre in &nombres {
+            let prefijo = format!("MULTIDRIVE_{}_", nombre.to_uppercase());
+            if config::quitar(&fichero, &prefijo).is_err() {
+                sin_quitar.push(nombre.clone());
+            }
+        }
+    } else {
+        sin_quitar.extend(nombres.iter().cloned());
+    }
+
+    let mut dicho = format!(
         "Retirado: {} fragmento(s) en {} proveedor(es).\n\
          La carpeta sigue existiendo en cada uno, vacía de lo que era del volumen. Si \
          guardaste ahí otras cosas, siguen donde estaban.",
         hecho.fragmentos(),
         hecho.por_proveedor.len()
-    ))
+    );
+    if sin_quitar.is_empty() {
+        dicho.push_str(
+            "\n\nLas cuentas se han desenlazado: este equipo queda como recién instalado.",
+        );
+    } else {
+        // Decir cuales, y no solo que fallo: lo que sigue configurado se quita a mano, y para
+        // eso hay que saber el nombre.
+        dicho.push_str(&format!(
+            "\n\nEl volumen se borró, pero no se pudo desenlazar: {}. \
+             Siguen en tu configuración y se quitan desde esta misma ventana.",
+            sin_quitar.join(", ")
+        ));
+    }
+    Ok(dicho)
 }
 
 /// Reparte los trozos en tres categorias **excluyentes**, y el orden importa.
@@ -1807,6 +1877,7 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            version,
             arranque,
             abrir,
             resumen,

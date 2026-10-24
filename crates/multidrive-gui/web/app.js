@@ -492,6 +492,18 @@ async function refrescarMontaje() {
 // Crear un volumen
 // ---------------------------------------------------------------------------------------
 
+/**
+ * El fichero del logotipo de un tipo de proveedor, o `null` si no hay.
+ *
+ * Se devuelve `null` en vez de un icono genérico a propósito: un botón sin logotipo se lee
+ * igual, y uno con el logotipo equivocado hace dudar de si se está conectando lo que se cree.
+ */
+function iconoDe(clave) {
+  const cuales = { GDRIVE: "gdrive", ONEDRIVE: "onedrive" };
+  const cual = cuales[clave];
+  return cual ? `iconos/${cual}.png` : null;
+}
+
 async function ofrecerCreacion(proveedores) {
   $("creacion").hidden = false;
   $("sobre-proveedores").textContent =
@@ -501,29 +513,62 @@ async function ofrecerCreacion(proveedores) {
   // Preguntar el cupo es una peticion por nube, asi que se dice que se esta haciendo.
   $("precio").replaceChildren(nota("Consultando cuánto espacio hay en cada proveedor…"));
   const opciones = await invoke("topologias", { cuantos: proveedores.length });
-  const sel = $("topologia");
-  sel.replaceChildren();
+  const lista = $("topologias");
+  lista.replaceChildren();
+
   for (const o of opciones) {
-    const op = document.createElement("option");
-    op.value = o.spec;
-    op.textContent = o.spec;
-    op.dataset.tolera = String(o.tolera);
-    op.dataset.sobrecoste = o.sobrecoste.toFixed(2);
-    op.dataset.aprovechado = Math.round(o.aprovechado * 100);
-    op.dataset.sinRed = o.sin_red ? "1" : "";
-    if (o.libre !== null) op.dataset.libre = String(o.libre);
-    if (o.sin_medir.length) op.dataset.sinMedir = o.sin_medir.join(", ");
-    if (o.suma) op.dataset.suma = "1";
-    sel.append(op);
+    const tarjeta = document.createElement("button");
+    tarjeta.type = "button";
+    tarjeta.className = "topologia";
+    tarjeta.setAttribute("role", "radio");
+    tarjeta.dataset.spec = o.spec;
+    tarjeta.dataset.tolera = String(o.tolera);
+    tarjeta.dataset.sobrecoste = o.sobrecoste.toFixed(2);
+    tarjeta.dataset.aprovechado = String(Math.round(o.aprovechado * 100));
+    tarjeta.dataset.sinRed = o.sin_red ? "1" : "";
+    if (o.libre !== null) tarjeta.dataset.libre = String(o.libre);
+    if (o.sin_medir.length) tarjeta.dataset.sinMedir = o.sin_medir.join(", ");
+    if (o.suma) tarjeta.dataset.suma = "1";
+
+    const nombre = document.createElement("b");
+    nombre.textContent = o.spec;
+
+    // Las dos cifras con las que se elige, una debajo de otra y siempre en el mismo orden,
+    // que es lo que permite comparar en vertical sin leer frases.
+    const aguanta = document.createElement("span");
+    aguanta.className = o.sin_red ? "mal" : "";
+    aguanta.textContent = o.sin_red
+      ? "No aguanta perder ninguna cuenta."
+      : `Aguanta perder ${o.tolera} cuenta(s).`;
+
+    const sitio = document.createElement("span");
+    sitio.className = "cifra";
+    sitio.textContent =
+      o.libre !== null ? `Espacio disponible: ${tamano(o.libre)}.` : "Espacio sin medir.";
+
+    tarjeta.append(nombre, aguanta, sitio);
+    tarjeta.addEventListener("click", () => elegirTopologia(o.spec));
+    lista.append(tarjeta);
   }
+
   // La primera de la lista es la que más aguanta. Que el valor por defecto sea el prudente
   // importa: quien no sepa elegir se queda con el que menos sorpresas da.
-  sel.selectedIndex = 0;
+  if (opciones.length) elegirTopologia(opciones[0].spec);
+}
+
+/** Marca una opción como elegida y repinta el detalle de debajo. */
+function elegirTopologia(spec) {
+  $("topologia").value = spec;
+  for (const t of $("topologias").children) {
+    const suya = t.dataset.spec === spec;
+    t.classList.toggle("elegida", suya);
+    t.setAttribute("aria-checked", suya ? "true" : "false");
+  }
   mostrarPrecio();
 }
 
 function mostrarPrecio() {
-  const op = $("topologia").selectedOptions[0];
+  const op = [...$("topologias").children].find((t) => t.dataset.spec === $("topologia").value);
   if (!op) return;
   const caja = $("precio");
   caja.replaceChildren();
@@ -590,15 +635,58 @@ function mostrarPrecio() {
   }
 }
 
-$("topologia").addEventListener("change", mostrarPrecio);
+/**
+ * Compara las dos frases mientras se escriben y gobierna el botón de crear.
+ *
+ * El detalle que hace esto usable es **cuándo se calla**: mientras lo repetido encaja con el
+ * principio de lo primero, no se dice nada. Quejarse en cada letra de una frase a medio
+ * teclear convierte el aviso en ruido, y un aviso que siempre está puesto deja de leerse
+ * justo el día que significa algo.
+ *
+ * El botón arranca apagado y sólo se enciende cuando coinciden de verdad. Sin recuperación
+ * posible, una errata aquí es un volumen perdido antes de empezar.
+ */
+function revisarFrases() {
+  const a = $("frase-nueva").value;
+  const b = $("frase-otra").value;
+  const dicho = $("coinciden");
+  const boton = $("boton-crear");
+
+  if (!a || !b) {
+    dicho.hidden = true;
+    boton.disabled = true;
+    return;
+  }
+  if (a === b) {
+    dicho.hidden = false;
+    dicho.textContent = "Las dos coinciden.";
+    dicho.style.color = "var(--accent)";
+    boton.disabled = false;
+    return;
+  }
+  boton.disabled = true;
+  if (a.startsWith(b)) {
+    // Va bien, sólo le falta. Callado.
+    dicho.hidden = true;
+    return;
+  }
+  dicho.hidden = false;
+  dicho.textContent = "No coinciden.";
+  dicho.style.color = "var(--mal)";
+}
+
+for (const id of ["frase-nueva", "frase-otra"]) {
+  $(id).addEventListener("input", revisarFrases);
+}
 
 $("form-crear").addEventListener("submit", async (e) => {
   e.preventDefault();
   const a = $("frase-nueva");
   const b = $("frase-otra");
+  // El botón ya está apagado si no coinciden, pero la comprobación se queda: un formulario
+  // se puede enviar con Enter desde un campo, y lo que protege de verdad es lo que se mira
+  // aquí, no el estado de un botón.
   if (a.value !== b.value) {
-    // Sin recuperación posible, una errata al teclear la frase es un volumen perdido antes
-    // de empezar. Por eso se pide dos veces.
     aviso("Las dos frases no coinciden.", true);
     b.select();
     return;
@@ -611,6 +699,9 @@ $("form-crear").addEventListener("submit", async (e) => {
     const r = await invoke("crear", { spec: $("topologia").value, frase: a.value });
     a.value = "";
     b.value = "";
+    // Vaciar los campos sin volver a mirarlos dejaria el boton encendido sobre dos campos
+    // vacios, listo para crear un volumen con frase vacia si la seccion se vuelve a ensenar.
+    revisarFrases();
     $("creacion").hidden = true;
     await mostrarPanel(r);
   } catch (err) {
@@ -619,6 +710,18 @@ $("form-crear").addEventListener("submit", async (e) => {
     $("boton-crear").disabled = false;
   }
 });
+
+// El pie con la version. Va aparte del arranque a proposito: si lo de arriba falla, esto es
+// justo lo que hace falta saber para reportarlo, asi que tiene que salir igual.
+invoke("version")
+  .then((v) => {
+    $("pie").textContent = `MultiDrive ${v} · alfa`;
+  })
+  .catch(() => {
+    // Ni siquiera esto se puede dar por hecho, y es preferible no decir nada a decir una
+    // version inventada.
+    $("pie").textContent = "MultiDrive · alfa";
+  });
 
 // Si esto falla no puede quedarse en "Comprobando...": un panel que no dice nada es peor que
 // uno que dice que algo va mal.
@@ -896,7 +999,19 @@ function pintarFormularioProveedor() {
       boton.type = "button";
       // Sin `secundario`: para un proveedor de nube, este botón **es** la acción. Conectar
       // la cuenta es configurarlo entero, así que no hay nada más que rellenar después.
-      boton.textContent = `Conectar con ${t.etiqueta}`;
+      //
+      // Con el logotipo dentro, como en la aplicación de Android. No es adorno: entre varios
+      // botones azules iguales, el logotipo es lo que se reconoce antes de leer, y éste es un
+      // sitio donde equivocarse de proveedor hace perder un rato.
+      boton.className = "con-icono";
+      const icono = iconoDe(t.clave);
+      if (icono) {
+        const img = document.createElement("img");
+        img.src = icono;
+        img.alt = "";
+        boton.append(img);
+      }
+      boton.append(document.createTextNode(`Conectar con ${t.etiqueta}`));
       const aviso = nota("");
       aviso.hidden = true;
       boton.addEventListener("click", async () => {
@@ -1173,6 +1288,21 @@ function pedirConfirmacion(v, caja) {
   );
   grave.className = "aviso mal";
   partes.push(grave);
+
+  // Al borrar se desenlazan tambien las cuentas, igual que en Android. Para las de nube eso
+  // son dos clics de volver a enlazar; para las escritas a mano son credenciales tecleadas
+  // que no estan en ningun otro sitio, asi que se nombran una por una. Avisar «se perdera la
+  // configuracion» sin decir de cuales es no avisar de nada.
+  const desenlace = nota(
+    v.a_mano.length
+      ? "Además se desenlazarán todas las cuentas de este equipo. " +
+          `Ojo con ${v.a_mano.join(", ")}: son de configuración escrita a mano, así que ` +
+          "habrá que volver a teclear sus credenciales. Tenlas a mano antes de seguir."
+      : "Además se desenlazarán todas las cuentas de este equipo, y queda como recién " +
+          "instalado. Son cuentas de nube: se vuelven a enlazar desde el navegador.",
+  );
+  if (v.a_mano.length) desenlace.className = "aviso";
+  partes.push(desenlace);
 
   const etiqueta = document.createElement("label");
   etiqueta.htmlFor = "texto-confirmar";

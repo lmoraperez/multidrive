@@ -8,7 +8,11 @@
   --accent: #4c8ff0;
   --accent-suave: #7ab0f7;
   --warn: #d8a657;
-  --mal: #e06c75;
+  /* El mismo rojo que la aplicacion de Android y que la paleta de marca. Antes era #e06c75,
+     que se parecia pero no era: dos rojos distintos para la misma idea en dos ventanas del
+     mismo programa es una grieta que se nota aunque nadie sepa decir por que. */
+  --mal: #e5484d;
+  --mal-suave: #f06a6e;
   color-scheme: dark;
 }
 
@@ -111,6 +115,60 @@ select {
 }
 select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
+/* El logotipo dentro del boton de conectar, como en Android. El texto manda y el logotipo
+   acompana: por eso va a la izquierda y con un tamano que no compite con la palabra. */
+button.con-icono {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+button.con-icono img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  /* Los logotipos ajenos van tal cual, sin tenir ni recortar: son marcas de otros. */
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------------------
+   Elegir topologia
+
+   En tarjetas y no en un desplegable, que es lo que la aplicacion de Android hace mejor: con
+   un desplegable hay que abrir, elegir, leer el coste, volver a abrir y comparar de memoria.
+   Las dos cifras van siempre en el mismo orden, para poder comparar en vertical sin leer.
+   --------------------------------------------------------------------------------------- */
+#como-repartirlo {
+  display: block; font-size: 13px; color: var(--muted); margin: 18px 0 6px;
+}
+#topologias { display: grid; gap: 8px; }
+
+button.topologia {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 12px 14px;
+  text-align: left;
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+button.topologia:hover { border-color: var(--muted); }
+button.topologia b { display: block; font-size: 16px; font-weight: 600; margin-bottom: 2px; }
+button.topologia span { display: block; font-size: 13px; color: var(--muted); }
+button.topologia span.mal { color: var(--mal); }
+button.topologia span.cifra { font-variant-numeric: tabular-nums; }
+
+/* La elegida se marca con el borde y un fondo apenas tenido. El color del texto no cambia:
+   mover el contraste al cambiar de opcion hace que la lista «salte» a cada clic. */
+button.topologia.elegida {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+}
+button.topologia.elegida b { color: var(--accent); }
+
 /* En la creación el aviso no es un error: es lo que hay que leer antes de seguir. */
 #creacion .aviso { margin-top: 20px; }
 
@@ -203,4 +261,35 @@ select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .quitar:hover { background: var(--panel); border-color: var(--mal); color: var(--mal); }
 .olvido { margin-top: 10px; border-left: 2px solid var(--mal); padding-left: 14px; }
 button.peligro { background: var(--mal); color: #1a0f10; }
-button.peligro:hover { background: #ee8189; }
+button.peligro:hover { background: var(--mal-suave); }
+
+/* ---------------------------------------------------------------------------------------
+   Distintivo de etapa y pie de version
+
+   Los dos vienen de la aplicacion de Android, y por el mismo motivo: quien reporta un fallo
+   tiene que poder decir **que version** sin buscarla, y quien abre la ventana tiene que saber
+   que esto todavia se esta construyendo sin leerse un parrafo.
+   --------------------------------------------------------------------------------------- */
+.etapa {
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: lowercase;
+  vertical-align: middle;
+}
+
+#pie {
+  margin: 38px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  /* Lo unico de la ventana que se puede seleccionar: es lo que hay que copiar y pegar en un
+     informe de fallo, y `user-select: none` del body lo impediria. */
+  user-select: text;
+}
