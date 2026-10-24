@@ -341,7 +341,7 @@ puedes echar una mano.
 
 | | |
 |---|:--|
-| <a href="https://ko-fi.com/luismora4all"><img src="https://img.shields.io/badge/Ko--fi-Inv%C3%ADtame%20un%20caf%C3%A9-ff5e5b?logo=kofi&logoColor=white&style=for-the-badge" alt="Invítame un café en Ko-fi"></a> | Se abre en Ko-fi, que es quien gestiona el pago. |
+| <a href="https://ko-fi.com/luismora4all"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Invítame un café en Ko-fi" height="36"></a> | Se abre en Ko-fi, que es quien gestiona el pago. |
 | <img src="https://multidrive.net/apoyo/binance-pay.png" width="150" alt="Código QR de Binance Pay para el alias LuisMora78"> | **Binance Pay** — escanéalo desde la aplicación de Binance, o busca el alias `LuisMora78`. |
 | <img src="https://multidrive.net/apoyo/monero.png" width="150" alt="Código QR con la dirección de Monero del proyecto"> | **Monero (XMR)** — escanea el código, o copia la dirección de aquí abajo. |
 
