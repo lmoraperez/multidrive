@@ -9,15 +9,29 @@ rust-version.workspace = true
 [dependencies]
 blake3.workspace = true
 futures = "0.3.34"
-multidrive-backend.workspace = true
+multidrive-backend-api.workspace = true
+# Solo para leer el fichero de configuracion de este equipo al hacer la maleta. La version
+# web no lo necesita --abre maletas, no las hace-- y sin esto no arrastra OpenDAL.
+multidrive-backend = { workspace = true, optional = true }
 multidrive-crypto.workspace = true
 multidrive-raid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+# Sin `workspace = true` a proposito: el del workspace trae `rt-multi-thread` y `fs`, y tokio
+# se niega a compilar para el navegador con cualquiera de los dos. Aqui va lo que sirve en
+# los dos sitios, y `nativo` anade el resto.
+tokio = { version = "1", features = ["macros", "io-util", "sync"] }
+
+[features]
+# Lo que solo tiene sentido en un equipo con disco y sistema operativo: la cache en disco, la
+# cola de escritura diferida, el testigo y los hilos que la mantienen. Va por defecto; lo que
+# se quita es para el navegador, no al reves.
+default = ["nativo"]
+nativo = ["dep:multidrive-backend", "tokio/rt-multi-thread", "tokio/fs"]
 
 [dev-dependencies]
+multidrive-backend.workspace = true
 async-trait = "0.1.92"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 # Solo para el ejemplo `android`, que comprueba si el verificador de certificados funciona en

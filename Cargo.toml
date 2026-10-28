@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/multidrive-crypto",
     "crates/multidrive-raid",
+    "crates/multidrive-backend-api",
     "crates/multidrive-backend",
     "crates/multidrive-core",
     "crates/multidrive-cli",
@@ -21,6 +22,7 @@ rust-version = "1.91"
 [workspace.dependencies]
 multidrive-crypto  = { path = "crates/multidrive-crypto" }
 multidrive-raid    = { path = "crates/multidrive-raid" }
+multidrive-backend-api = { path = "crates/multidrive-backend-api" }
 multidrive-backend = { path = "crates/multidrive-backend" }
 multidrive-core    = { path = "crates/multidrive-core" }
 multidrive-mount   = { path = "crates/multidrive-mount" }

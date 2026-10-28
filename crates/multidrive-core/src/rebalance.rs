@@ -38,7 +38,7 @@
 use std::sync::Arc;
 
 use futures::future::join_all;
-use multidrive_backend::Backend;
+use multidrive_backend_api::Backend;
 use multidrive_raid::Layout;
 
 use crate::{ChunkId, ChunkRef, ChunkStore, CoreError};

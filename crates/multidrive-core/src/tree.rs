@@ -723,6 +723,7 @@ async fn publicar(store: &ChunkStore, root: &Root) -> Result<(), CoreError> {
     // Con escritura diferida, la raiz **no se publica**: se encola. Publicarla ahora dejaria
     // el volumen apuntando a trozos que siguen sin subir, que es justo el estado que este
     // diseno no puede permitirse.
+    #[cfg(feature = "nativo")]
     if let Some(cola) = store.writeback() {
         return cola.stage_root(root.clone()).await;
     }

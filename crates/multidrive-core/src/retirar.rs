@@ -33,7 +33,7 @@
 use std::sync::Arc;
 
 use futures::future::join_all;
-use multidrive_backend::Backend;
+use multidrive_backend_api::Backend;
 
 use crate::{CoreError, SHARD_PREFIX, maleta};
 
@@ -112,7 +112,7 @@ pub async fn inventariar(backends: &[Arc<dyn Backend>]) -> Result<Inventario, Co
 /// antes de tocar el primero.
 async fn enumerar(
     backends: &[Arc<dyn Backend>],
-) -> Result<Vec<(String, Vec<multidrive_backend::Objeto>)>, CoreError> {
+) -> Result<Vec<(String, Vec<multidrive_backend_api::Objeto>)>, CoreError> {
     let listados = join_all(
         backends
             .iter()

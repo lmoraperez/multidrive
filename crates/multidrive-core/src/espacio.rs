@@ -18,7 +18,7 @@
 //! funcion que usa el motor para leer. No es casualidad ni una coincidencia aprovechada: son
 //! la misma cantidad mirada desde los dos lados.
 
-use multidrive_backend::Cuota;
+use multidrive_backend_api::Cuota;
 use multidrive_raid::Layout;
 
 /// Lo que cabe en el volumen y lo que queda libre, si se puede saber.

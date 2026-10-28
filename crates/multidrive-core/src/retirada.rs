@@ -23,7 +23,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use multidrive_backend::Backend;
+use multidrive_backend_api::Backend;
 
 use crate::{ChunkRef, ChunkStore, CoreError};
 

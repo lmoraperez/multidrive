@@ -117,6 +117,29 @@ jobs:
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC_aarch64_linux_android"
           cargo check --target aarch64-linux-android -p multidrive-backend -p multidrive-core
 
+  # Que el nucleo siga compilando para el navegador, que es de lo que vive la version web.
+  #
+  # Mismo motivo que el de Android, pero aqui la trampa es otra: wasm32 no tiene ni hilos ni
+  # disco ni red propia, y tokio se niega a compilar con cualquiera de esas caracteristicas.
+  # Basta un `std::thread` o un `tokio::fs` fuera de `nativo` para romperlo, y sin esto se
+  # descubriria abriendo la web.
+  #
+  # Clippy y no solo `check`: un `use` que solo sirve con `nativo` da aviso unicamente aqui.
+  web:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Nucleo para el navegador, sin nada nativo
+        run: |
+          cargo clippy --target wasm32-unknown-unknown --no-default-features \
+            -p multidrive-crypto -p multidrive-raid -p multidrive-backend-api -p multidrive-core \
+            -- -D warnings
+
   # Monta de verdad con FUSE y usa el volumen como lo usaria un programa cualquiera.
   #
   # Va en un job aparte y no dentro de `test` porque necesita /dev/fuse, y un test que falla

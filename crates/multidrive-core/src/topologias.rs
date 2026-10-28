@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 
-use multidrive_backend::{Backend, Cuota};
+use multidrive_backend_api::{Backend, Cuota};
 use multidrive_raid::Layout;
 use serde::Serialize;
 

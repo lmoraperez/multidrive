@@ -38,7 +38,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures::future::join_all;
-use multidrive_backend::{Backend, BackendError};
+use multidrive_backend_api::{Backend, BackendError};
 use serde::{Deserialize, Serialize};
 
 use crate::CoreError;
@@ -247,6 +247,10 @@ pub async fn raiz_sin_cambiar(store: &crate::ChunkStore, esperada: u64) -> Resul
 /// Copia el patron del sincronizador a proposito: un hilo del sistema con su bandera de parada,
 /// y `Drop` espera a que termine. Dos formas distintas de hacer lo mismo en el mismo programa
 /// son una de mas.
+///
+/// Solo con `nativo`: vive en un hilo, y en el navegador no hay hilos. La version web es de
+/// solo lectura y no coge testigo.
+#[cfg(feature = "nativo")]
 pub struct Guardia {
     parar: Arc<std::sync::atomic::AtomicBool>,
     hilo: Option<std::thread::JoinHandle<()>>,
@@ -254,6 +258,7 @@ pub struct Guardia {
     perdido: Arc<std::sync::atomic::AtomicBool>,
 }
 
+#[cfg(feature = "nativo")]
 impl Guardia {
     /// Coge el testigo si esta libre, y si no **dice quien lo tiene sin negarse**.
     ///
@@ -334,6 +339,7 @@ impl Guardia {
     }
 }
 
+#[cfg(feature = "nativo")]
 impl Drop for Guardia {
     fn drop(&mut self) {
         self.parar.store(true, std::sync::atomic::Ordering::Relaxed);

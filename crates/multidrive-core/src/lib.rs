@@ -13,16 +13,21 @@
 //! Los trozos son **inmutables** y su nombre es su contenido. Nada se sobrescribe jamas,
 //! que es lo unico que funciona sobre almacenes de objetos sin renombrado atomico.
 
-use std::collections::{BTreeSet, HashSet};
+#[cfg(feature = "nativo")]
+use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use futures::future::join_all;
-use multidrive_backend::{Backend, BackendError};
+use multidrive_backend_api::{Backend, BackendError};
 use multidrive_crypto::MasterKey;
 use multidrive_raid::{Layout, RaidError};
 use serde::{Deserialize, Serialize};
 
 pub mod cache;
+// Los cuatro `nativo` necesitan disco o hilos, y el navegador no tiene ni lo uno ni lo otro.
+// Ver la caracteristica en Cargo.toml.
+#[cfg(feature = "nativo")]
 pub mod diskcache;
 pub mod espacio;
 pub mod file;
@@ -31,14 +36,17 @@ pub mod maleta;
 pub mod pesos;
 pub mod rebalance;
 pub mod recorrer;
+#[cfg(feature = "nativo")]
 pub mod refrescador;
 pub mod rescue;
 pub mod retirada;
 pub mod retirar;
+#[cfg(feature = "nativo")]
 pub mod sincronizador;
 pub mod testigo;
 pub mod topologias;
 pub mod tree;
+#[cfg(feature = "nativo")]
 pub mod writeback;
 
 #[cfg(test)]
@@ -303,9 +311,11 @@ pub struct ChunkStore {
     cache: Option<Arc<cache::ChunkCache>>,
     /// Segundo escalon, en disco y sobreviviendo al reinicio. Guarda el blob **sellado**:
     /// los datos del usuario no se quedan en claro en la maquina.
+    #[cfg(feature = "nativo")]
     disco: Option<Arc<diskcache::DiskCache>>,
     /// Cola de escritura diferida. Con ella, escribir no sube nada: prepara en local y
     /// espera a `sync`.
+    #[cfg(feature = "nativo")]
     pending: Option<Arc<writeback::WriteQueue>>,
     /// Cuanto aporta cada proveedor, para las topologias que colocan por trozo.
     ///
@@ -349,7 +359,9 @@ impl ChunkStore {
             backends,
             key,
             cache: None,
+            #[cfg(feature = "nativo")]
             disco: None,
+            #[cfg(feature = "nativo")]
             pending: None,
         })
     }
@@ -482,6 +494,7 @@ impl ChunkStore {
     }
 
     /// Anade el segundo escalon: una cache en disco que sobrevive al proceso.
+    #[cfg(feature = "nativo")]
     pub fn with_disk_cache(mut self, disco: diskcache::DiskCache) -> Self {
         self.disco = Some(Arc::new(disco));
         self
@@ -490,17 +503,20 @@ impl ChunkStore {
     /// Difiere las escrituras: `put` prepara en local en vez de subir, y la raiz espera.
     /// La cola va en un `Arc` porque no siempre es exclusiva del almacen: con el montaje en
     /// escritura hay un sincronizador en segundo plano mirando lo mismo.
+    #[cfg(feature = "nativo")]
     pub fn with_writeback(mut self, cola: Arc<writeback::WriteQueue>) -> Self {
         self.pending = Some(cola);
         self
     }
 
     /// La cola de escritura diferida, si la hay.
+    #[cfg(feature = "nativo")]
     pub fn writeback(&self) -> Option<&writeback::WriteQueue> {
         self.pending.as_deref()
     }
 
     /// Que queda por subir.
+    #[cfg(feature = "nativo")]
     pub fn pendiente(&self) -> writeback::Pendiente {
         self.pending
             .as_ref()
@@ -526,6 +542,7 @@ impl ChunkStore {
     /// que desde otro equipo todavia no se ve nada.
     ///
     /// Devuelve la lista vacia si no hay cola o no hay raiz pendiente.
+    #[cfg(feature = "nativo")]
     pub async fn rutas_pendientes(&self) -> Result<Vec<RutaPendiente>, CoreError> {
         let Some(cola) = self.pending.as_ref() else {
             return Ok(Vec::new());
@@ -579,6 +596,7 @@ impl ChunkStore {
     ///
     /// Los nodos por los que pasa pueden estar todavia sin subir: `get_shared` los encuentra
     /// en la cola, que es el unico sitio donde existen hasta que se sincronice.
+    #[cfg(feature = "nativo")]
     async fn alcanzables(&self, raiz: &ChunkRef) -> Result<BTreeSet<ChunkId>, CoreError> {
         let mut vivos = BTreeSet::new();
         let mut pendientes = vec![raiz.clone()];
@@ -608,6 +626,7 @@ impl ChunkStore {
     /// el volumen apuntando a nodos que no existen, y cualquier lector lo veria corrupto sin
     /// estarlo. Si algo falla, la raiz se queda en la cola y el volumen sigue viendose como
     /// antes de la escritura: un estado viejo, pero integro.
+    #[cfg(feature = "nativo")]
     pub async fn sync(&self) -> Result<writeback::SyncReport, CoreError> {
         let Some(cola) = &self.pending else {
             return Ok(writeback::SyncReport::default());
@@ -685,6 +704,7 @@ impl ChunkStore {
     }
 
     /// Estadisticas de la cache en disco, si la hay.
+    #[cfg(feature = "nativo")]
     pub fn disk_stats(&self) -> Option<diskcache::Stats> {
         self.disco.as_ref().map(|d| d.stats())
     }
@@ -709,6 +729,7 @@ impl ChunkStore {
 
         // Con escritura diferida no se sube nada: se prepara en local y se espera a `sync`.
         // El trozo es legible desde ya, porque `get_shared` mira tambien en la cola.
+        #[cfg(feature = "nativo")]
         if let Some(cola) = &self.pending {
             cola.stage(&id, &sealed).await?;
             return Ok(PutReport {
@@ -794,6 +815,7 @@ impl ChunkStore {
         // Escalon 1,5: la cola de escritura. Lo que se acaba de escribir y todavia no ha
         // subido **solo existe aqui**, asi que hay que mirar antes que en ningun otro sitio
         // remoto. Sin esto, releer lo recien escrito fallaria.
+        #[cfg(feature = "nativo")]
         if let Some(cola) = &self.pending
             && let Some(sellado) = cola.sealed(&chunk.id).await
         {
@@ -809,6 +831,7 @@ impl ChunkStore {
 
         // Escalon 2: disco. Guarda el blob sellado, asi que hay que abrirlo; a cambio, los
         // datos del usuario no estan en claro en la maquina.
+        #[cfg(feature = "nativo")]
         if let Some(disco) = &self.disco {
             let aad = chunk.id.as_str().as_bytes().to_vec();
             // Se descifra una sola vez: el verificado y el resultado salen del mismo paso.
@@ -830,10 +853,12 @@ impl ChunkStore {
             }
         }
 
-        // Escalon 3: los proveedores.
+        // Escalon 3: los proveedores. El sellado solo lo quiere la cache en disco.
+        #[cfg_attr(not(feature = "nativo"), allow(unused_variables))]
         let (sellado, claro) = self.recover(chunk).await?;
         let claro = Arc::new(claro);
 
+        #[cfg(feature = "nativo")]
         if let Some(disco) = &self.disco {
             disco.put(&chunk.id, &sellado).await;
         }

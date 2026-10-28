@@ -1,0 +1,12 @@
+[package]
+name = "multidrive-backend-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# Sin nada que dependa del sistema: esto lo usa tambien la version web. Ver lib.rs.
+[dependencies]
+async-trait = "0.1.92"
+thiserror.workspace = true

@@ -1124,6 +1124,34 @@ desde la web puede venir después, o no venir.
 internas; un cliente web es trabajo de meses y abre la única grieta real en el argumento del
 producto. La sección sigue **por analizar**.
 
+### Empezada el 28 de octubre, en solo lectura
+
+Se cambió de idea un día después y se arrancó, en la variante de solo lectura.
+
+- [x] **Registros OAuth para el navegador**: un cliente «Aplicación web» en el mismo proyecto
+      de Google y una plataforma SPA en la misma aplicación de Azure, al lado de los que ya
+      había y sin tocarlos. Detalle y motivos en
+      [APLICACION-OAUTH.md](APLICACION-OAUTH.md#la-versión-web). Google comprobado; OneDrive
+      no se puede comprobar hasta el primer inicio de sesión desde la página.
+- [x] **El paso 1 de la lista de arriba**: el trait `Backend` y sus tipos viven ahora en
+      `multidrive-backend-api`, sin OpenDAL. `multidrive-backend` lo reexporta, así que nadie
+      más cambió un `use`. `BackendError` llevaba dentro `opendal::Error`; ahora lleva un
+      error cualquiera, que es lo único que hacía falta para imprimirlo redactado.
+- [x] **El núcleo compila para `wasm32-unknown-unknown`** sin la característica `nativo`,
+      que va por defecto y aparta la caché en disco, la cola de escritura, los dos hilos y el
+      hilo del testigo. Lo que queda es justo lo que lee: el árbol, los trozos, la memoria y
+      la maleta para abrirla. Lo vigila un job nuevo del CI, `web`.
+- [ ] Un backend sobre `fetch` para Drive y Graph, de solo lectura
+- [ ] La página: iniciar sesión en una cuenta, abrir la maleta con la frase, entrar en las
+      demás, y navegar y descargar
+- [ ] Argon2id en un Web Worker
+- [ ] El aviso de la página, con las palabras de la sección de arriba
+
+Una trampa anotada para cuando se escriba: en el navegador `SystemTime::now()` **no falla al
+compilar, falla al ejecutarse**, con un pánico. Lo usan sellar una raíz, hacer una maleta y el
+testigo, que son todo escritura, así que en solo lectura no se llega nunca. El día que la web
+escriba habrá que darle otro reloj.
+
 ## Multilingüe (español e inglés) — **aplazado a propósito**
 
 Hoy la aplicación de Android **está sólo en español**: no hay `strings.xml` ni carpeta

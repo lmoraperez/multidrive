@@ -2582,6 +2582,7 @@ version = "0.0.1"
 dependencies = [
  "async-trait",
  "libc",
+ "multidrive-backend-api",
  "opendal",
  "opendal-http-transport-reqwest",
  "rand",
@@ -2596,6 +2597,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "multidrive-backend-api"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "multidrive-core"
 version = "0.0.1"
 dependencies = [
@@ -2603,6 +2612,7 @@ dependencies = [
  "blake3",
  "futures",
  "multidrive-backend",
+ "multidrive-backend-api",
  "multidrive-crypto",
  "multidrive-raid",
  "reqwest",

@@ -29,7 +29,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use futures::future::join_all;
-use multidrive_backend::{Backend, BackendError};
+use multidrive_backend_api::{Backend, BackendError};
 use multidrive_crypto::{MasterKey, SALT_LEN, generate_salt};
 use serde::{Deserialize, Serialize};
 
@@ -68,6 +68,7 @@ pub fn viaja(clave: &str) -> bool {
 /// propio directorio y ese fichero es toda la verdad que hay. Llamar a la otra desde el movil
 /// devolveria un mapa vacio y se guardaria una maleta sin nada dentro, que es peor que no
 /// guardarla: parece que se hizo.
+#[cfg(feature = "nativo")]
 pub fn claves_de(ruta: &std::path::Path) -> Result<BTreeMap<String, String>, CoreError> {
     let cfg = multidrive_backend::config::Config::desde(std::slice::from_ref(&ruta.to_path_buf()))?;
     Ok(cfg
@@ -83,6 +84,7 @@ pub fn claves_de(ruta: &std::path::Path) -> Result<BTreeMap<String, String>, Cor
 /// que funcionan y no estan escritos en ningun sitio, y una maleta que se los dejara fuera
 /// seria una maleta que miente sobre lo que lleva. El entorno manda sobre el fichero, igual
 /// que en todo lo demas.
+#[cfg(feature = "nativo")]
 pub fn claves_de_este_equipo() -> Result<BTreeMap<String, String>, CoreError> {
     let cfg = multidrive_backend::config::Config::cargar()?;
     let mut out: BTreeMap<String, String> = cfg

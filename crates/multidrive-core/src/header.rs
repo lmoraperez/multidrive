@@ -16,7 +16,7 @@
 use std::sync::Arc;
 
 use futures::future::join_all;
-use multidrive_backend::{Backend, BackendError};
+use multidrive_backend_api::{Backend, BackendError};
 use serde::{Deserialize, Serialize};
 
 use multidrive_crypto::MasterKey;

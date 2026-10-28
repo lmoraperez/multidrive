@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 async-trait = "0.1.92"
+multidrive-backend-api.workspace = true
 opendal = { version = "0.59.2", features = ["layers-retry", "services-fs", "services-gdrive", "services-memory", "services-onedrive", "services-s3", "services-webdav"] }
 # Se le pregunta a cada nube por su cupo con una peticion propia: OpenDAL no lo expone
 # porque el cupo de una cuenta no es un objeto. No entra nada nuevo en el arbol: reqwest y
