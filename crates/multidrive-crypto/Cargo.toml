@@ -12,3 +12,9 @@ chacha20poly1305 = "0.11.0"
 rand = "0.10.2"
 thiserror.workspace = true
 zeroize = { version = "1.9.0", features = ["derive"] }
+
+# En el navegador no hay sistema operativo al que pedirle azar: `getrandom` lo saca de
+# `crypto.getRandomValues`, pero solo si se le pide. Sin esto la version web no compila, y
+# es mejor asi que un azar inventado. Solo para wasm32: el resto sigue con el del sistema.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.4.3", features = ["wasm_js"] }

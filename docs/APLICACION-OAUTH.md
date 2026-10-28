@@ -210,3 +210,57 @@ no tiene secreto**, y la biblioteca que usamos manda siempre `client_secret` al 
 tanto en Drive como en OneDrive. O se le enseña a omitirlo, o el lector de Android tendrá que
 manejar sus propios tokens en vez de delegar en OpenDAL. El análisis de Android está en
 [ROADMAP.md](ROADMAP.md#móvil-android).
+
+## La versión web
+
+La versión web, de solo lectura y servida desde `multidrive.net/app/`, no puede usar ninguno de
+los dos registros de arriba: el de Google es de escritorio y solo acepta `127.0.0.1`, y la
+plataforma «Web» de Azure da tokens que Microsoft no deja canjear desde un navegador. Cada uno
+necesita **un registro más**, al lado del que ya hay, sin tocarlo.
+
+### Google: un segundo cliente, de tipo «Aplicación web»
+
+Creado el 28 de octubre de 2026 en el **mismo proyecto**, `pruebaslibredisk`:
+
+| | |
+|---|---|
+| Nombre | Cliente web Multidrive |
+| Tipo | **Aplicación web** |
+| ID de cliente | `14801824548-684l8s1nfdd6kovmickr7jnj8shcfg5k.apps.googleusercontent.com` |
+| Orígenes de JavaScript | `https://multidrive.net`, `http://localhost:8080` |
+| Redirecciones | `https://multidrive.net/app/`, `http://localhost:8080/app/` |
+
+> **Tiene que ser el mismo proyecto.** Con `drive.file` cada proyecto ve solo los ficheros que
+> creó él. Un cliente web en un proyecto aparte entraría en la cuenta y encontraría la carpeta
+> vacía, aunque el volumen esté ahí.
+
+El ID va escrito en el código de la página y no es secreto: lo ve cualquiera que la abra. El
+**secreto de este cliente no se usa** y no está en el repositorio. La página pide sólo un
+token de acceso de una hora con la ventana de Google, sin token de refresco: así el navegador
+no guarda nada que dé acceso permanente, que es el riesgo apuntado en
+[ROADMAP.md](ROADMAP.md#versión-web-en-multidrivenet--por-analizar).
+
+`localhost:8080` es para probar la página en el equipo antes de publicarla. Se puede quitar,
+pero no molesta: Google sólo redirige a una dirección registrada, y la de localhost sólo
+existe en la máquina de quien la abre.
+
+Comprobado al crearlo: las dos redirecciones llevan a la pantalla de inicio de sesión y
+cualquier otra ruta da `redirect_uri_mismatch`.
+
+### OneDrive: una plataforma más en la misma aplicación
+
+Añadida el 28 de octubre de 2026 en la **misma aplicación**, `5eee79de-1b07-4fec-ae03-a4d3bc3b94f2`.
+En *Authentication* quedan dos plataformas:
+
+| Plataforma | Redirecciones | Para |
+|---|---|---|
+| Web | `http://localhost` | el escritorio y Android, sin cambios |
+| **Aplicación de página única** | `https://multidrive.net/app/`, `http://localhost:8080/app/` | la versión web |
+
+Microsoft solo deja canjear el código **desde un navegador** cuando la redirección es de una
+SPA. Con la de «Web» lo rechaza (`AADSTS9002326`), y por eso la del escritorio no servía aquí.
+Una SPA no lleva secreto, sólo PKCE, y sus tokens de refresco caducan a las 24 horas. Para una
+sesión de lectura sobra, y es menos de lo que se queda el navegador si algo sale mal.
+
+Que funciona **no está comprobado todavía**: Microsoft no valida nada de esto hasta que se
+inicia sesión de verdad, así que la prueba es el primer acceso desde la página.
