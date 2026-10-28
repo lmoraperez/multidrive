@@ -1,0 +1,34 @@
+[package]
+name = "multidrive-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# La version web, de solo lectura: lo que corre en el navegador. Ver lib.rs.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Sin `nativo`: ni disco, ni hilos, ni OpenDAL. Por ruta y no `workspace = true` porque Cargo
+# no deja quitar desde aqui las caracteristicas por defecto de una heredada. En una
+# compilacion del workspace entero el
+# nucleo la trae igual, porque la piden los demas; lo que importa es que aqui no haga falta.
+multidrive-core = { path = "../multidrive-core", default-features = false }
+multidrive-backend-api.workspace = true
+async-trait = "0.1.92"
+futures = "0.3.34"
+serde.workspace = true
+serde_json.workspace = true
+# Solo por `AsyncWrite for Vec<u8>`, que es donde se reconstruye un fichero para descargarlo.
+tokio = { version = "1", features = ["io-util"] }
+
+# Las mismas versiones que ya hay en el arbol, para no tener dos copias.
+wasm-bindgen = "0.2.128"
+wasm-bindgen-futures = "0.4.78"
+js-sys = "0.3.105"
+web-sys = { version = "0.3.105", features = ["Headers", "Request", "RequestInit", "Response"] }
+# El trait pide futuros `Send`, y en el navegador nada lo es: no hay hilos a los que mandarlos.
+# Esto los envuelve y comprueba, en vez de prometerlo a ciegas, que nadie los saca del hilo.
+send_wrapper = { version = "0.6.0", features = ["futures"] }

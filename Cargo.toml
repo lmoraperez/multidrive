@@ -10,6 +10,7 @@ members = [
     "crates/multidrive-mount",
     "crates/multidrive-gui",
     "crates/multidrive-android",
+    "crates/multidrive-web",
 ]
 
 [workspace.package]

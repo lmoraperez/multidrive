@@ -2069,6 +2069,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
 dependencies = [
  "cfg-if",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -2676,8 +2679,27 @@ dependencies = [
 name = "multidrive-raid"
 version = "0.0.1"
 dependencies = [
+ "instant",
  "reed-solomon-erasure",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "multidrive-web"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "futures",
+ "js-sys",
+ "multidrive-backend-api",
+ "multidrive-core",
+ "send_wrapper",
+ "serde",
+ "serde_json",
+ "tokio",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -4114,6 +4136,15 @@ checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 dependencies = [
  "serde",
  "serde_core",
+]
+
+[[package]]
+name = "send_wrapper"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
+dependencies = [
+ "futures-core",
 ]
 
 [[package]]

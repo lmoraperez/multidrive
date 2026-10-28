@@ -9,3 +9,9 @@ rust-version.workspace = true
 [dependencies]
 reed-solomon-erasure = "6.0.0"
 thiserror.workspace = true
+
+# `reed-solomon-erasure` trae `parking_lot`, y este `instant`, que en el navegador no tiene
+# reloj que pedirle al sistema: compila, pero no enlaza. Con `wasm-bindgen` lo saca de
+# `performance.now()`. Solo para wasm32; el resto sigue con el del sistema.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+instant = { version = "0.1.13", features = ["wasm-bindgen"] }

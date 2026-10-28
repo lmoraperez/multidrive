@@ -1141,11 +1141,25 @@ Se cambió de idea un día después y se arrancó, en la variante de solo lectur
       que va por defecto y aparta la caché en disco, la cola de escritura, los dos hilos y el
       hilo del testigo. Lo que queda es justo lo que lee: el árbol, los trozos, la memoria y
       la maleta para abrirla. Lo vigila un job nuevo del CI, `web`.
-- [ ] Un backend sobre `fetch` para Drive y Graph, de solo lectura
-- [ ] La página: iniciar sesión en una cuenta, abrir la maleta con la frase, entrar en las
-      demás, y navegar y descargar
-- [ ] Argon2id en un Web Worker
-- [ ] El aviso de la página, con las palabras de la sección de arriba
+- [x] **Un backend sobre `fetch`** para Drive y Graph, de solo lectura, en el crate
+      `multidrive-web`. Drive se recorre carpeta a carpeta por nombre, como hace OpenDAL, y
+      recuerda los ids; OneDrive descarga por la URL firmada que da Graph y no por `/content`,
+      cuya redirección no siempre trae CORS.
+- [x] **La página**, en `crates/multidrive-web/pagina/`: entrar en una cuenta, leer la
+      cabecera, la frase, entrar en las demás, navegar y descargar. Se construye con
+      `packaging/web/construir.ps1`, que la deja en `site/app/`, y se prueba con
+      `packaging/web/servir.mjs`. Probada el 28 de octubre contra un volumen real de dos
+      cuentas de Drive: abre y lista, con fechas y tamaños.
+- [x] **El aviso de la página**, con las palabras de la sección de arriba, antes de nada.
+- [ ] OneDrive, comprobado de verdad. El código está; falta un volumen con una cuenta de
+      OneDrive para entrar con ella.
+- [ ] **Saber sola en qué cuenta se ha entrado.** Con dos cuentas del mismo tipo la página
+      pregunta, porque la cabecera es idéntica en todas. Con la frase ya se podría averiguar:
+      basta mirar qué índice de fragmento guarda esa cuenta.
+- [ ] Argon2id en un Web Worker. Hoy congela la pestaña unos segundos, dos veces: al abrir la
+      maleta y al abrir el volumen.
+- [ ] Descargar por trozos. Hoy el fichero se reconstruye entero en memoria antes de darlo.
+- [ ] Publicarla en `multidrive.net/app/`, con el SHA-256 del WebAssembly al lado.
 
 Una trampa anotada para cuando se escriba: en el navegador `SystemTime::now()` **no falla al
 compilar, falla al ejecutarse**, con un pánico. Lo usan sellar una raíz, hacer una maleta y el

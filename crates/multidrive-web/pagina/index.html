@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MultiDrive — Abrir un volumen</title>
+<meta name="description" content="Abre un volumen de MultiDrive desde el navegador, en solo lectura. Los datos van de tus nubes a tu navegador sin pasar por multidrive.net.">
+<meta name="robots" content="noindex">
+<!--
+  Solo se habla con las nubes y con sus pantallas de acceso. Cualquier otro destino --un
+  script inyectado que quisiera mandar la frase a otro sitio-- lo bloquea el navegador.
+  `wasm-unsafe-eval` es lo que hace falta para compilar el WebAssembly, y no habilita `eval`.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self'; connect-src 'self' https://www.googleapis.com https://graph.microsoft.com https://login.microsoftonline.com https://*.1drv.com https://*.microsoftpersonalcontent.com https://*.sharepoint.com https://*.livefilestore.com; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="volver" href="/">← multidrive.net</a>
+    <h1>Abrir un volumen</h1>
+    <p class="tag">Desde el navegador, en solo lectura.</p>
+  </header>
+
+  <aside class="aviso" id="aviso">
+    <strong>Esta es la forma menos confiable de abrir MultiDrive.</strong>
+    Las aplicaciones de escritorio y de Android se instalan una vez y se quedan como están. Esta
+    página, en cambio, la vuelve a entregar <code>multidrive.net</code> cada vez que la abres:
+    quien controle ese servidor podría cambiarla por una que se quede con tu frase de paso, y
+    no tendrías con qué compararla. Úsala para llegar a tus ficheros cuando no tengas la
+    aplicación a mano, no como la forma habitual.
+    <span class="aviso-bien">Lo que sí es cierto: tus datos van de tus nubes a este navegador
+    directamente. Por <code>multidrive.net</code> no pasa ni un byte, y nada se guarda al
+    cerrar la pestaña.</span>
+  </aside>
+
+  <main>
+    <!-- 1. La primera cuenta -->
+    <section id="paso-entrar">
+      <h2>1. Entra en una de las cuentas del volumen</h2>
+      <p>En cualquiera: la cabecera del volumen está en todas.</p>
+      <div class="botones">
+        <button type="button" data-entrar="gdrive">Entrar con Google Drive</button>
+        <button type="button" data-entrar="onedrive">Entrar con OneDrive</button>
+      </div>
+      <details>
+        <summary>El volumen está en otra carpeta</summary>
+        <label>Carpeta dentro de la cuenta
+          <input id="raiz" type="text" placeholder="/multidrive" autocomplete="off" spellcheck="false">
+        </label>
+      </details>
+    </section>
+
+    <!-- 2. Cual es esta cuenta, si hay varias del mismo tipo -->
+    <section id="paso-cual" hidden>
+      <h2>¿Cuál de estas es la cuenta en la que has entrado?</h2>
+      <p>El volumen tiene varias cuentas del mismo tipo y desde aquí no se distinguen.</p>
+      <div class="botones" id="cual"></div>
+    </section>
+
+    <!-- 3. La frase -->
+    <section id="paso-frase" hidden>
+      <h2>2. Frase de paso</h2>
+      <p id="resumen"></p>
+      <form id="form-frase" autocomplete="off">
+        <label>Frase de paso del volumen
+          <input id="frase" type="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit">Continuar</button>
+      </form>
+    </section>
+
+    <!-- 4. Las demas cuentas -->
+    <section id="paso-resto" hidden>
+      <h2>3. Entra en las demás cuentas</h2>
+      <p>Cada parte del volumen está en una cuenta distinta. Entra en cada una con la que le corresponde.</p>
+      <ul class="cuentas" id="cuentas"></ul>
+    </section>
+
+    <!-- 5. Navegar -->
+    <section id="paso-volumen" hidden>
+      <div class="barra">
+        <nav id="migas" aria-label="Ruta"></nav>
+        <button type="button" id="cerrar" class="secundario">Cerrar</button>
+      </div>
+      <ul class="lista" id="lista"></ul>
+    </section>
+
+    <p id="estado" role="status" aria-live="polite"></p>
+  </main>
+
+  <footer>
+    <a href="/privacidad.html">Privacidad</a> · Código en
+    <a href="https://github.com/lmoraperez/multidrive">GitHub</a>
+  </footer>
+</div>
+</body>
+</html>
