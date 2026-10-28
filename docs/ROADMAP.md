@@ -1153,8 +1153,10 @@ Se cambió de idea un día después y se arrancó, en la variante de solo lectur
       salió entero y reproducible, en unos 15 s; cada trozo pasa la comprobación de su hash
       antes de entregarse, así que lo que llega es lo que se guardó.
 - [x] **El aviso de la página**, con las palabras de la sección de arriba, antes de nada.
-- [ ] OneDrive, comprobado de verdad. El código está; falta un volumen con una cuenta de
-      OneDrive para entrar con ella.
+- [x] **OneDrive, comprobado de verdad** el 28 de octubre, con un volumen de prueba creado
+      para eso en `/multidrive-prueba-web` y retirado después. Entrar con PKCE contra la
+      plataforma SPA, leer la cabecera, la frase y descargar: el fichero salió con el mismo
+      SHA-256 que el original.
 - [ ] **Saber sola en qué cuenta se ha entrado.** Con dos cuentas del mismo tipo la página
       pregunta, porque la cabecera es idéntica en todas. Con la frase ya se podría averiguar:
       basta mirar qué índice de fragmento guarda esa cuenta.

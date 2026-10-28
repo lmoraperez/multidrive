@@ -262,5 +262,6 @@ SPA. Con la de «Web» lo rechaza (`AADSTS9002326`), y por eso la del escritorio
 Una SPA no lleva secreto, sólo PKCE, y sus tokens de refresco caducan a las 24 horas. Para una
 sesión de lectura sobra, y es menos de lo que se queda el navegador si algo sale mal.
 
-Que funciona **no está comprobado todavía**: Microsoft no valida nada de esto hasta que se
-inicia sesión de verdad, así que la prueba es el primer acceso desde la página.
+Microsoft no valida nada de esto hasta que se inicia sesión de verdad, así que no había otra
+prueba que entrar desde la página. Hecho el 28 de octubre: el código se canjeó desde el
+navegador sin secreto, y con ese token se abrió y se descargó un volumen de OneDrive.
