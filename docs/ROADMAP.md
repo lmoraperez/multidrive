@@ -1087,6 +1087,43 @@ Depende de qué se busque, y hay caminos más baratos para algunas respuestas:
 - **Quitarse de encima el lío del OAuth en Android**: mucho más barato cambiando el redirect a un
   esquema propio.
 
+### Revisado el 24 de octubre: un panel al estilo de Mega
+
+La pregunta volvió con otra forma: un panel web, como el de [mega.io](https://mega.io/es/),
+para **abrir y crear volúmenes** desde el navegador, que al abrir uno conecte con las demás
+nubes. Lo de arriba sigue valiendo entero; esto es lo que esa forma añade.
+
+**Mega tiene el mismo problema, y por eso es buena comparación.** Su cliente web también se
+entrega en cada carga y lleva años recibiendo exactamente la crítica de la sección anterior. La
+diferencia está en los datos: Mega los guarda **en sus servidores**, y MultiDrive en las nubes
+del usuario. Eso deja a MultiDrive **mejor** en una cosa --por `multidrive.net` no pasaría ni
+un byte de datos-- e **igual** en la que importa: el código que maneja la frase de paso sale de
+nuestro dominio en cada visita.
+
+**La respuesta de Mega es la única que lo resuelve de verdad: una extensión de navegador.**
+Lleva el código dentro, se instala una vez y no lo vuelve a descargar, así que recupera lo que
+tienen las aplicaciones instaladas. Es un proyecto aparte, con su propia publicación en las
+tiendas de extensiones, pero es el camino si algún día la web tiene que estar a la altura de
+lo que promete el sitio.
+
+**El flujo que se describe ya existe: es
+[la maleta](#llevarse-la-configuración-a-otro-equipo).** Se enlaza **una sola** cuenta, se escribe la frase y las demás salen de la configuración cifrada que vive en las nubes
+del propio usuario. Es lo que ya hace «Abrir un volumen que ya existe» en Android. No habría
+que inventar nada: un redirect, una cuenta, la frase, y el resto se trae solo.
+
+**El precio nuevo: los tokens de OAuth vivirían en el navegador**, al alcance de cualquier XSS y
+de lo que haga el JavaScript servido. Hoy están en un fichero de configuración del equipo. Es
+otra razón para que el aviso de la página no sea de compromiso.
+
+**Si se hace, empezar por solo lectura.** Ver y descargar, sin subir ni crear volúmenes. Quita
+el testigo, la escritura por trozos y la mitad de lo espinoso de la lista de arriba, y entrega
+la mayor parte del valor: llegar a los ficheros propios desde cualquier sitio. Crear volúmenes
+desde la web puede venir después, o no venir.
+
+**Decisión de momento: no ahora.** Windows acaba de publicarse y Android está en pruebas
+internas; un cliente web es trabajo de meses y abre la única grieta real en el argumento del
+producto. La sección sigue **por analizar**.
+
 ## Multilingüe (español e inglés) — **aplazado a propósito**
 
 Hoy la aplicación de Android **está sólo en español**: no hay `strings.xml` ni carpeta
