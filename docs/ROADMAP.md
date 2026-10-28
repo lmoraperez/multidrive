@@ -1149,7 +1149,9 @@ Se cambió de idea un día después y se arrancó, en la variante de solo lectur
       cabecera, la frase, entrar en las demás, navegar y descargar. Se construye con
       `packaging/web/construir.ps1`, que la deja en `site/app/`, y se prueba con
       `packaging/web/servir.mjs`. Probada el 28 de octubre contra un volumen real de dos
-      cuentas de Drive: abre y lista, con fechas y tamaños.
+      cuentas de Drive: abre, lista con fechas y tamaños, y descarga. Un vídeo de 13,8 MB
+      salió entero y reproducible, en unos 15 s; cada trozo pasa la comprobación de su hash
+      antes de entregarse, así que lo que llega es lo que se guardó.
 - [x] **El aviso de la página**, con las palabras de la sección de arriba, antes de nada.
 - [ ] OneDrive, comprobado de verdad. El código está; falta un volumen con una cuenta de
       OneDrive para entrar con ella.
